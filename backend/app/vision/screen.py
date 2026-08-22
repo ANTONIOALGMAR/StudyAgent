@@ -13,18 +13,46 @@ def capture(monitor=1, region=None) -> Image.Image:
             }
         else:
             monitors = sct.monitors
-            index = min(max(int(monitor), 1), len(monitors) - 1)
+            index = min(max(int(monitor), 0), len(monitors) - 1)
             area = monitors[index]
         shot = sct.grab(area)
     return Image.frombytes("RGB", shot.size, shot.bgra, "raw", "BGRX")
 
 
-def image_to_base64(image: Image.Image, max_width=1600, quality=85) -> bytes:
+def list_monitors():
+    with mss.MSS() as sct:
+        result = []
+        for i, m in enumerate(sct.monitors):
+            result.append(
+                {
+                    "index": i,
+                    "width": m["width"],
+                    "height": m["height"],
+                    "left": m["left"],
+                    "top": m["top"],
+                }
+            )
+    return result
+
+
+def _scale(image: Image.Image, max_width: int) -> Image.Image:
     if image.width > max_width:
         ratio = max_width / image.width
         image = image.resize((max_width, int(image.height * ratio)))
+    return image
+
+
+def image_to_base64(image: Image.Image, max_width=1600, quality=85) -> bytes:
     from io import BytesIO
 
     buffer = BytesIO()
-    image.save(buffer, format="PNG")
+    _scale(image, max_width).save(buffer, format="PNG")
+    return buffer.getvalue()
+
+
+def image_to_jpeg_base64(image: Image.Image, max_width=1100, quality=60) -> bytes:
+    from io import BytesIO
+
+    buffer = BytesIO()
+    _scale(image, max_width).save(buffer, format="JPEG", quality=quality)
     return buffer.getvalue()

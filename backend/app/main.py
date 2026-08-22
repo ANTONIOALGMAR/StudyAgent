@@ -7,7 +7,8 @@ from pydantic import BaseModel
 from .agent.agent import PermissionDeniedError, StudyAgent
 from .audio import speech_to_text, text_to_speech
 from .security.permissions import PermissionManager
-from .vision.screen import image_to_base64
+from .vision import screen
+from .vision.screen import image_to_base64, image_to_jpeg_base64
 
 app = FastAPI(title="StudyAgent", version="0.1.0")
 
@@ -89,6 +90,26 @@ def screen_capture(region: dict | None = None, monitor: int = 1):
     except PermissionDeniedError as exc:
         raise HTTPException(status_code=403, detail=str(exc))
     return {"image_b64": image_to_base64(shot).decode("ascii"), **info}
+
+
+@app.get("/api/screen/monitors")
+def screen_monitors():
+    return {"monitors": screen.list_monitors()}
+
+
+@app.get("/api/screen/preview")
+def screen_preview(monitor: int = 0):
+    try:
+        permissions.require("screen_capture")
+        shot = screen.capture(monitor=monitor)
+    except PermissionDeniedError as exc:
+        raise HTTPException(status_code=403, detail=str(exc))
+    jpeg = image_to_jpeg_base64(shot)
+    return Response(
+        content=jpeg,
+        media_type="image/jpeg",
+        headers={"Cache-Control": "no-store"},
+    )
 
 
 @app.post("/api/screen/analyze")

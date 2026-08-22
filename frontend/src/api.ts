@@ -11,6 +11,7 @@ export async function chat(
   sessionId: string | null,
   useScreen: boolean,
   imageB64?: string | null,
+  monitor: number = 1,
 ): Promise<ChatResponse> {
   const res = await fetch(`${API}/api/chat`, {
     method: 'POST',
@@ -20,6 +21,7 @@ export async function chat(
       session_id: sessionId,
       use_screen: useScreen,
       image_b64: imageB64 ?? null,
+      monitor,
     }),
   })
   if (!res.ok) {
@@ -83,4 +85,23 @@ export const PERMISSION_LABELS: Record<string, string> = {
   mouse_control: 'Controle do mouse',
   keyboard_control: 'Controle do teclado',
   command_execution: 'Executar comandos',
+}
+
+export interface MonitorInfo {
+  index: number
+  width: number
+  height: number
+  left: number
+  top: number
+}
+
+export async function getMonitors(): Promise<MonitorInfo[]> {
+  const res = await fetch(`${API}/api/screen/monitors`)
+  if (!res.ok) return []
+  const data = await res.json()
+  return data.monitors as MonitorInfo[]
+}
+
+export function screenPreviewUrl(monitor: number): string {
+  return `${API}/api/screen/preview?monitor=${monitor}`
 }

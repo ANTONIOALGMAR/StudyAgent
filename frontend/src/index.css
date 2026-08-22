@@ -254,3 +254,61 @@ body {
   gap: 8px;
   margin-top: 10px;
 }
+
+.live-panel {
+  position: fixed;
+  right: 20px;
+  bottom: 90px;
+  width: 340px;
+  background: #161a23;
+  border: 1px solid #2f6f4f;
+  border-radius: 12px;
+  padding: 10px;
+  z-index: 50;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.5);
+}
+
+.live-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+  font-size: 0.82rem;
+}
+
+.live-head select {
+  flex: 1;
+  background: #1d2230;
+  color: #c9cfdb;
+  border: 1px solid #262b38;
+  border-radius: 6px;
+  padding: 4px 6px;
+  font-size: 0.78rem;
+}
+
+.live-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: #f87171;
+  animation: pulse 1.4s infinite;
+}
+
+.live-img {
+  width: 100%;
+  border-radius: 8px;
+  border: 1px solid #262b38;
+  display: block;
+  background: #000;
+  min-height: 60px;
+}
+
+.watch-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+  font-size: 0.8rem;
+  color: #9aa2b5;
+  cursor: pointer;
+}

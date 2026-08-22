@@ -1,5 +1,14 @@
 import { useEffect, useRef, useState } from 'react'
-import { chat, captureScreen, transcribeAudio, speak, type ChatResponse } from '../api'
+import {
+  chat,
+  captureScreen,
+  transcribeAudio,
+  speak,
+  getMonitors,
+  screenPreviewUrl,
+  type ChatResponse,
+  type MonitorInfo,
+} from '../api'
 
 interface Message {
   role: 'user' | 'assistant'
@@ -50,6 +59,26 @@ export default function Chat() {
   const videoRef = useRef<HTMLVideoElement | null>(null)
   const [camOpen, setCamOpen] = useState(false)
 
+  const [liveOpen, setLiveOpen] = useState(false)
+  const [watchMode, setWatchMode] = useState(false)
+  const [monitors, setMonitors] = useState<MonitorInfo[]>([])
+  const [monitorSel, setMonitorSel] = useState(0)
+  const [previewTick, setPreviewTick] = useState(0)
+  const watchActiveRef = useRef(false)
+  const sessionIdRef = useRef<string | null>(null)
+  const monitorSelRef = useRef(0)
+  const liveOpenRef = useRef(false)
+
+  useEffect(() => {
+    sessionIdRef.current = sessionId
+  }, [sessionId])
+  useEffect(() => {
+    monitorSelRef.current = monitorSel
+  }, [monitorSel])
+  useEffect(() => {
+    liveOpenRef.current = liveOpen
+  }, [liveOpen])
+
   function closeCamera() {
     camStreamRef.current?.getTracks().forEach((t) => t.stop())
     camStreamRef.current = null
@@ -75,6 +104,50 @@ export default function Chat() {
       setError('Câmera não autorizada no navegador (verde ao lado da barra de endereço)')
     }
   }
+
+  useEffect(() => {
+    if (!liveOpen) return
+    void getMonitors().then(setMonitors)
+    const t = setInterval(() => setPreviewTick((x) => x + 1), 2000)
+    return () => clearInterval(t)
+  }, [liveOpen])
+
+  async function watchLoop() {
+    while (watchActiveRef.current && liveOpenRef.current) {
+      try {
+        const res = await chat(
+          'Observe esta captura das minhas telas. Descreva em no máximo 2 frases o que está sendo mostrado agora. Se for essencialmente igual à última observação, responda exatamente: sem mudanças',
+          sessionIdRef.current,
+          true,
+          null,
+          monitorSelRef.current,
+        )
+        const txt = res.response.trim()
+        setSessionId(res.session_id)
+        if (txt && !/^sem mudanças[.!]?$/i.test(txt)) {
+          setMessages((m) => [...m, { role: 'assistant', content: `👁 ${txt}` }])
+        }
+      } catch {
+        break
+      }
+      const until = Date.now() + 25000
+      while (Date.now() < until && watchActiveRef.current && liveOpenRef.current) {
+        await new Promise((r) => setTimeout(r, 500))
+      }
+    }
+  }
+
+  useEffect(() => {
+    if (watchMode && liveOpen) {
+      watchActiveRef.current = true
+      void watchLoop()
+    } else {
+      watchActiveRef.current = false
+    }
+    return () => {
+      watchActiveRef.current = false
+    }
+  }, [watchMode, liveOpen])
 
   function snapAndAsk() {
     const video = videoRef.current
@@ -143,7 +216,13 @@ export default function Chat() {
     ])
     setLoading(true)
     try {
-      const res: ChatResponse = await chat(text, sessionId, useScreen, opts.imageB64 ?? null)
+      const res: ChatResponse = await chat(
+        text,
+        sessionId,
+        useScreen || liveOpen,
+        opts.imageB64 ?? null,
+        monitorSelRef.current,
+      )
       setSessionId(res.session_id)
       const tools = res.tools_used.length > 0 ? ` [${res.tools_used.join(', ')}]` : ''
       setMessages((m) => [...m, { role: 'assistant', content: res.response + tools }])
@@ -355,6 +434,49 @@ export default function Chat() {
 
       {handsFree && statusLabel && <div className={`status-pill st-${hfState}`}>{statusLabel}</div>}
 
+      {liveOpen && (
+        <div className="live-panel">
+          <div className="live-head">
+            <span className="live-dot" />
+            <strong>ao vivo</strong>
+            <select
+              value={monitorSel}
+              onChange={(e) => setMonitorSel(Number(e.target.value))}
+            >
+              {monitors.length === 0 && <option value={0}>Todas as telas</option>}
+              {monitors.map((m) =>
+                m.index === 0 ? (
+                  <option key={m.index} value={m.index}>
+                    Todas as telas
+                  </option>
+                ) : (
+                  <option key={m.index} value={m.index}>
+                    Tela {m.index} · {m.width}×{m.height}
+                  </option>
+                ),
+              )}
+            </select>
+            <button className="btn-screen" onClick={() => { setWatchMode(false); setLiveOpen(false) }}>
+              ✕
+            </button>
+          </div>
+          <img
+            key={previewTick}
+            src={screenPreviewUrl(monitorSel)}
+            alt="tela ao vivo"
+            className="live-img"
+          />
+          <label className="watch-toggle">
+            <input
+              type="checkbox"
+              checked={watchMode}
+              onChange={(e) => setWatchMode(e.target.checked)}
+            />
+            agente comenta mudanças automaticamente
+          </label>
+        </div>
+      )}
+
       {camOpen && (
         <div className="camera-panel">
           <video ref={videoRef} autoPlay muted playsInline />
@@ -383,6 +505,13 @@ export default function Chat() {
           title="Câmera: aponte, capture e pergunte"
         >
           📷
+        </button>
+        <button
+          className={`btn-screen ${liveOpen ? 'active' : ''}`}
+          onClick={() => setLiveOpen(!liveOpen)}
+          title="Telas ao vivo: escolha o monitor e acompanhe o que o agente vê"
+        >
+          📺
         </button>
         <button className="btn-screen" onClick={peekScreen} title="Só olhar a tela agora">
           👁
