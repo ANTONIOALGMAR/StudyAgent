@@ -1,0 +1,15 @@
+backend/.venv/
+backend/models/piper/*.onnx
+backend/models/piper/*.json
+frontend/node_modules/
+frontend/dist/
+frontend/tsconfig.tsbuildinfo
+**/__pycache__/
+*.pyc
+.env
+data/memory/*.db
+data/documents/*
+data/conversations/*
+!data/memory/.gitkeep
+!data/documents/.gitkeep
+!data/conversations/.gitkeep

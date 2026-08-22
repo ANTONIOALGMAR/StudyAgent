@@ -1,0 +1,234 @@
+:root {
+  font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  color-scheme: dark;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  background: #0f1117;
+  color: #e4e6eb;
+}
+
+.app {
+  display: flex;
+  height: 100vh;
+}
+
+.sidebar {
+  width: 240px;
+  background: #161a23;
+  border-right: 1px solid #262b38;
+  padding: 20px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.logo {
+  font-size: 1.15rem;
+  font-weight: 700;
+  display: flex;
+  flex-direction: column;
+}
+
+.subtitle {
+  font-size: 0.72rem;
+  color: #8b93a7;
+  font-weight: 400;
+  margin-top: 2px;
+}
+
+.permissions h3 {
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #8b93a7;
+  margin-bottom: 10px;
+}
+
+.permissions ul { list-style: none; }
+
+.permissions li + li { margin-top: 4px; }
+
+.perm {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  background: transparent;
+  border: 1px solid #262b38;
+  border-radius: 8px;
+  color: #c9cfdb;
+  cursor: pointer;
+  font-size: 0.85rem;
+  transition: background 0.15s;
+}
+
+.perm:hover { background: #1d2230; }
+
+.perm .dot { width: 14px; }
+
+.perm.on { border-color: #2f6f4f; }
+.perm.on .dot { color: #34d27b; }
+.perm.off .dot { color: #565d6e; }
+
+.main {
+  flex: 1;
+  display: flex;
+  min-width: 0;
+}
+
+.chat {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 24px;
+}
+
+.chat-messages {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding-bottom: 16px;
+}
+
+.chat-welcome {
+  text-align: center;
+  margin-top: 18vh;
+  color: #aab1c2;
+}
+
+.chat-welcome h2 { color: #e4e6eb; margin-bottom: 8px; }
+
+.chat-welcome .hint { font-size: 0.82rem; color: #6b7280; margin-top: 12px; }
+
+.msg {
+  max-width: 80%;
+  padding: 10px 14px;
+  border-radius: 12px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.msg-user {
+  align-self: flex-end;
+  background: #2563eb;
+  border-bottom-right-radius: 4px;
+}
+
+.msg-assistant {
+  align-self: flex-start;
+  background: #1d2230;
+  border-bottom-left-radius: 4px;
+}
+
+.msg-role {
+  font-size: 0.68rem;
+  opacity: 0.55;
+  margin-bottom: 3px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.typing { animation: pulse 1.2s infinite; }
+
+@keyframes pulse { 50% { opacity: 0.45; } }
+
+.msg-error {
+  align-self: center;
+  color: #f87171;
+  font-size: 0.85rem;
+  background: #2a1618;
+  border: 1px solid #58262b;
+  padding: 8px 14px;
+  border-radius: 8px;
+}
+
+.chat-input {
+  display: flex;
+  gap: 8px;
+  padding-top: 12px;
+  border-top: 1px solid #262b38;
+}
+
+.chat-input input {
+  flex: 1;
+  background: #1d2230;
+  border: 1px solid #262b38;
+  border-radius: 10px;
+  padding: 11px 14px;
+  color: inherit;
+  font-size: 0.95rem;
+  outline: none;
+}
+
+.chat-input input:focus { border-color: #3b4358; }
+
+.btn-screen, .btn-mic, .btn-send {
+  border: none;
+  border-radius: 10px;
+  padding: 0 14px;
+  cursor: pointer;
+  font-size: 0.85rem;
+  white-space: nowrap;
+}
+
+.btn-mic { font-size: 1rem; }
+
+.btn-mic.recording {
+  background: #3b1220;
+  color: #f87171;
+  border: 1px solid #7f1d2d;
+  animation: pulse 1s infinite;
+}
+
+.btn-screen {
+  background: #1d2230;
+  color: #9aa2b5;
+  border: 1px solid #262b38;
+}
+
+.btn-screen.active {
+  background: #12321f;
+  color: #34d27b;
+  border-color: #2f6f4f;
+}
+
+.btn-send {
+  background: #2563eb;
+  color: white;
+}
+
+.btn-send:disabled { opacity: 0.4; cursor: default; }
+
+.btn-send.hf-on {
+  background: #12321f;
+  color: #34d27b;
+  border: 1px solid #2f6f4f;
+}
+
+.status-pill {
+  align-self: center;
+  font-size: 0.8rem;
+  padding: 5px 14px;
+  border-radius: 999px;
+  border: 1px solid #262b38;
+  background: #1d2230;
+  color: #9aa2b5;
+  margin-top: 8px;
+}
+
+.status-pill.st-recording {
+  border-color: #7f1d2d;
+  background: #3b1220;
+  color: #f87171;
+}
+
+.status-pill.st-speaking { border-color: #2f6f4f; color: #34d27b; }

@@ -1,0 +1,11 @@
+fastapi
+uvicorn[standard]
+ollama
+mss
+Pillow
+pytesseract
+python-dotenv
+pydantic
+faster-whisper
+piper-tts
+python-multipart
