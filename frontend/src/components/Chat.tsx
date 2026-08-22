@@ -46,11 +46,60 @@ export default function Chat() {
   const analyserRef = useRef<AnalyserNode | null>(null)
   const hfActiveRef = useRef(false)
 
+  const camStreamRef = useRef<MediaStream | null>(null)
+  const videoRef = useRef<HTMLVideoElement | null>(null)
+  const [camOpen, setCamOpen] = useState(false)
+
+  function closeCamera() {
+    camStreamRef.current?.getTracks().forEach((t) => t.stop())
+    camStreamRef.current = null
+    setCamOpen(false)
+  }
+
+  useEffect(() => {
+    if (camOpen && videoRef.current && camStreamRef.current) {
+      videoRef.current.srcObject = camStreamRef.current
+      void videoRef.current.play().catch(() => {})
+    }
+  }, [camOpen])
+
+  async function openCamera() {
+    setError(null)
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { width: { ideal: 1280 }, height: { ideal: 720 } },
+      })
+      camStreamRef.current = stream
+      setCamOpen(true)
+    } catch {
+      setError('Câmera não autorizada no navegador (verde ao lado da barra de endereço)')
+    }
+  }
+
+  function snapAndAsk() {
+    const video = videoRef.current
+    if (!video || !video.videoWidth) {
+      setError('Câmera ainda não está pronta')
+      return
+    }
+    const canvas = document.createElement('canvas')
+    canvas.width = video.videoWidth
+    canvas.height = video.videoHeight
+    canvas.getContext('2d')?.drawImage(video, 0, 0)
+    const b64 = canvas.toDataURL('image/jpeg', 0.85).split(',')[1]
+    closeCamera()
+    const question =
+      input.trim() || 'O que você vê nesta imagem? Identifique objetos, textos e explique.'
+    setInput('')
+    void sendText(question, { imageB64: b64 })
+  }
+
   useEffect(() => {
     return () => {
       hfActiveRef.current = false
       streamRef.current?.getTracks().forEach((t) => t.stop())
       void audioCtxRef.current?.close().catch(() => {})
+      camStreamRef.current?.getTracks().forEach((t) => t.stop())
     }
   }, [])
 
@@ -79,13 +128,22 @@ export default function Chat() {
     }
   }
 
-  async function sendText(text: string, opts: { viaVoice?: boolean; awaitSpeech?: boolean } = {}) {
+  async function sendText(
+    text: string,
+    opts: { viaVoice?: boolean; awaitSpeech?: boolean; imageB64?: string } = {},
+  ) {
     if (!text || loading) return
     setError(null)
-    setMessages((m) => [...m, { role: 'user', content: opts.viaVoice ? `🎙 ${text}` : text }])
+    setMessages((m) => [
+      ...m,
+      {
+        role: 'user',
+        content: `${opts.imageB64 ? '📷 ' : ''}${opts.viaVoice ? `🎙 ${text}` : text}`,
+      },
+    ])
     setLoading(true)
     try {
-      const res: ChatResponse = await chat(text, sessionId, useScreen)
+      const res: ChatResponse = await chat(text, sessionId, useScreen, opts.imageB64 ?? null)
       setSessionId(res.session_id)
       const tools = res.tools_used.length > 0 ? ` [${res.tools_used.join(', ')}]` : ''
       setMessages((m) => [...m, { role: 'assistant', content: res.response + tools }])
@@ -297,6 +355,20 @@ export default function Chat() {
 
       {handsFree && statusLabel && <div className={`status-pill st-${hfState}`}>{statusLabel}</div>}
 
+      {camOpen && (
+        <div className="camera-panel">
+          <video ref={videoRef} autoPlay muted playsInline />
+          <div className="camera-actions">
+            <button className="btn-send" onClick={snapAndAsk} disabled={loading}>
+              📸 capturar e perguntar
+            </button>
+            <button className="btn-screen" onClick={closeCamera}>
+              ✕ fechar
+            </button>
+          </div>
+        </div>
+      )}
+
       <div className="chat-input">
         <button
           className={`btn-screen ${useScreen ? 'active' : ''}`}
@@ -304,6 +376,13 @@ export default function Chat() {
           title="Anexar captura de tela à mensagem"
         >
           🖥
+        </button>
+        <button
+          className={`btn-screen ${camOpen ? 'active' : ''}`}
+          onClick={() => (camOpen ? closeCamera() : void openCamera())}
+          title="Câmera: aponte, capture e pergunte"
+        >
+          📷
         </button>
         <button className="btn-screen" onClick={peekScreen} title="Só olhar a tela agora">
           👁

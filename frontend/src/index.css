@@ -232,3 +232,25 @@ body {
 }
 
 .status-pill.st-speaking { border-color: #2f6f4f; color: #34d27b; }
+
+.camera-panel {
+  background: #1d2230;
+  border: 1px solid #262b38;
+  border-radius: 12px;
+  padding: 10px;
+  margin-top: 8px;
+}
+
+.camera-panel video {
+  width: 100%;
+  max-height: 320px;
+  object-fit: contain;
+  border-radius: 8px;
+  background: #000;
+}
+
+.camera-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+}

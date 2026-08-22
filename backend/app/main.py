@@ -28,6 +28,7 @@ class ChatRequest(BaseModel):
     use_screen: bool = False
     region: dict | None = None
     monitor: int = 1
+    image_b64: str | None = None
 
 
 class AnalyzeScreenRequest(BaseModel):
@@ -67,12 +68,15 @@ def set_permission(name: str, body: PermissionUpdate):
 @app.post("/api/chat")
 def chat(req: ChatRequest):
     try:
+        if req.image_b64:
+            permissions.require("camera")
         return agent.process(
             req.message,
             session_id=req.session_id,
             use_screen=req.use_screen,
             region=req.region,
             monitor=req.monitor,
+            image_b64=req.image_b64,
         )
     except PermissionDeniedError as exc:
         raise HTTPException(status_code=403, detail=str(exc))

@@ -6,11 +6,21 @@ export interface ChatResponse {
   tools_used: string[]
 }
 
-export async function chat(message: string, sessionId: string | null, useScreen: boolean): Promise<ChatResponse> {
+export async function chat(
+  message: string,
+  sessionId: string | null,
+  useScreen: boolean,
+  imageB64?: string | null,
+): Promise<ChatResponse> {
   const res = await fetch(`${API}/api/chat`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ message, session_id: sessionId, use_screen: useScreen }),
+    body: JSON.stringify({
+      message,
+      session_id: sessionId,
+      use_screen: useScreen,
+      image_b64: imageB64 ?? null,
+    }),
   })
   if (!res.ok) {
     const err = await res.json().catch(() => ({ detail: res.statusText }))
