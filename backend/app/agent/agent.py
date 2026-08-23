@@ -25,6 +25,27 @@ Modos disponíveis (o usuário pode pedir):
 - resumo: condensar material
 - simples: explicar como para um iniciante"""
 
+HISTORY_LIMIT = 10
+SUMMARY_MIN_MESSAGES = 22
+SUMMARY_REFRESH_DELTA = 8
+
+SUMMARY_PROMPT = """Atualize o resumo desta sessão de estudos.
+
+Resumo anterior:
+{previous}
+
+Mensagens novas (mais antigas que a janela recente):
+{transcript}
+
+Escreva o resumo atualizado em português com esta estrutura obrigatória:
+FATOS IMPORTANTES: nome do aluno, datas de provas/trabalhos, metas e compromissos citados (se existirem).
+CONTEÚDO ESTUDADO: matérias e tópicos com pontos-chave.
+DIFICULDADES E PRÓXIMOS PASSOS: dificuldades do aluno e pendências.
+
+Regras: no máximo 12 linhas; preserve nomes, datas e números EXATAMENTE como foram citados;
+nunca invente informações; responda APENAS com o texto do resumo, sem prefixos,
+saudações ou comentários."""
+
 
 class StudyAgent:
     def __init__(self):
@@ -61,8 +82,14 @@ class StudyAgent:
         ):
             enriched_message = f"{message}\n\n(A imagem anexada é uma captura da minha tela.)"
 
-        history = self.memory.history(session_id, limit=8)
-        messages = [{"role": "system", "content": SYSTEM_PROMPT}, *history]
+        history = self.memory.history(session_id, limit=HISTORY_LIMIT)
+        summary_entry = self._rolling_summary(session_id)
+        system_content = SYSTEM_PROMPT
+        if summary_entry:
+            system_content += (
+                f"\n\nResumo do que já foi conversado nesta sessão:\n{summary_entry}"
+            )
+        messages = [{"role": "system", "content": system_content}, *history]
         messages.append({"role": "user", "content": enriched_message})
 
         response_text = chat(messages, images=images or None)
@@ -75,6 +102,42 @@ class StudyAgent:
             "response": response_text,
             "tools_used": tools_used,
         }
+
+    def _rolling_summary(self, session_id):
+        total = self.memory.count_messages(session_id)
+        if total <= HISTORY_LIMIT + SUMMARY_REFRESH_DELTA:
+            return None
+        entry = self.memory.get_summary(session_id)
+        needs_refresh = entry is None or (
+            total - entry["msg_count"] >= SUMMARY_REFRESH_DELTA
+        )
+        if not needs_refresh:
+            return entry["summary"]
+        older = self.memory.history_head(
+            session_id, max(total - HISTORY_LIMIT, 0)
+        )
+        if not older:
+            return entry["summary"] if entry else None
+        transcript = "\n".join(
+            f"{'aluno' if m['role'] == 'user' else 'tutor'}: {m['content'][:400]}"
+            for m in older
+        )
+        summary_text = chat(
+            [
+                {
+                    "role": "system",
+                    "content": SUMMARY_PROMPT.format(
+                        previous=entry["summary"] if entry else "(nenhum)",
+                        transcript=transcript,
+                    ),
+                }
+            ]
+        ).strip()
+        import re
+
+        summary_text = re.sub(r"^(assistant|user|tutor)\s*[:\-]?\s*", "", summary_text).strip()
+        self.memory.set_summary(session_id, summary_text, total - HISTORY_LIMIT)
+        return summary_text
 
     def capture_and_read_screen(self, region=None, monitor=1):
         self._require("screen_capture")

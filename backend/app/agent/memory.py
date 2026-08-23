@@ -39,6 +39,45 @@ class Memory:
                 )
                 """
             )
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS summaries (
+                    session_id TEXT PRIMARY KEY REFERENCES sessions(id),
+                    summary TEXT NOT NULL,
+                    msg_count INTEGER NOT NULL DEFAULT 0,
+                    updated_at TEXT NOT NULL
+                )
+                """
+            )
+
+    def get_summary(self, session_id):
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT summary, msg_count FROM summaries WHERE session_id = ?",
+                (session_id,),
+            ).fetchone()
+        return dict(row) if row else None
+
+    def set_summary(self, session_id, summary, msg_count):
+        with self._lock, self._connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO summaries (session_id, summary, msg_count, updated_at)
+                VALUES (?, ?, ?, ?)
+                ON CONFLICT(session_id) DO UPDATE SET
+                    summary = excluded.summary,
+                    msg_count = excluded.msg_count,
+                    updated_at = excluded.updated_at
+                """,
+                (session_id, summary, msg_count, datetime.now().isoformat()),
+            )
+
+    def count_messages(self, session_id):
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT COUNT(*) AS n FROM messages WHERE session_id = ?", (session_id,)
+            ).fetchone()
+        return row["n"]
 
     def new_session(self, title=None):
         session_id = str(uuid.uuid4())[:8]
@@ -80,6 +119,18 @@ class Memory:
                 ) ORDER BY id ASC
                 """,
                 (session_id, limit),
+            ).fetchall()
+        return [{"role": r["role"], "content": r["content"]} for r in rows]
+
+    def history_head(self, session_id, count):
+        with self._connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT role, content FROM messages
+                WHERE session_id = ?
+                ORDER BY id ASC LIMIT ?
+                """,
+                (session_id, count),
             ).fetchall()
         return [{"role": r["role"], "content": r["content"]} for r in rows]
 

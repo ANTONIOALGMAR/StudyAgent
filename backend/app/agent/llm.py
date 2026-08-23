@@ -11,20 +11,23 @@ def available_models():
     return [m.model for m in _client.list().models]
 
 
-CONTEXT_TOKENS = 8192
+TEXT_CONTEXT_TOKENS = 16384
+VISION_CONTEXT_TOKENS = 8192
 
 
 def chat(messages, images=None):
     if images:
         messages = _attach_images(messages, images)
         model = VISION_MODEL
+        num_ctx = VISION_CONTEXT_TOKENS
     else:
         model = TEXT_MODEL
+        num_ctx = TEXT_CONTEXT_TOKENS
     try:
         response = _client.chat(
             model=model,
             messages=messages,
-            options={"num_ctx": CONTEXT_TOKENS},
+            options={"num_ctx": num_ctx},
         )
         return response["message"]["content"]
     except Exception as exc:
