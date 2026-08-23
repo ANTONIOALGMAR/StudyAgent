@@ -61,7 +61,7 @@ class StudyAgent:
         ):
             enriched_message = f"{message}\n\n(A imagem anexada é uma captura da minha tela.)"
 
-        history = self.memory.history(session_id)
+        history = self.memory.history(session_id, limit=8)
         messages = [{"role": "system", "content": SYSTEM_PROMPT}, *history]
         messages.append({"role": "user", "content": enriched_message})
 

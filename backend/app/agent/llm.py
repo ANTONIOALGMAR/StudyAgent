@@ -11,14 +11,30 @@ def available_models():
     return [m.model for m in _client.list().models]
 
 
+CONTEXT_TOKENS = 8192
+
+
 def chat(messages, images=None):
     if images:
         messages = _attach_images(messages, images)
         model = VISION_MODEL
     else:
         model = TEXT_MODEL
-    response = _client.chat(model=model, messages=messages)
-    return response["message"]["content"]
+    try:
+        response = _client.chat(
+            model=model,
+            messages=messages,
+            options={"num_ctx": CONTEXT_TOKENS},
+        )
+        return response["message"]["content"]
+    except Exception as exc:
+        msg = str(exc)
+        if "context size" in msg or "exceed" in msg.lower():
+            raise RuntimeError(
+                "A conversa ficou longa demais para a memória do modelo. "
+                "Inicie uma nova sessão ou continue com mensagens mais curtas."
+            ) from exc
+        raise
 
 
 def _attach_images(messages, images):
