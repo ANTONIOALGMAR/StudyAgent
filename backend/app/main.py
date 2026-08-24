@@ -7,6 +7,7 @@ from pydantic import BaseModel
 from pathlib import Path
 
 from .agent.agent import PermissionDeniedError, StudyAgent
+from .agent import exercises
 from .audio import speech_to_text, text_to_speech
 from .config import DOCUMENTS_DIR as documents_dir
 from .security.permissions import PermissionManager
@@ -49,6 +50,17 @@ class PermissionUpdate(BaseModel):
 
 class CalculateRequest(BaseModel):
     expression: str
+
+
+class ExerciseGenerateRequest(BaseModel):
+    topic: str
+    n: int = 4
+    level: str = "ensino fundamental"
+
+
+class ExerciseGradeRequest(BaseModel):
+    exercise_id: str
+    answers: dict[str, str]
 
 
 @app.get("/api/health")
@@ -206,3 +218,21 @@ def speak(req: SpeakRequest):
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc))
     return Response(content=wav, media_type="audio/wav")
+
+
+@app.post("/api/exercises/generate")
+def exercises_generate(req: ExerciseGenerateRequest):
+    try:
+        return exercises.generate(topic=req.topic, n=req.n, level=req.level)
+    except ValueError as exc:
+        raise HTTPException(status_code=502, detail=str(exc))
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Falha ao gerar exercícios: {exc}")
+
+
+@app.post("/api/exercises/grade")
+def exercises_grade(req: ExerciseGradeRequest):
+    try:
+        return exercises.grade(exercise_id=req.exercise_id, answers=req.answers)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))

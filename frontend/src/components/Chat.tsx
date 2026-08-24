@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import AgentFace, { type FaceState } from './AgentFace'
+import ExercisesPanel from './ExercisesPanel'
 import {
   chat,
   captureScreen,
@@ -94,6 +95,7 @@ export default function Chat() {
   const [activeDoc, setActiveDoc] = useState<UploadedDoc | null>(null)
 
   const [liveOpen, setLiveOpen] = useState(false)
+  const [exOpen, setExOpen] = useState(false)
   const [watchMode, setWatchMode] = useState(false)
   const [monitors, setMonitors] = useState<MonitorInfo[]>([])
   const [monitorSel, setMonitorSel] = useState(0)
@@ -579,6 +581,18 @@ export default function Chat() {
         </div>
       )}
 
+      {exOpen && (
+        <div className="live-panel exercises-panel">
+          <div className="live-head">
+            <strong>🎯 exercícios</strong>
+            <button className="btn-screen" onClick={() => setExOpen(false)}>
+              ✕
+            </button>
+          </div>
+          <ExercisesPanel onMood={(m) => flashReaction(m as FaceState)} />
+        </div>
+      )}
+
       {camOpen && (
         <div className="camera-panel">
           <video ref={videoRef} autoPlay muted playsInline />
@@ -624,6 +638,13 @@ export default function Chat() {
           title="Telas ao vivo: escolha o monitor e acompanhe o que o agente vê"
         >
           📺
+        </button>
+        <button
+          className={`btn-screen ${exOpen ? 'active' : ''}`}
+          onClick={() => setExOpen(!exOpen)}
+          title="Gerar exercícios com correção automática"
+        >
+          🎯
         </button>
         <button className="btn-screen" onClick={peekScreen} title="Só olhar a tela agora">
           👁

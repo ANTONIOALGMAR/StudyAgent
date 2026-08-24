@@ -125,3 +125,60 @@ export async function getMonitors(): Promise<MonitorInfo[]> {
 export function screenPreviewUrl(monitor: number): string {
   return `${API}/api/screen/preview?monitor=${monitor}`
 }
+
+export interface ExerciseQuestion {
+  id: string
+  q: string
+  options: string[] | null
+}
+
+export interface ExerciseSet {
+  exercise_id: string
+  topic: string
+  questions: ExerciseQuestion[]
+}
+
+export interface ExerciseResultItem {
+  id: string
+  q: string
+  user_answer: string
+  expected: string
+  correct: boolean
+  explanation: string
+}
+
+export interface GradeResult {
+  exercise_id: string
+  score: number
+  total: number
+  percent: number
+  message: string
+  results: ExerciseResultItem[]
+}
+
+export async function generateExercises(
+  topic: string,
+  n = 4,
+  level = 'ensino fundamental',
+): Promise<ExerciseSet> {
+  const res = await fetch(`${API}/api/exercises/generate`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ topic, n, level }),
+  })
+  if (!res.ok) throw new Error((await res.json()).detail || 'Falha ao gerar exercícios')
+  return res.json()
+}
+
+export async function gradeExercise(
+  exerciseId: string,
+  answers: Record<string, string>,
+): Promise<GradeResult> {
+  const res = await fetch(`${API}/api/exercises/grade`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ exercise_id: exerciseId, answers }),
+  })
+  if (!res.ok) throw new Error((await res.json()).detail || 'Falha ao corrigir')
+  return res.json()
+}
