@@ -60,6 +60,34 @@ def chat_with_tools(messages, tools):
     return {"content": message.content or "", "tool_calls": tool_calls}
 
 
+SYNTH_SYSTEM = (
+    "Você responde perguntas em português usando APENAS o material pesquisado "
+    "fornecido pelo usuário. Cite as fontes usadas no formato [fonte: URL]. "
+    "ATENÇÃO à desambiguação: se houver clubes, pessoas ou empresas com nomes "
+    "parecidos no material, use somente as fontes que corresponderem "
+    "exatamente à entidade da pergunta (contexto, tamanho, liga conhecidas). "
+    "Ignore clubes pequenos homônimos. Prefira sempre os dados mais recentes "
+    "e confira se a data é coerente com hoje. "
+    "Se o material não contiver a resposta confiável, diga claramente que não "
+    "encontrou. Nunca invente fatos."
+)
+
+
+def synthesize(question: str, material: str) -> str:
+    response = _client.chat(
+        model=VISION_MODEL,
+        messages=[
+            {"role": "system", "content": SYNTH_SYSTEM},
+            {
+                "role": "user",
+                "content": f"Pergunta: {question}\n\nMaterial da pesquisa:\n{material}",
+            },
+        ],
+        options={"num_ctx": TEXT_CONTEXT_TOKENS},
+    )
+    return response["message"]["content"]
+
+
 def _attach_images(messages, images):
     encoded = []
     for img in images:

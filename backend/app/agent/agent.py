@@ -180,6 +180,12 @@ class StudyAgent:
         if images:
             return chat(messages, images=images)
         from ..tools.web_search import distill_page, fetch_page, search
+        from .llm import synthesize
+
+        last_user = next(
+            (m["content"] for m in reversed(messages) if m["role"] == "user"),
+            "",
+        )
 
         current = list(messages)
         for _ in range(4):
@@ -206,10 +212,15 @@ class StudyAgent:
                         _log.info("web_search n_results=%d", len(results))
                         parts = []
                         got_distilled = False
-                        for r in results[:3]:
+                        for r in results[:5]:
                             part = f"[{r['title']}]({r['url']})\n{r['snippet'][:250]}"
                             try:
-                                page = fetch_page(r["url"], chars=3500)
+                                page = fetch_page(r["url"], chars=4500)
+                                if len(page) < 350:
+                                    _log.info(
+                                        "página vazia (JS?) url=%s", r["url"][:60]
+                                    )
+                                    continue
                                 _log.info(
                                     "fetch ok url=%s len=%d", r["url"][:60], len(page)
                                 )
@@ -228,6 +239,11 @@ class StudyAgent:
                             "Tente outros termos ou admita que não sabe."
                         )
                         _log.info("web_search result_len=%d", len(result))
+                        if parts:
+                            try:
+                                return synthesize(last_user, result)
+                            except Exception as exc:
+                                _log.warning("síntese falhou: %s", exc)
                     except PermissionDeniedError as exc:
                         result = f"Pesquisa indisponível: {exc}"
                     tools_used.append("web_search")
