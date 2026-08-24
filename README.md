@@ -110,7 +110,7 @@ Controladas em `config/permissions.json`. Nenhum módulo acessa microfone, câme
 - [x] Fase 1: chat, memória (com resumo rolante), captura de tela, permissões, OCR, voz (STT + TTS)
 - [x] Fase 2a: câmera com reconhecimento, upload de PDF/txt com consulta no chat, telas ao vivo multi-monitor
 - [ ] Fase 2b: gráficos dedicados, documentos avançados (docx)
-- [ ] Fase 3: gerador de exercícios e quizzes dedicados na interface
+- [x] Fase 3: gerador de exercícios e quizzes dedicados na interface
 - [ ] Fase 4: automação controlada (mouse/teclado com confirmação)
 - [ ] Fase 5: memória entre sessões, perfil de aprendiz, plano de estudos
 
