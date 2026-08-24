@@ -37,6 +37,25 @@ function rmsOf(buf: Float32Array): number {
   return Math.sqrt(sum / buf.length)
 }
 
+const HAPPY_WORDS = [
+  'parabéns', 'parabens', 'correto', 'exato', 'isso mesmo', 'muito bem',
+  'excelente', 'perfeito', 'você acertou', 'voce acertou', 'ótimo', 'otimo',
+]
+const CONCERN_WORDS = [
+  'cuidado', 'atenção', 'atencao', 'erro', 'errado', 'incorreto',
+  'não é isso', 'nao e isso', 'quase lá', 'revise', 'ops',
+]
+
+function moodFromResponse(text: string): FaceState {
+  const lower = text.toLowerCase()
+  const happy = HAPPY_WORDS.filter((w) => lower.includes(w)).length
+  const concern = CONCERN_WORDS.filter((w) => lower.includes(w)).length
+  if (concern > happy) return 'concerned'
+  if (happy > concern) return 'happy'
+  if (text.trim().endsWith('?')) return 'curious'
+  return 'idle'
+}
+
 export default function Chat() {
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState('')
@@ -49,6 +68,14 @@ export default function Chat() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [speaking, setSpeaking] = useState(false)
+  const [reaction, setReaction] = useState<FaceState | null>(null)
+  const reactionTimerRef = useRef<number | null>(null)
+
+  function flashReaction(mood: FaceState) {
+    if (reactionTimerRef.current) window.clearTimeout(reactionTimerRef.current)
+    setReaction(mood === 'idle' ? null : mood)
+    reactionTimerRef.current = window.setTimeout(() => setReaction(null), 6000)
+  }
 
   const recorderRef = useRef<MediaRecorder | null>(null)
   const chunksRef = useRef<Blob[]>([])
@@ -266,6 +293,7 @@ export default function Chat() {
       setSessionId(res.session_id)
       const tools = res.tools_used.length > 0 ? ` [${res.tools_used.join(', ')}]` : ''
       setMessages((m) => [...m, { role: 'assistant', content: res.response + tools }])
+      flashReaction(moodFromResponse(res.response))
       if (opts.awaitSpeech) await playSpeechAwait(res.response)
       else void playSpeechAwait(res.response)
     } catch (e) {
@@ -454,7 +482,7 @@ export default function Chat() {
     : handsFree && hfState === 'recording' ? 'recording'
     : handsFree && hfState === 'listening' ? 'listening'
     : loading ? 'thinking'
-    : 'idle'
+    : reaction ?? 'idle'
 
   const faceLabel: Record<FaceState, string> = {
     idle: 'pronto para ajudar',
@@ -463,6 +491,9 @@ export default function Chat() {
     thinking: 'pensando…',
     speaking: 'falando',
     error: 'ops, algo deu errado',
+    happy: 'ficou feliz com você! 🎉',
+    concerned: 'quer te ajudar a melhorar',
+    curious: 'fez uma pergunta pra você',
   }
 
   return (

@@ -414,3 +414,26 @@ body {
   font-size: 0.78rem;
   color: #8b93a7;
 }
+
+.head { transform-origin: 50px 52px; }
+.face-curious .head { animation: head-tilt 2.4s ease-in-out infinite; }
+@keyframes head-tilt {
+  0%, 100% { transform: rotate(0deg); }
+  40%, 70% { transform: rotate(4deg); }
+}
+
+.brow { transition: transform 0.3s; transform-origin: center; }
+.face-listening .brow, .face-happy .brow { transform: translateY(-3px); }
+.face-recording .brow-left { transform: translateY(-2px) rotate(6deg); }
+.face-recording .brow-right { transform: translateY(-2px) rotate(-6deg); }
+.face-thinking .brow-left { transform: translateY(1.5px) rotate(9deg); }
+.face-thinking .brow-right { transform: translateY(1.5px) rotate(-9deg); }
+.face-error .brow-left, .face-concerned .brow-left { transform: translateY(2px) rotate(14deg); }
+.face-error .brow-right, .face-concerned .brow-right { transform: translateY(2px) rotate(-14deg); }
+
+.cheek { opacity: 0; transition: opacity 0.4s; }
+.face-happy .cheek { opacity: 0.45; animation: cheek-glow 1.6s ease-in-out infinite alternate; }
+@keyframes cheek-glow {
+  from { opacity: 0.3; }
+  to { opacity: 0.55; }
+}
