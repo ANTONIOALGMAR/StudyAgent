@@ -549,9 +549,11 @@ body {
   display: flex;
   height: 100vh;
   overflow: hidden;
+  flex: 1;
+  min-width: 0;
 }
 
-.sidebar {
+.toolnav {
   background: #0d1017;
   border-right: 1px solid #232936;
   display: flex;
@@ -560,8 +562,8 @@ body {
   overflow: hidden;
   flex-shrink: 0;
 }
-.sidebar.open { width: 190px; }
-.sidebar.closed { width: 52px; }
+.toolnav.open { width: 190px; }
+.toolnav.closed { width: 52px; }
 
 .sb-toggle {
   background: none;
@@ -647,3 +649,27 @@ body {
   box-shadow: 0 4px 14px rgba(0,0,0,0.4);
 }
 .live-minimized:hover { background: #1b2a45; }
+
+.sidebar.perms-open {
+  width: 230px;
+}
+.sidebar.perms-collapsed {
+  width: 52px;
+}
+.sidebar.perms-open,
+.sidebar.perms-collapsed {
+  transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  overflow: hidden;
+  flex-shrink: 0;
+}
+.ps-toggle {
+  background: none;
+  border: none;
+  color: #8b93a7;
+  font-size: 1.2rem;
+  cursor: pointer;
+  padding: 12px 0;
+  width: 100%;
+  text-align: center;
+}
+.ps-toggle:hover { color: #5ba3f5; }

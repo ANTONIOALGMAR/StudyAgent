@@ -16,7 +16,7 @@ export default function Sidebar({ items }: Props) {
   const [open, setOpen] = useState(true)
 
   return (
-    <nav className={`sidebar ${open ? 'open' : 'closed'}`}>
+    <nav className={`toolnav ${open ? 'open' : 'closed'}`}>
       <button
         className="sb-toggle"
         onClick={() => setOpen(!open)}
