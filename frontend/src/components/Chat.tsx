@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import AgentFace, { type FaceState } from './AgentFace'
 import {
   chat,
   captureScreen,
@@ -47,6 +48,7 @@ export default function Chat() {
   const [recording, setRecording] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [speaking, setSpeaking] = useState(false)
 
   const recorderRef = useRef<MediaRecorder | null>(null)
   const chunksRef = useRef<Blob[]>([])
@@ -216,18 +218,23 @@ export default function Chat() {
       const player = new Audio(URL.createObjectURL(blob))
       playerRef.current = player
       setHfState('speaking')
-      await new Promise<void>((resolve) => {
-        const cap = setTimeout(resolve, SPEAK_CAP_MS)
-        player.onended = () => {
-          clearTimeout(cap)
-          resolve()
-        }
-        player.onerror = () => {
-          clearTimeout(cap)
-          resolve()
-        }
-        void player.play()
-      })
+      setSpeaking(true)
+      try {
+        await new Promise<void>((resolve) => {
+          const cap = setTimeout(resolve, SPEAK_CAP_MS)
+          player.onended = () => {
+            clearTimeout(cap)
+            resolve()
+          }
+          player.onerror = () => {
+            clearTimeout(cap)
+            resolve()
+          }
+          void player.play()
+        })
+      } finally {
+        setSpeaking(false)
+      }
     } catch {
       // voz é opcional
     }
@@ -441,8 +448,32 @@ export default function Chat() {
     : hfState === 'speaking' ? '🗣 falando…'
     : ''
 
+  const faceState: FaceState =
+    error ? 'error'
+    : speaking ? 'speaking'
+    : handsFree && hfState === 'recording' ? 'recording'
+    : handsFree && hfState === 'listening' ? 'listening'
+    : loading ? 'thinking'
+    : 'idle'
+
+  const faceLabel: Record<FaceState, string> = {
+    idle: 'pronto para ajudar',
+    listening: 'ouvindo você…',
+    recording: 'gravando sua voz',
+    thinking: 'pensando…',
+    speaking: 'falando',
+    error: 'ops, algo deu errado',
+  }
+
   return (
     <div className="chat">
+      <div className="chat-header">
+        <AgentFace state={faceState} size={84} />
+        <div className="face-label">
+          <span className="face-title">StudyAgent</span>
+          <span className="face-status">{faceLabel[faceState]}</span>
+        </div>
+      </div>
       <div className="chat-messages">
         {messages.length === 0 && (
           <div className="chat-welcome">

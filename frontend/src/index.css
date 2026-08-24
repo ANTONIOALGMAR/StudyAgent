@@ -334,3 +334,83 @@ body {
   cursor: pointer;
   font-size: 0.85rem;
 }
+
+.agent-face {
+  border-radius: 50%;
+  transition: filter 0.3s, box-shadow 0.3s;
+}
+
+.face-listening { box-shadow: 0 0 22px rgba(52, 210, 123, 0.35); }
+.face-recording { box-shadow: 0 0 26px rgba(248, 113, 113, 0.5); animation: face-pulse 1s infinite; }
+.face-thinking { box-shadow: 0 0 22px rgba(91, 163, 245, 0.35); }
+.face-speaking { box-shadow: 0 0 24px rgba(167, 139, 250, 0.45); }
+.face-error { box-shadow: 0 0 20px rgba(248, 113, 113, 0.4); }
+
+@keyframes face-pulse {
+  50% { transform: scale(1.04); }
+}
+
+.antenna-dot { animation: antenna-blink 2.2s infinite; }
+@keyframes antenna-blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.25; }
+}
+
+.lid {
+  transform-origin: center;
+  transform: scaleY(0);
+  animation: blink 4.4s infinite;
+}
+.lid-right { animation-delay: 0.05s; }
+@keyframes blink {
+  0%, 93%, 100% { transform: scaleY(0); }
+  95%, 98% { transform: scaleY(1); }
+}
+
+.pupil { transition: transform 0.25s; }
+.face-thinking .pupil-left { animation: look-around 1.6s infinite; }
+.face-thinking .pupil-right { animation: look-around 1.6s infinite; }
+@keyframes look-around {
+  0%, 100% { transform: translateX(0); }
+  30% { transform: translateX(-2.5px); }
+  65% { transform: translateX(2.5px); }
+}
+
+.mouth-speaking {
+  transform-origin: 50px 68px;
+  animation: talk 0.28s infinite alternate;
+}
+@keyframes talk {
+  from { transform: scaleY(0.55); }
+  to { transform: scaleY(1.25); }
+}
+
+.waves path { animation: wave-sway 1.1s ease-in-out infinite; }
+.waves path:last-child { animation-delay: 0.15s; }
+@keyframes wave-sway {
+  50% { opacity: 0.2; transform: scaleX(0.85); }
+}
+
+.chat-header {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid #262b38;
+  margin-bottom: 12px;
+}
+
+.chat-header .face-label {
+  display: flex;
+  flex-direction: column;
+}
+
+.chat-header .face-title {
+  font-weight: 700;
+  font-size: 1rem;
+}
+
+.chat-header .face-status {
+  font-size: 0.78rem;
+  color: #8b93a7;
+}
