@@ -4,8 +4,11 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response
 from pydantic import BaseModel
 
+from pathlib import Path
+
 from .agent.agent import PermissionDeniedError, StudyAgent
 from .audio import speech_to_text, text_to_speech
+from .config import DOCUMENTS_DIR as documents_dir
 from .security.permissions import PermissionManager
 from .vision import screen
 from .vision.screen import image_to_base64, image_to_jpeg_base64
@@ -30,6 +33,7 @@ class ChatRequest(BaseModel):
     region: dict | None = None
     monitor: int = 1
     image_b64: str | None = None
+    doc_id: str | None = None
 
 
 class AnalyzeScreenRequest(BaseModel):
@@ -78,6 +82,7 @@ def chat(req: ChatRequest):
             region=req.region,
             monitor=req.monitor,
             image_b64=req.image_b64,
+            doc_id=req.doc_id,
         )
     except PermissionDeniedError as exc:
         raise HTTPException(status_code=403, detail=str(exc))
@@ -146,6 +151,39 @@ def session_messages(session_id: str):
 
 class SpeakRequest(BaseModel):
     text: str
+
+
+@app.post("/api/documents/upload")
+async def upload_document(file: UploadFile = File(...)):
+    try:
+        permissions.require("file_access")
+    except PermissionDeniedError as exc:
+        raise HTTPException(status_code=403, detail=str(exc))
+    import uuid as uuid_mod
+
+    from .tools.documents import extract_pdf
+
+    raw = await file.read()
+    if not raw:
+        raise HTTPException(status_code=400, detail="arquivo vazio")
+    name = file.filename or "documento"
+    suffix = Path(name).suffix.lower()
+    if suffix not in (".pdf", ".txt", ".md"):
+        raise HTTPException(status_code=400, detail="formatos aceitos: pdf, txt, md")
+    save_path = Path(documents_dir) / f"{uuid_mod.uuid4().hex[:8]}{suffix}"
+    save_path.write_bytes(raw)
+    if suffix == ".pdf":
+        try:
+            pages, text = extract_pdf(save_path)
+        except Exception as exc:
+            save_path.unlink(missing_ok=True)
+            raise HTTPException(status_code=400, detail=f"PDF inválido: {exc}")
+        save_path.with_suffix(".txt").write_text(text, encoding="utf-8")
+    else:
+        pages = 1
+        text = raw.decode("utf-8", errors="ignore")
+    doc_id = agent.memory.add_document(name, str(save_path), pages, len(text))
+    return {"id": doc_id, "name": name, "pages": pages, "chars": len(text)}
 
 
 @app.post("/api/audio/transcribe")

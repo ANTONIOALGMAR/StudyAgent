@@ -3,7 +3,7 @@ import base64
 from ..security.permissions import PermissionDeniedError
 from ..tools import calculator
 from ..vision import ocr, screen
-from .llm import available_models, chat
+from .llm import available_models, chat, chat_with_tools
 from .memory import Memory
 
 SYSTEM_PROMPT = """Você é o StudyAgent, um tutor pessoal de estudos que roda localmente no computador do usuário.
@@ -23,7 +23,37 @@ Modos disponíveis (o usuário pode pedir):
 - exercicios: gerar exercícios parecidos
 - revisao: fazer perguntas para checar aprendizado
 - resumo: condensar material
-- simples: explicar como para um iniciante"""
+- simples: explicar como para um iniciante
+
+Regras de honestidade:
+- NUNCA invente fatos, datas, números, nomes ou notícias.
+- Se uma informação puder ter mudado com o tempo, ou você não tiver certeza, USE a ferramenta web_search antes de responder.
+- Quando usar pesquisa, cite as fontes no formato [fonte: URL] e diga claramente o que veio da internet.
+- Se a pesquisa não trouxer resultado confiável, admita que não sabe em vez de chutar."""
+
+SEARCH_TOOLS = [
+    {
+        "type": "function",
+        "function": {
+            "name": "web_search",
+            "description": (
+                "Pesquisa na internet informações atuais, fatos verificáveis, "
+                "notícias, dados e respostas que o modelo pode não conhecer. "
+                "Use sempre que precisar de precisão."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": {
+                        "type": "string",
+                        "description": "Termos de busca em português, específicos e objetivos",
+                    }
+                },
+                "required": ["query"],
+            },
+        },
+    }
+]
 
 HISTORY_LIMIT = 10
 SUMMARY_MIN_MESSAGES = 22
@@ -59,6 +89,7 @@ class StudyAgent:
         region=None,
         monitor=1,
         image_b64=None,
+        doc_id=None,
     ):
         session_id = self.memory.get_or_create_session(session_id)
         tools_used = []
@@ -82,6 +113,22 @@ class StudyAgent:
         ):
             enriched_message = f"{message}\n\n(A imagem anexada é uma captura da minha tela.)"
 
+        if doc_id:
+            self._require("file_access")
+            doc = self.memory.get_document(doc_id)
+            if doc:
+                from pathlib import Path
+
+                from ..tools.documents import load_document_text, retrieve_relevant
+
+                _, text = load_document_text(Path(doc["path"]))
+                excerpt = retrieve_relevant(message, text)
+                enriched_message = (
+                    f"Documento '{doc['name']}' ({doc['pages']} páginas) anexado.\n\n"
+                    f"Trechos relevantes:\n{excerpt}\n\nPergunta: {message}"
+                )
+                tools_used.append("document")
+
         history = self.memory.history(session_id, limit=HISTORY_LIMIT)
         summary_entry = self._rolling_summary(session_id)
         system_content = SYSTEM_PROMPT
@@ -92,7 +139,7 @@ class StudyAgent:
         messages = [{"role": "system", "content": system_content}, *history]
         messages.append({"role": "user", "content": enriched_message})
 
-        response_text = chat(messages, images=images or None)
+        response_text = self._run_tool_loop(messages, images, tools_used)
 
         self.memory.add_message(session_id, "user", message)
         self.memory.add_message(session_id, "assistant", response_text)
@@ -102,6 +149,40 @@ class StudyAgent:
             "response": response_text,
             "tools_used": tools_used,
         }
+
+    def _run_tool_loop(self, messages, images, tools_used):
+        if images:
+            return chat(messages, images=images)
+        from ..tools.web_search import format_results, search
+
+        current = list(messages)
+        for _ in range(3):
+            try:
+                reply = chat_with_tools(current, SEARCH_TOOLS)
+            except Exception:
+                return chat(current)
+            if not reply["tool_calls"]:
+                return reply["content"] or chat(current)
+            current.append(
+                {"role": "assistant", "content": reply["content"], "tool_calls": reply["tool_calls"]}
+            )
+            for call in reply["tool_calls"]:
+                name = call["function"]["name"]
+                args = call["function"]["arguments"]
+                if name == "web_search":
+                    try:
+                        self._require("internet")
+                        results = search(str(args.get("query", "")))
+                        result = format_results(results) or (
+                            "Nenhum resultado encontrado na pesquisa."
+                        )
+                    except PermissionDeniedError as exc:
+                        result = f"Pesquisa indisponível: {exc}"
+                    tools_used.append("web_search")
+                else:
+                    result = f"Ferramenta desconhecida: {name}"
+                current.append({"role": "tool", "name": name, "content": result})
+        return reply.get("content") or ""
 
     def _rolling_summary(self, session_id):
         total = self.memory.count_messages(session_id)

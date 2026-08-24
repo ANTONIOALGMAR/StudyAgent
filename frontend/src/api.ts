@@ -12,6 +12,7 @@ export async function chat(
   useScreen: boolean,
   imageB64?: string | null,
   monitor: number = 1,
+  docId?: string | null,
 ): Promise<ChatResponse> {
   const res = await fetch(`${API}/api/chat`, {
     method: 'POST',
@@ -22,8 +23,27 @@ export async function chat(
       use_screen: useScreen,
       image_b64: imageB64 ?? null,
       monitor,
+      doc_id: docId ?? null,
     }),
   })
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: res.statusText }))
+    throw new Error(err.detail ?? `Erro ${res.status}`)
+  }
+  return res.json()
+}
+
+export interface UploadedDoc {
+  id: string
+  name: string
+  pages: number
+  chars: number
+}
+
+export async function uploadDocument(file: File): Promise<UploadedDoc> {
+  const form = new FormData()
+  form.append('file', file)
+  const res = await fetch(`${API}/api/documents/upload`, { method: 'POST', body: form })
   if (!res.ok) {
     const err = await res.json().catch(() => ({ detail: res.statusText }))
     throw new Error(err.detail ?? `Erro ${res.status}`)

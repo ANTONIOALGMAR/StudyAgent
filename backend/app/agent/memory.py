@@ -49,6 +49,43 @@ class Memory:
                 )
                 """
             )
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS documents (
+                    id TEXT PRIMARY KEY,
+                    name TEXT NOT NULL,
+                    path TEXT NOT NULL,
+                    pages INTEGER NOT NULL DEFAULT 0,
+                    chars INTEGER NOT NULL DEFAULT 0,
+                    created_at TEXT NOT NULL
+                )
+                """
+            )
+
+    def add_document(self, name, path, pages, chars):
+        doc_id = str(uuid.uuid4())[:8]
+        with self._lock, self._connect() as conn:
+            conn.execute(
+                "INSERT INTO documents (id, name, path, pages, chars, created_at) "
+                "VALUES (?, ?, ?, ?, ?, ?)",
+                (doc_id, name, str(path), pages, chars, datetime.now().isoformat()),
+            )
+        return doc_id
+
+    def get_document(self, doc_id):
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT * FROM documents WHERE id = ?", (doc_id,)
+            ).fetchone()
+        return dict(row) if row else None
+
+    def list_documents(self):
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT id, name, pages, chars, created_at FROM documents "
+                "ORDER BY created_at DESC"
+            ).fetchall()
+        return [dict(r) for r in rows]
 
     def get_summary(self, session_id):
         with self._connect() as conn:

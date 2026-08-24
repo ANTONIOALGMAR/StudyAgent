@@ -312,3 +312,25 @@ body {
   color: #9aa2b5;
   cursor: pointer;
 }
+
+.doc-chip {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  background: #12321f;
+  border: 1px solid #2f6f4f;
+  color: #7ee2a8;
+  font-size: 0.82rem;
+  padding: 6px 12px;
+  border-radius: 999px;
+  margin-top: 8px;
+}
+
+.doc-chip button {
+  background: transparent;
+  border: none;
+  color: inherit;
+  cursor: pointer;
+  font-size: 0.85rem;
+}

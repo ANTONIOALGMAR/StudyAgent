@@ -8,6 +8,8 @@ import {
   screenPreviewUrl,
   type ChatResponse,
   type MonitorInfo,
+  uploadDocument,
+  type UploadedDoc,
 } from '../api'
 
 interface Message {
@@ -58,6 +60,9 @@ export default function Chat() {
   const camStreamRef = useRef<MediaStream | null>(null)
   const videoRef = useRef<HTMLVideoElement | null>(null)
   const [camOpen, setCamOpen] = useState(false)
+
+  const fileInputRef = useRef<HTMLInputElement | null>(null)
+  const [activeDoc, setActiveDoc] = useState<UploadedDoc | null>(null)
 
   const [liveOpen, setLiveOpen] = useState(false)
   const [watchMode, setWatchMode] = useState(false)
@@ -149,6 +154,33 @@ export default function Chat() {
     }
   }, [watchMode, liveOpen])
 
+  function pickFile() {
+    fileInputRef.current?.click()
+  }
+
+  async function onFileChosen(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+    if (!file) return
+    setError(null)
+    setLoading(true)
+    try {
+      const doc = await uploadDocument(file)
+      setActiveDoc(doc)
+      setMessages((m) => [
+        ...m,
+        {
+          role: 'assistant',
+          content: `📄 ${doc.name} carregado (${doc.pages} página${doc.pages > 1 ? 's' : ''}). Pergunte sobre o conteúdo!`,
+        },
+      ])
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Erro ao carregar documento')
+    } finally {
+      setLoading(false)
+    }
+  }
+
   function snapAndAsk() {
     const video = videoRef.current
     if (!video || !video.videoWidth) {
@@ -222,6 +254,7 @@ export default function Chat() {
         useScreen || liveOpen,
         opts.imageB64 ?? null,
         monitorSelRef.current,
+        activeDoc?.id ?? null,
       )
       setSessionId(res.session_id)
       const tools = res.tools_used.length > 0 ? ` [${res.tools_used.join(', ')}]` : ''
@@ -432,6 +465,13 @@ export default function Chat() {
         {error && <div className="msg-error">⚠ {error}</div>}
       </div>
 
+      {activeDoc && (
+        <div className="doc-chip">
+          📄 {activeDoc.name}
+          <button onClick={() => setActiveDoc(null)} title="Remover documento">✕</button>
+        </div>
+      )}
+
       {handsFree && statusLabel && <div className={`status-pill st-${hfState}`}>{statusLabel}</div>}
 
       {liveOpen && (
@@ -506,6 +546,16 @@ export default function Chat() {
         >
           📷
         </button>
+        <button className="btn-screen" onClick={pickFile} title="Anexar PDF ou texto para estudar">
+          📎
+        </button>
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept=".pdf,.txt,.md"
+          style={{ display: 'none' }}
+          onChange={(e) => void onFileChosen(e)}
+        />
         <button
           className={`btn-screen ${liveOpen ? 'active' : ''}`}
           onClick={() => setLiveOpen(!liveOpen)}

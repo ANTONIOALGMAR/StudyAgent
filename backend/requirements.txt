@@ -8,4 +8,7 @@ python-dotenv
 pydantic
 faster-whisper
 piper-tts
+pypdf
 python-multipart
+ddgs
+requests

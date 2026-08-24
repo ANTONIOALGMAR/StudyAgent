@@ -40,6 +40,26 @@ def chat(messages, images=None):
         raise
 
 
+def chat_with_tools(messages, tools):
+    response = _client.chat(
+        model=TEXT_MODEL,
+        messages=messages,
+        tools=tools,
+        options={"num_ctx": TEXT_CONTEXT_TOKENS},
+    )
+    message = response["message"]
+    tool_calls = [
+        {
+            "function": {
+                "name": tc.function.name,
+                "arguments": dict(tc.function.arguments or {}),
+            }
+        }
+        for tc in (message.tool_calls or [])
+    ]
+    return {"content": message.content or "", "tool_calls": tool_calls}
+
+
 def _attach_images(messages, images):
     encoded = []
     for img in images:
