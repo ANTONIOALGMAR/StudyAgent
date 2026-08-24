@@ -1,0 +1,39 @@
+#!/usr/bin/env bash
+set -e
+SCRIPT="$(readlink -f "$0")"
+ROOT="$(cd "$(dirname "$SCRIPT")/.." && pwd)"
+
+case "${1:-start}" in
+  start)
+    "$ROOT/scripts/start.sh"
+    for i in $(seq 1 30); do
+      if curl -s --max-time 1 http://localhost:5173 > /dev/null 2>&1 &&
+         curl -s --max-time 1 http://localhost:8000/api/health | grep -q ok; then
+        break
+      fi
+      sleep 1
+    done
+    echo "StudyAgent: http://localhost:5173"
+    ;;
+  stop)
+    fuser -k 5173/tcp 2>/dev/null || true
+    fuser -k 8000/tcp 2>/dev/null || true
+    echo "StudyAgent encerrado (Ollama continua ativo)."
+    ;;
+  status)
+    curl -s --max-time 2 http://localhost:11434/api/version > /dev/null 2>&1 \
+      && echo "ollama    ✓" || echo "ollama    ✗"
+    curl -s --max-time 2 http://localhost:8000/api/health 2>/dev/null | grep -q ok \
+      && echo "api       ✓" || echo "api       ✗"
+    curl -s --max-time 2 http://localhost:5173 > /dev/null 2>&1 \
+      && echo "frontend  ✓" || echo "frontend  ✗"
+    ;;
+  restart)
+    "$0" stop
+    sleep 1
+    "$0" start
+    ;;
+  *)
+    echo "uso: studyagent [start|stop|status|restart]"
+    ;;
+esac
