@@ -544,3 +544,106 @@ body {
   text-shadow: 0 1px 3px rgba(0,0,0,0.7);
 }
 .ex-actions { display: flex; justify-content: center; }
+
+.app-shell {
+  display: flex;
+  height: 100vh;
+  overflow: hidden;
+}
+
+.sidebar {
+  background: #0d1017;
+  border-right: 1px solid #232936;
+  display: flex;
+  flex-direction: column;
+  transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  overflow: hidden;
+  flex-shrink: 0;
+}
+.sidebar.open { width: 190px; }
+.sidebar.closed { width: 52px; }
+
+.sb-toggle {
+  background: none;
+  border: none;
+  color: #8b93a7;
+  font-size: 1.15rem;
+  cursor: pointer;
+  padding: 14px 0;
+  width: 100%;
+}
+.sb-toggle:hover { color: #5ba3f5; }
+
+.sb-list { list-style: none; margin: 4px 0 0; padding: 0; }
+.sb-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 14px;
+  background: none;
+  border: none;
+  color: #c9cede;
+  cursor: pointer;
+  font-size: 0.9rem;
+  text-align: left;
+  white-space: nowrap;
+}
+.sb-item:hover { background: #161b26; color: #fff; }
+.sb-item.active { background: #16233a; color: #5ba3f5; }
+.sb-icon { font-size: 1.05rem; width: 24px; text-align: center; }
+.sb-label { display: flex; align-items: center; gap: 8px; }
+.sb-on {
+  font-size: 0.62rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  background: #34d27b22;
+  color: #34d27b;
+  border-radius: 4px;
+  padding: 2px 6px;
+}
+
+.btn-stage { margin-left: auto; font-size: 1.05rem; }
+
+.stage-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  background: radial-gradient(ellipse at center, rgba(13,16,23,0.92), rgba(9,11,16,0.98));
+  backdrop-filter: blur(6px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: stage-in 0.35s ease;
+}
+@keyframes stage-in {
+  from { opacity: 0; transform: scale(0.96); }
+  to { opacity: 1; transform: scale(1); }
+}
+.stage-close { position: absolute; top: 20px; right: 24px; font-size: 1.3rem; }
+.stage-inner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 26px;
+}
+.stage-label {
+  color: #8b93a7;
+  font-size: 1.25rem;
+  letter-spacing: 0.02em;
+}
+
+.live-minimized {
+  position: absolute;
+  bottom: 84px;
+  right: 18px;
+  background: #16233a;
+  border: 1px solid #2a3b5d;
+  color: #5ba3f5;
+  border-radius: 20px;
+  padding: 7px 14px;
+  cursor: pointer;
+  font-size: 0.85rem;
+  box-shadow: 0 4px 14px rgba(0,0,0,0.4);
+}
+.live-minimized:hover { background: #1b2a45; }

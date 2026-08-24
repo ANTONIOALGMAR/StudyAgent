@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import AgentFace, { type FaceState } from './AgentFace'
 import ExercisesPanel from './ExercisesPanel'
+import Sidebar from './Sidebar'
 import {
   chat,
   captureScreen,
@@ -95,7 +96,9 @@ export default function Chat() {
   const [activeDoc, setActiveDoc] = useState<UploadedDoc | null>(null)
 
   const [liveOpen, setLiveOpen] = useState(false)
+  const [liveMinimized, setLiveMinimized] = useState(false)
   const [exOpen, setExOpen] = useState(false)
+  const [stage, setStage] = useState(false)
   const [watchMode, setWatchMode] = useState(false)
   const [monitors, setMonitors] = useState<MonitorInfo[]>([])
   const [monitorSel, setMonitorSel] = useState(0)
@@ -114,6 +117,13 @@ export default function Chat() {
   useEffect(() => {
     liveOpenRef.current = liveOpen
   }, [liveOpen])
+
+  useEffect(() => {
+    if (!stage) return
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && setStage(false)
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [stage])
 
   function closeCamera() {
     camStreamRef.current?.getTracks().forEach((t) => t.stop())
@@ -498,15 +508,79 @@ export default function Chat() {
     curious: 'fez uma pergunta pra você',
   }
 
+  const sidebarItems = [
+    {
+      icon: '🖥',
+      label: 'Anexar tela',
+      active: useScreen,
+      onClick: () => setUseScreen(!useScreen),
+      title: 'Anexar captura de tela à mensagem',
+    },
+    {
+      icon: '📺',
+      label: 'Telas ao vivo',
+      active: liveOpen,
+      onClick: () => {
+        setLiveMinimized(false)
+        setLiveOpen(!liveOpen)
+      },
+      title: 'Acompanhe o que o agente vê',
+    },
+    {
+      icon: '📷',
+      label: 'Câmera',
+      active: camOpen,
+      onClick: () => (camOpen ? closeCamera() : void openCamera()),
+      title: 'Aponte a câmera e pergunte',
+    },
+    {
+      icon: '📎',
+      label: 'Anexar PDF',
+      active: !!activeDoc,
+      onClick: pickFile,
+      title: 'Estudar um documento',
+    },
+    {
+      icon: '🎯',
+      label: 'Exercícios',
+      active: exOpen,
+      onClick: () => setExOpen(!exOpen),
+      title: 'Gerar exercícios com correção',
+    },
+    {
+      icon: '👁',
+      label: 'Olhar agora',
+      active: false,
+      onClick: peekScreen,
+      title: 'Captura rápida da tela atual',
+    },
+    {
+      icon: '🎭',
+      label: 'Modo palco',
+      active: stage,
+      onClick: () => setStage(true),
+      title: 'Rosto em tela cheia',
+    },
+  ]
+
   return (
-    <div className="chat">
-      <div className="chat-header">
-        <AgentFace state={faceState} size={84} />
-        <div className="face-label">
-          <span className="face-title">StudyAgent</span>
-          <span className="face-status">{faceLabel[faceState]}</span>
+    <div className="app-shell">
+      <Sidebar items={sidebarItems} />
+      <div className="chat">
+        <div className="chat-header">
+          <AgentFace state={faceState} size={84} />
+          <div className="face-label">
+            <span className="face-title">StudyAgent</span>
+            <span className="face-status">{faceLabel[faceState]}</span>
+          </div>
+          <button
+            className="btn-screen btn-stage"
+            onClick={() => setStage(true)}
+            title="Ampliar o rosto (modo palco)"
+          >
+            ⤢
+          </button>
         </div>
-      </div>
       <div className="chat-messages">
         {messages.length === 0 && (
           <div className="chat-welcome">
@@ -538,7 +612,7 @@ export default function Chat() {
 
       {handsFree && statusLabel && <div className={`status-pill st-${hfState}`}>{statusLabel}</div>}
 
-      {liveOpen && (
+      {liveOpen && !liveMinimized && (
         <div className="live-panel">
           <div className="live-head">
             <span className="live-dot" />
@@ -560,6 +634,13 @@ export default function Chat() {
                 ),
               )}
             </select>
+            <button
+              className="btn-screen"
+              onClick={() => setLiveMinimized(true)}
+              title="Minimizar"
+            >
+              —
+            </button>
             <button className="btn-screen" onClick={() => { setWatchMode(false); setLiveOpen(false) }}>
               ✕
             </button>
@@ -579,6 +660,16 @@ export default function Chat() {
             agente comenta mudanças automaticamente
           </label>
         </div>
+      )}
+
+      {liveOpen && liveMinimized && (
+        <button
+          className="live-minimized"
+          onClick={() => setLiveMinimized(false)}
+          title="Restaurar painel ao vivo"
+        >
+          📺 ao vivo ▴
+        </button>
       )}
 
       {exOpen && (
@@ -608,23 +699,6 @@ export default function Chat() {
       )}
 
       <div className="chat-input">
-        <button
-          className={`btn-screen ${useScreen ? 'active' : ''}`}
-          onClick={() => setUseScreen(!useScreen)}
-          title="Anexar captura de tela à mensagem"
-        >
-          🖥
-        </button>
-        <button
-          className={`btn-screen ${camOpen ? 'active' : ''}`}
-          onClick={() => (camOpen ? closeCamera() : void openCamera())}
-          title="Câmera: aponte, capture e pergunte"
-        >
-          📷
-        </button>
-        <button className="btn-screen" onClick={pickFile} title="Anexar PDF ou texto para estudar">
-          📎
-        </button>
         <input
           ref={fileInputRef}
           type="file"
@@ -632,23 +706,6 @@ export default function Chat() {
           style={{ display: 'none' }}
           onChange={(e) => void onFileChosen(e)}
         />
-        <button
-          className={`btn-screen ${liveOpen ? 'active' : ''}`}
-          onClick={() => setLiveOpen(!liveOpen)}
-          title="Telas ao vivo: escolha o monitor e acompanhe o que o agente vê"
-        >
-          📺
-        </button>
-        <button
-          className={`btn-screen ${exOpen ? 'active' : ''}`}
-          onClick={() => setExOpen(!exOpen)}
-          title="Gerar exercícios com correção automática"
-        >
-          🎯
-        </button>
-        <button className="btn-screen" onClick={peekScreen} title="Só olhar a tela agora">
-          👁
-        </button>
         <button
           className={`btn-mic ${recording ? 'recording' : ''}`}
           onClick={toggleRecording}
@@ -678,6 +735,32 @@ export default function Chat() {
         >
           {handsFree ? '⏹' : '🔄'}
         </button>
+      </div>
+
+      {stage && (
+        <div className="stage-overlay" onClick={() => setStage(false)}>
+          <button
+            className="btn-screen stage-close"
+            onClick={() => setStage(false)}
+            title="Voltar (Esc)"
+          >
+            ✕
+          </button>
+          <div className="stage-inner" onClick={(e) => e.stopPropagation()}>
+            <AgentFace state={faceState} size={Math.min(window.innerWidth, window.innerHeight) * 0.62} />
+            <p className="stage-label">
+              {faceLabel[faceState]}
+            </p>
+            <button
+              className={`btn-screen ${voiceOn ? 'active' : ''}`}
+              onClick={() => setVoiceOn(!voiceOn)}
+              title="Responder por voz"
+            >
+              🔊
+            </button>
+          </div>
+        </div>
+      )}
       </div>
     </div>
   )

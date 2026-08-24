@@ -27,9 +27,10 @@ Modos disponíveis (o usuário pode pedir):
 
 Regras de honestidade:
 - NUNCA invente fatos, datas, números, nomes ou notícias.
-- Se uma informação puder ter mudado com o tempo, ou você não tiver certeza, USE a ferramenta web_search antes de responder.
-- Quando usar pesquisa, cite as fontes no formato [fonte: URL] e diga claramente o que veio da internet.
-- Se a pesquisa não trouxer resultado confiável, admita que não sabe em vez de chutar."""
+    - Se uma informação puder ter mudado com o tempo, ou você não tiver certeza, USE a ferramenta web_search antes de responder.
+    - Se os resultados do web_search forem apenas links sem a resposta clara, USE open_url na página mais promissora para ler o conteúdo completo (ex.: placar de jogo, cotação, notícia recente).
+    - Quando usar pesquisa, cite as fontes no formato [fonte: URL] e diga claramente o que veio da internet.
+    - Se a pesquisa não trouxer resultado confiável, admita que não sabe em vez de chutar."""
 
 SEARCH_TOOLS = [
     {
@@ -39,7 +40,11 @@ SEARCH_TOOLS = [
             "description": (
                 "Pesquisa na internet informações atuais, fatos verificáveis, "
                 "notícias, dados e respostas que o modelo pode não conhecer. "
-                "Use sempre que precisar de precisão."
+                "Use SEMPRE que precisar de precisão (resultados esportivos, "
+                "cotações, eventos recentes). Monte a query com termos "
+                "diferenciadores: nome completo, contexto e ano "
+                "(ex.: 'Palmeiras futebol São Paulo resultado Brasileirão 2026' "
+                "em vez de só 'Palmeiras')."
             ),
             "parameters": {
                 "type": "object",
@@ -52,7 +57,28 @@ SEARCH_TOOLS = [
                 "required": ["query"],
             },
         },
-    }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "open_url",
+            "description": (
+                "Abre uma página da internet e retorna o texto completo. "
+                "Use depois do web_search quando os resumos forem insuficientes "
+                "(placar de jogos, valores atuais, detalhes de notícias)."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "url": {
+                        "type": "string",
+                        "description": "URL completa da página, começando com http(s)://",
+                    }
+                },
+                "required": ["url"],
+            },
+        },
+    },
 ]
 
 HISTORY_LIMIT = 10
@@ -153,10 +179,10 @@ class StudyAgent:
     def _run_tool_loop(self, messages, images, tools_used):
         if images:
             return chat(messages, images=images)
-        from ..tools.web_search import format_results, search
+        from ..tools.web_search import distill_page, fetch_page, search
 
         current = list(messages)
-        for _ in range(3):
+        for _ in range(4):
             try:
                 reply = chat_with_tools(current, SEARCH_TOOLS)
             except Exception:
@@ -172,13 +198,48 @@ class StudyAgent:
                 if name == "web_search":
                     try:
                         self._require("internet")
+                        import logging as _log_mod
+
+                        _log = _log_mod.getLogger("uvicorn.error")
+                        _log.info("web_search query=%r", args.get("query"))
                         results = search(str(args.get("query", "")))
-                        result = format_results(results) or (
-                            "Nenhum resultado encontrado na pesquisa."
+                        _log.info("web_search n_results=%d", len(results))
+                        parts = []
+                        got_distilled = False
+                        for r in results[:3]:
+                            part = f"[{r['title']}]({r['url']})\n{r['snippet'][:250]}"
+                            try:
+                                page = fetch_page(r["url"], chars=3500)
+                                _log.info(
+                                    "fetch ok url=%s len=%d", r["url"][:60], len(page)
+                                )
+                                distilled = distill_page(page)
+                                if distilled and "NADA CLARO" not in distilled:
+                                    part += f"\nTrechos objetivos da página:\n{distilled}"
+                                else:
+                                    part += f"\nTrechos da página:\n{page[:1200]}"
+                                got_distilled = True
+                            except Exception as exc:
+                                _log.warning("fetch falhou url=%s: %s", r["url"][:60], exc)
+                            parts.append(part)
+                        result = (
+                            "\n\n---\n\n".join(parts)
+                            or "Nenhum resultado encontrado na pesquisa. "
+                            "Tente outros termos ou admita que não sabe."
                         )
+                        _log.info("web_search result_len=%d", len(result))
                     except PermissionDeniedError as exc:
                         result = f"Pesquisa indisponível: {exc}"
                     tools_used.append("web_search")
+                elif name == "open_url":
+                    try:
+                        self._require("internet")
+                        result = fetch_page(str(args.get("url", "")))
+                    except PermissionDeniedError as exc:
+                        result = f"Navegação indisponível: {exc}"
+                    except Exception as exc:
+                        result = f"Falha ao abrir a página: {exc}"
+                    tools_used.append("open_url")
                 else:
                     result = f"Ferramenta desconhecida: {name}"
                 current.append({"role": "tool", "name": name, "content": result})
