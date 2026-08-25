@@ -21,6 +21,13 @@ def preload():
     _get_model()
 
 
+INITIAL_PROMPT = (
+    "Transcrição em português do Brasil de perguntas escolares sobre "
+    "matemática, ciências, história e estudo. Palavras como: equação, "
+    "fração, fotossíntese, capítulo, exercício."
+)
+
+
 def transcribe(audio_bytes: bytes, filename: str = "audio.webm") -> str:
     suffix = Path(filename).suffix or ".webm"
     with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
@@ -28,7 +35,15 @@ def transcribe(audio_bytes: bytes, filename: str = "audio.webm") -> str:
         tmp_path = tmp.name
     try:
         model = _get_model()
-        segments, info = model.transcribe(tmp_path, language="pt")
+        segments, info = model.transcribe(
+            tmp_path,
+            language="pt",
+            beam_size=5,
+            vad_filter=True,
+            vad_parameters={"min_silence_duration_ms": 400},
+            condition_on_previous_text=False,
+            initial_prompt=INITIAL_PROMPT,
+        )
         return " ".join(s.text.strip() for s in segments).strip()
     finally:
         Path(tmp_path).unlink(missing_ok=True)
