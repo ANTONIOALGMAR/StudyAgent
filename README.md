@@ -1,52 +1,111 @@
 # StudyAgent
 
-Assistente multimodal de estudos que roda 100% local (Linux/Windows): chat com IA local via Ollama, visão computacional para ler a tela, OCR, memória de conversas em SQLite e sistema de permissões.
+Tutor de estudos multimodal que roda **100% local** no seu computador (Linux): chat com IA local via Ollama, voz nos dois sentidos, visão computacional para ler telas e câmera, leitura completa de PDFs, pesquisa na internet com fontes citadas, gerador de exercícios com correção automática — tudo sob um sistema de permissões explícitas.
 
-## Arquitetura V1
+## Funcionalidades
+
+### 💬 Conversa com tutor de IA
+- Modelos locais via Ollama (`llama3.1` texto, `qwen2.5vl:7b` visão) — nada sai do computador
+- Persona de tutor configurável: professor, tutor (dá pistas sem entregar a resposta), exercícios, revisão, resumo, simples
+- Memória rolante: últimas mensagens + resumo automático da sessão (fatos importantes, conteúdo estudado, dificuldades)
+- Calculadora segura embutida
+
+### 🗣 Voz completa
+- **Fala → texto:** faster-whisper `small`, botão 🎙 aperta-para-falar
+- **Modo conversa automática 🔄:** o agente ouve continuamente (VAD no navegador), transcreve, responde e fala — mão livre
+- **Texto → fala:** Piper com voz brasileira `pt_BR-faber-medium`
+
+### 👀 Visão
+- 🖥 Anexo captura de tela à mensagem
+- 📺 Painel *ao vivo* multi-monitor com atualização contínua e **modo comentarista** (o agente avisa quando algo muda na tela); painel minimizável
+- 📷 Câmera: aponte, capture e pergunte
+
+### 📄 Documentos
+- Upload de PDF/txt/md com extração de texto
+- **Leitura integral (map-reduce):** pediu resumo ou "o documento todo"? O PDF é dividido em partes, cada uma é resumida e vira um dossiê completo — nada fica de fora, mesmo em arquivos grandes (com cache por documento)
+- **Leitor integrado:** visualize o PDF dentro do app enquanto conversa sobre ele
+- Documento anexado tem prioridade sobre captura de tela
+
+### 🌐 Pesquisa na internet (com honestidade)
+- Cascata de buscadores: DuckDuckGo → Bing → Wikipédia
+- Abre automaticamente as páginas mais relevantes, extrai e destila os fatos objetivos
+- Síntese final com o modelo de visão + regras de desambiguação (não confunde entidades homônimas)
+- Sempre cita fontes `[fonte: URL]`; se não achar, admite que não sabe em vez de inventar
+
+### 🎯 Exercícios
+- Gera questões do tema que você escolher (múltipla escolha ou dissertativas)
+- Gabarito fica no servidor — correção automática aceitando respostas equivalentes (`0,5` = `1/2`)
+- Barra de pontuação, gabarito comentado nas erradas
+
+### 🎭 Interface
+- Rosto animado do agente que reage: pensa, ouve, grava, fala — e **reage ao conteúdo** (fica feliz quando te elogia, preocupado quando te corrige, curioso quando pergunta)
+- **Modo palco:** rosto em tela cheia (⤢, Esc para sair)
+- Sidebar de ferramentas sanfona (recolhe pra ícones) + painel de permissões recolhível
+- Tema escuro, tudo em português
+
+## Arquitetura
 
 ```
 backend/app/
-├── main.py              API FastAPI (chat, tela, permissões, cálculo)
-├── config.py            Caminhos, modelos Ollama, variáveis de ambiente
+├── main.py              API FastAPI (chat, tela, áudio, docs, exercícios, permissões)
+├── config.py            Caminhos, modelos Ollama
 ├── agent/
-│   ├── agent.py         Orquestrador + persona de tutor
-│   ├── llm.py           Cliente Ollama (texto e visão)
-│   └── memory.py        Memória de conversas (SQLite)
+│   ├── agent.py         Orquestrador, persona, memória rolante, loop de ferramentas
+│   ├── llm.py           Cliente Ollama + síntese de pesquisas (qwen2.5vl)
+│   ├── memory.py        SQLite: sessões, mensagens, resumos, documentos
+│   └── exercises.py     Gerador de questões + corretor com equivalência
 ├── vision/
-│   ├── screen.py        Captura de tela (mss), tela inteira ou região
-│   └── ocr.py           OCR com Tesseract (opcional; a IA de visão também lê texto)
-├── tools/calculator.py  Calculadora segura (parser AST)
-└── security/permissions.py  Gerenciador de permissões
+│   ├── screen.py        Captura multi-monitor (mss + cosmic-screenshot p/ Wayland)
+│   └── ocr.py           OCR Tesseract (opcional)
+├── audio/
+│   ├── speech_to_text.py  faster-whisper
+│   └── text_to_speech.py  Piper
+├── tools/
+│   ├── calculator.py    Avaliador AST seguro
+│   ├── documents.py     Extração PDF, digest map-reduce, recuperação por trechos
+│   └── web_search.py    DDG→Bing→Wikipédia, fetch de páginas, destilação
+└── security/permissions.py  Portão de permissões
+
+frontend/src/
+├── App.tsx              Layout: painel de permissões sanfona + chat
+├── components/
+│   ├── Chat.tsx         Núcleo da UI (conversa, voz, telas, câmera)
+│   ├── AgentFace.tsx    Rosto SVG expressivo
+│   ├── Sidebar.tsx      Ferramentas sanfona
+│   ├── ExercisesPanel.tsx  Quiz com correção
+│   ├── PdfViewer.tsx    Leitor de documentos
+│   └── PermissionsPanel.tsx
+└── api.ts               Cliente tipado da API
 ```
 
 ## Requisitos
 
-- Python 3.12+
-- Node 22+ (frontend, fase seguinte)
-- Ollama com modelos `llama3.1` (texto) e `qwen2.5vl:7b` (visão)
+- Linux (Pop!_OS testado, inclui Wayland/COSMIC)
+- Python 3.12+, Node 22+
+- Ollama com `llama3.1` e `qwen2.5vl:7b`
+- GPU recomendada (RTX 3060 12GB roda tudo)
 
 ## Instalação
 
 ```bash
+git clone https://github.com/ANTONIOALGMAR/StudyAgent.git ~/StudyAgent
 cd ~/StudyAgent/backend
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
+
+cd ../frontend
+npm install
 ```
 
-Opcional — OCR nativo (a IA de visão já lê textos, mas o Tesseract é um fallback rápido):
+Modelos:
 
 ```bash
-sudo apt-get install -y tesseract-ocr tesseract-ocr-por
-```
-
-Modelo de visão:
-
-```bash
+ollama pull llama3.1
 ollama pull qwen2.5vl:7b
 ```
 
-Voz brasileira do Piper (não vem no repositório por tamanho):
+Voz brasileira do Piper (não vai no repo por tamanho):
 
 ```bash
 mkdir -p backend/models/piper && cd backend/models/piper
@@ -54,23 +113,42 @@ curl -LO https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/pt/pt_BR/fab
 curl -LO https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/pt/pt_BR/faber/medium/pt_BR-faber-medium.onnx.json
 ```
 
+OCR nativo (opcional):
+
+```bash
+sudo apt-get install -y tesseract-ocr tesseract-ocr-por
+```
+
 ## Executando
 
-Servidor da API:
+Com os serviços systemd (sobem no boot, reiniciam sozinhos):
 
 ```bash
-cd ~/StudyAgent/backend && source .venv/bin/activate
-uvicorn app.main:app --reload --port 8000
+cp scripts/*.service ~/.config/systemd/user/
+systemctl --user daemon-reload
+systemctl --user enable --now studyagent-ollama studyagent-api studyagent-web
 ```
 
-Chat pelo terminal (sem navegador):
+Ou manualmente:
 
 ```bash
-cd ~/StudyAgent/backend && source .venv/bin/activate
-python ../scripts/cli_chat.py
+# terminal 1
+ollama serve
+# terminal 2
+cd backend && source .venv/bin/activate && uvicorn app.main:app --port 8000
+# terminal 3
+cd frontend && npx vite --port 5173
 ```
 
-No chat CLI:
+Abra **http://localhost:5173**
+
+CLI de controle: `studyagent start|stop|status|restart|logs`
+
+Chat pelo terminal:
+
+```bash
+cd backend && source .venv/bin/activate && python ../scripts/cli_chat.py
+```
 
 - mensagem normal → conversa com o tutor
 - `!tela me explica essa questão` → captura a tela e analisa
@@ -80,42 +158,32 @@ No chat CLI:
 
 | Método | Rota | Descrição |
 |---|---|---|
-| GET | `/api/health` | Status, modelos disponíveis |
-| POST | `/api/chat` | Conversa (`use_screen: true` anexa screenshot) |
-| POST | `/api/screen/capture` | Captura a tela e retorna imagem + OCR |
-| POST | `/api/screen/analyze` | Captura a tela e pede análise à IA |
-| GET | `/api/permissions` | Lista permissões |
-| PUT | `/api/permissions/{name}` | Ativa/desativa permissão |
+| GET | `/api/health` | Status e modelos |
+| POST | `/api/chat` | Conversa (`use_screen`, `image_b64`, `doc_id`) |
+| POST | `/api/screen/capture` | Captura + OCR |
+| GET | `/api/screen/monitors` | Lista monitores |
+| GET | `/api/screen/preview` | JPEG do monitor (painel ao vivo) |
+| POST | `/api/screen/analyze` | Análise de tela pela IA |
+| POST | `/api/audio/transcribe` | Áudio → texto (Whisper) |
+| POST | `/api/audio/speak` | Texto → áudio WAV (Piper) |
 | POST | `/api/calculate` | Calculadora segura |
+| POST | `/api/documents/upload` | Upload pdf/txt/md |
+| GET | `/api/documents/{id}/file` | Arquivo original (leitor) |
+| POST | `/api/exercises/generate` | Gera questões (gabarito fica no servidor) |
+| POST | `/api/exercises/grade` | Corrige com equivalência de respostas |
 | GET | `/api/sessions` | Lista sessões |
-
-Exemplo:
-
-```bash
-curl -X POST localhost:8000/api/chat \
-  -H 'Content-Type: application/json' \
-  -d '{"message": "me explique equações de primeiro grau"}'
-
-curl -X PUT localhost:8000/api/permissions/screen_capture \
-  -H 'Content-Type: application/json' \
-  -d '{"value": false}'
-```
+| GET/PUT | `/api/permissions[/{name}]` | Permissões |
 
 ## Permissões
 
-Controladas em `config/permissions.json`. Nenhum módulo acessa microfone, câmera, tela, arquivos ou internet sem checar antes. Padrão seguro: tudo desativado exceto `screen_capture` e `file_access`.
+Controladas pelo painel lateral (ou `config/permissions.json`). Nenhum módulo acessa microfone, câmera, tela, arquivos ou internet sem checar antes.
 
 ## Roadmap
 
-- [x] Fase 1: chat, memória (com resumo rolante), captura de tela, permissões, OCR, voz (STT + TTS)
-- [x] Fase 2a: câmera com reconhecimento, upload de PDF/txt com consulta no chat, telas ao vivo multi-monitor
+- [x] Fase 1: chat, memória rolante, captura de tela, permissões, OCR, voz (STT + TTS), calculadora
+- [x] Fase 2a: câmera, upload de documentos com consulta, telas ao vivo multi-monitor
+- [x] Fase 3: gerador de exercícios e quizzes com correção automática
+- [x] Extras: rosto expressivo com emoções, modo palco, leitura integral de PDFs, leitor integrado, pesquisa web com fontes, serviços systemd
 - [ ] Fase 2b: gráficos dedicados, documentos avançados (docx)
-- [x] Fase 3: gerador de exercícios e quizzes dedicados na interface
 - [ ] Fase 4: automação controlada (mouse/teclado com confirmação)
-- [ ] Fase 5: memória entre sessões, perfil de aprendiz, plano de estudos
-
-### Voz
-
-- **Fala → texto:** faster-whisper `small` (CPU int8), ativado pelo botão 🎙 na interface
-- **Texto → fala:** Piper com voz brasileira `pt_BR-faber-medium` (botão 🔊 liga/desliga a resposta falada)
-- A permissão `microphone` precisa estar ativa para transcrever
+- [ ] Fase 5: memória entre sessões, perfil de aprendiz, plano de estudos, dashboard

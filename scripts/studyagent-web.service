@@ -1,0 +1,12 @@
+[Unit]
+Description=StudyAgent Frontend
+After=studyagent-api.service
+
+[Service]
+WorkingDirectory=%h/StudyAgent/frontend
+ExecStart=/bin/bash -lc 'exec npx vite --port 5173'
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=default.target
