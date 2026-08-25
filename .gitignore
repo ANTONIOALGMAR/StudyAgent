@@ -13,3 +13,4 @@ data/conversations/*
 !data/memory/.gitkeep
 !data/documents/.gitkeep
 !data/conversations/.gitkeep
+data/
