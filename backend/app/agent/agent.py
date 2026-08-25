@@ -1,4 +1,5 @@
 import base64
+import re
 
 from ..security.permissions import PermissionDeniedError
 from ..tools import calculator
@@ -106,6 +107,7 @@ saudações ou comentários."""
 class StudyAgent:
     def __init__(self):
         self.memory = Memory()
+        self._digest_cache: dict[str, str] = {}
 
     def process(
         self,
@@ -121,7 +123,12 @@ class StudyAgent:
         tools_used = []
         images = []
 
-        if use_screen:
+        # Documento anexado tem prioridade: não capturar a tela junto,
+        # a menos que o usuário tenha falado explicitamente de "tela".
+        explicit_screen = bool(re.search(r"\b(tela|monitor)\b", message.lower()))
+        effective_screen = use_screen and not (doc_id and not explicit_screen)
+
+        if effective_screen:
             self._require("screen_capture")
             shot = screen.capture(monitor=monitor, region=region)
             images.append(screen.image_to_base64(shot))
@@ -134,7 +141,7 @@ class StudyAgent:
             tools_used.append("image_input")
 
         enriched_message = message
-        if use_screen and not any(
+        if effective_screen and not any(
             kw in message.lower() for kw in ("tela", "questão", "questao", "imagem", "vê", "ve")
         ):
             enriched_message = f"{message}\n\n(A imagem anexada é uma captura da minha tela.)"
@@ -145,13 +152,40 @@ class StudyAgent:
             if doc:
                 from pathlib import Path
 
-                from ..tools.documents import load_document_text, retrieve_relevant
+                from ..tools.documents import (
+                    build_digest,
+                    load_document_text,
+                    retrieve_relevant,
+                )
+                from .llm import chat as _chat
 
                 _, text = load_document_text(Path(doc["path"]))
-                excerpt = retrieve_relevant(message, text)
+                wants_whole = bool(
+                    re.search(
+                        r"\b(resum\w*|todo|toda|tudo|intei\w+|complet\w+|geral"
+                        r"|visão geral|lista\w*|todas as páginas)\b",
+                        message.lower(),
+                    )
+                ) or len(text) <= 15000
+                if wants_whole:
+                    digest = self._digest_cache.get(doc_id)
+                    if not digest:
+                        digest = build_digest(
+                            text, chat_fn=lambda s: _chat([{"role": "user", "content": s}])
+                        )
+                        if len(self._digest_cache) > 6:
+                            self._digest_cache.pop(next(iter(self._digest_cache)))
+                        self._digest_cache[doc_id] = digest
+                    body = (
+                        "Dossiê do documento inteiro (resumo de todas as partes,"
+                        " gerado página por página):\n"
+                        f"{digest}"
+                    )
+                else:
+                    body = f"Trechos relevantes:\n{retrieve_relevant(message, text)}"
                 enriched_message = (
                     f"Documento '{doc['name']}' ({doc['pages']} páginas) anexado.\n\n"
-                    f"Trechos relevantes:\n{excerpt}\n\nPergunta: {message}"
+                    f"{body}\n\nPergunta: {message}"
                 )
                 tools_used.append("document")
 
