@@ -205,3 +205,165 @@ export async function gradeExercise(
 export function documentFileUrl(id: string): string {
   return `${API}/api/documents/${id}/file`
 }
+
+// ── Tutor: Flashcards ──────────────────────────────────────────────────────────
+
+export interface FlashcardDeck {
+  id: string
+  title: string
+  topic: string
+  source_doc: string | null
+  card_count: number
+  created_at: string
+}
+
+export interface Flashcard {
+  id: string
+  deck_id: string
+  front: string
+  back: string
+  easiness: number
+  interval_days: number
+  repetitions: number
+  next_review: string
+}
+
+export interface FlashcardReviewResult {
+  card_id: string
+  difficulty: string
+  easiness: number
+  interval_days: number
+  next_review: string
+}
+
+export async function getFlashcardDecks(): Promise<FlashcardDeck[]> {
+  const res = await fetch(`${API}/api/flashcards/decks`)
+  if (!res.ok) throw new Error('Falha ao listar baralhos')
+  return res.json()
+}
+
+export async function flashcardDeckStats(deckId: string) {
+  const res = await fetch(`${API}/api/flashcards/decks/${deckId}/stats`)
+  if (!res.ok) throw new Error('Falha ao carregar stats')
+  return res.json()
+}
+
+export async function generateFlashcards(
+  topic: string,
+  n = 10,
+  level = 'ensino fundamental',
+): Promise<{ deck_id: string; card_count: number }> {
+  const res = await fetch(`${API}/api/flashcards/generate`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ topic, n, level }),
+  })
+  if (!res.ok) throw new Error((await res.json()).detail || 'Falha ao gerar flashcards')
+  return res.json()
+}
+
+export async function getDueCards(deckId: string): Promise<Flashcard[]> {
+  const res = await fetch(`${API}/api/flashcards/decks/${deckId}/due`)
+  if (!res.ok) throw new Error('Falha ao buscar cards')
+  return res.json()
+}
+
+export async function reviewFlashcard(
+  cardId: string,
+  difficulty: string,
+): Promise<FlashcardReviewResult> {
+  const res = await fetch(`${API}/api/flashcards/review`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ card_id: cardId, difficulty }),
+  })
+  if (!res.ok) throw new Error((await res.json()).detail || 'Falha ao registrar review')
+  return res.json()
+}
+
+// ── Tutor: Study Plans ─────────────────────────────────────────────────────────
+
+export interface StudyPlan {
+  id: string
+  title: string
+  topic: string
+  total_items: number
+  done_items: number
+  created_at: string
+  items?: StudyItem[]
+}
+
+export interface StudyItem {
+  id: number
+  plan_id: string
+  title: string
+  detail: string
+  done: number
+  sort_order: number
+}
+
+export async function getStudyPlans(): Promise<StudyPlan[]> {
+  const res = await fetch(`${API}/api/study-plans`)
+  if (!res.ok) throw new Error('Falha ao listar planos')
+  return res.json()
+}
+
+export async function generateStudyPlan(
+  topic: string,
+  level = 'ensino fundamental',
+): Promise<StudyPlan> {
+  const res = await fetch(`${API}/api/study-plans/generate`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ topic, level }),
+  })
+  if (!res.ok) throw new Error((await res.json()).detail || 'Falha ao gerar plano')
+  return res.json()
+}
+
+export async function getStudyPlan(planId: string): Promise<StudyPlan> {
+  const res = await fetch(`${API}/api/study-plans/${planId}`)
+  if (!res.ok) throw new Error('Falha ao carregar plano')
+  return res.json()
+}
+
+export async function toggleStudyItem(itemId: number) {
+  const res = await fetch(`${API}/api/study-plans/items/${itemId}/toggle`, {
+    method: 'POST',
+  })
+  if (!res.ok) throw new Error('Falha ao atualizar item')
+  return res.json()
+}
+
+// ── Tutor: Stats ───────────────────────────────────────────────────────────────
+
+export interface Dashboard {
+  exercises: {
+    total_sessions: number
+    avg_percent: number
+    total_correct: number
+    total_questions: number
+    streak_days: number
+    recent: { topic: string; score: number; total: number; percent: number; created_at: string }[]
+  }
+  flashcards: {
+    total_decks: number
+    total_cards: number
+    due_now: number
+    mastered: number
+    reviews_last_7d: number
+  }
+  study_plans: {
+    total_plans: number
+    total_items: number
+    done_items: number
+    overall_percent: number
+    plans: { id: string; title: string; total_items: number; done_items: number; percent: number }[]
+  }
+}
+
+export async function getDashboard(): Promise<Dashboard> {
+  const res = await fetch(`${API}/api/stats/dashboard`)
+  if (!res.ok) throw new Error('Falha ao carregar dashboard')
+  return res.json()
+}

@@ -1,8 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
 import AgentFace, { type FaceState } from './AgentFace'
 import ExercisesPanel from './ExercisesPanel'
+import FlashcardsPanel from './FlashcardsPanel'
 import PdfViewer from './PdfViewer'
 import Sidebar from './Sidebar'
+import StatsPanel from './StatsPanel'
+import StudyPlanPanel from './StudyPlanPanel'
 import {
   chat,
   captureScreen,
@@ -112,6 +115,9 @@ export default function Chat() {
   const [liveOpen, setLiveOpen] = useState(false)
   const [liveMinimized, setLiveMinimized] = useState(false)
   const [exOpen, setExOpen] = useState(false)
+  const [fcOpen, setFcOpen] = useState(false)
+  const [spOpen, setSpOpen] = useState(false)
+  const [stOpen, setStOpen] = useState(false)
   const [stage, setStage] = useState(false)
   const [watchMode, setWatchMode] = useState(false)
   const [monitors, setMonitors] = useState<MonitorInfo[]>([])
@@ -570,6 +576,27 @@ export default function Chat() {
       title: 'Gerar exercícios com correção',
     },
     {
+      icon: '🃏',
+      label: 'Flashcards',
+      active: fcOpen,
+      onClick: () => setFcOpen(!fcOpen),
+      title: 'Revisão espaçada com flashcards',
+    },
+    {
+      icon: '📋',
+      label: 'Plano de estudo',
+      active: spOpen,
+      onClick: () => setSpOpen(!spOpen),
+      title: 'Gerar plano de estudo estruturado',
+    },
+    {
+      icon: '📊',
+      label: 'Progresso',
+      active: stOpen,
+      onClick: () => setStOpen(!stOpen),
+      title: 'Dashboard de progresso',
+    },
+    {
       icon: '👁',
       label: 'Olhar agora',
       active: false,
@@ -708,6 +735,42 @@ export default function Chat() {
             </button>
           </div>
           <ExercisesPanel onMood={(m) => flashReaction(m as FaceState)} />
+        </div>
+      )}
+
+      {fcOpen && (
+        <div className="live-panel flashcards-panel">
+          <div className="live-head">
+            <strong>🃏 flashcards</strong>
+            <button className="btn-screen" onClick={() => setFcOpen(false)}>
+              ✕
+            </button>
+          </div>
+          <FlashcardsPanel onMood={(m) => flashReaction(m as FaceState)} />
+        </div>
+      )}
+
+      {spOpen && (
+        <div className="live-panel studyplan-panel">
+          <div className="live-head">
+            <strong>📋 plano de estudo</strong>
+            <button className="btn-screen" onClick={() => setSpOpen(false)}>
+              ✕
+            </button>
+          </div>
+          <StudyPlanPanel onMood={(m) => flashReaction(m as FaceState)} />
+        </div>
+      )}
+
+      {stOpen && (
+        <div className="live-panel stats-panel">
+          <div className="live-head">
+            <strong>📊 progresso</strong>
+            <button className="btn-screen" onClick={() => setStOpen(false)}>
+              ✕
+            </button>
+          </div>
+          <StatsPanel />
         </div>
       )}
 

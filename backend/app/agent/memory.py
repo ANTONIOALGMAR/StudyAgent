@@ -61,6 +61,66 @@ class Memory:
                 )
                 """
             )
+            conn.executescript(
+                """
+                CREATE TABLE IF NOT EXISTS exercise_history (
+                    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                    exercise_id TEXT NOT NULL,
+                    topic       TEXT NOT NULL,
+                    score       INTEGER NOT NULL,
+                    total       INTEGER NOT NULL,
+                    percent     INTEGER NOT NULL,
+                    level       TEXT,
+                    created_at  TEXT NOT NULL
+                );
+
+                CREATE TABLE IF NOT EXISTS flashcard_decks (
+                    id          TEXT PRIMARY KEY,
+                    title       TEXT NOT NULL,
+                    topic       TEXT,
+                    source_doc  TEXT,
+                    card_count  INTEGER NOT NULL DEFAULT 0,
+                    created_at  TEXT NOT NULL
+                );
+
+                CREATE TABLE IF NOT EXISTS flashcards (
+                    id             TEXT PRIMARY KEY,
+                    deck_id        TEXT NOT NULL REFERENCES flashcard_decks(id),
+                    front          TEXT NOT NULL,
+                    back           TEXT NOT NULL,
+                    easiness       REAL NOT NULL DEFAULT 2.5,
+                    interval_days  INTEGER NOT NULL DEFAULT 1,
+                    repetitions    INTEGER NOT NULL DEFAULT 0,
+                    next_review    TEXT NOT NULL,
+                    created_at     TEXT NOT NULL
+                );
+
+                CREATE TABLE IF NOT EXISTS flashcard_reviews (
+                    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+                    card_id    TEXT NOT NULL REFERENCES flashcards(id),
+                    quality    INTEGER NOT NULL,
+                    reviewed_at TEXT NOT NULL
+                );
+
+                CREATE TABLE IF NOT EXISTS study_plans (
+                    id          TEXT PRIMARY KEY,
+                    title       TEXT NOT NULL,
+                    topic       TEXT NOT NULL,
+                    total_items INTEGER NOT NULL DEFAULT 0,
+                    done_items  INTEGER NOT NULL DEFAULT 0,
+                    created_at  TEXT NOT NULL
+                );
+
+                CREATE TABLE IF NOT EXISTS study_items (
+                    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+                    plan_id    TEXT NOT NULL REFERENCES study_plans(id),
+                    title      TEXT NOT NULL,
+                    detail     TEXT,
+                    done       INTEGER NOT NULL DEFAULT 0,
+                    sort_order INTEGER NOT NULL DEFAULT 0
+                );
+                """
+            )
 
     def add_document(self, name, path, pages, chars):
         doc_id = str(uuid.uuid4())[:8]

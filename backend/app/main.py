@@ -12,6 +12,8 @@ from .agent.agent import PermissionDeniedError, StudyAgent
 from .audio import speech_to_text, text_to_speech
 from .config import DOCUMENTS_DIR as documents_dir
 from .security.permissions import PermissionManager
+from .tutor import flashcards, study_plan
+from .tutor import stats as tutor_stats
 from .vision import screen
 from .vision.screen import image_to_base64, image_to_jpeg_base64
 
@@ -62,6 +64,22 @@ class ExerciseGenerateRequest(BaseModel):
 class ExerciseGradeRequest(BaseModel):
     exercise_id: str
     answers: dict[str, str]
+
+
+class FlashcardGenerateRequest(BaseModel):
+    topic: str
+    n: int = 10
+    level: str = "ensino fundamental"
+
+
+class FlashcardReviewRequest(BaseModel):
+    card_id: str
+    difficulty: str
+
+
+class StudyPlanRequest(BaseModel):
+    topic: str
+    level: str = "ensino fundamental"
 
 
 @app.get("/api/health")
@@ -234,9 +252,98 @@ def exercises_generate(req: ExerciseGenerateRequest):
 @app.post("/api/exercises/grade")
 def exercises_grade(req: ExerciseGradeRequest):
     try:
-        return exercises.grade(exercise_id=req.exercise_id, answers=req.answers)
+        result = exercises.grade(exercise_id=req.exercise_id, answers=req.answers)
+        # persist to history for stats
+        try:
+            ex_entry = exercises._store.get(req.exercise_id)
+            topic = ex_entry["topic"] if ex_entry else ""
+            level = ex_entry.get("level", "") if ex_entry else ""
+            tutor_stats.save_exercise_result(
+                req.exercise_id, topic,
+                result["score"], result["total"], result["percent"],
+                level,
+            )
+        except Exception:
+            pass
+        return result
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+# ── Tutor: Flashcards ──────────────────────────────────────────────────────────
+
+
+@app.get("/api/flashcards/decks")
+def flashcard_deck_list():
+    return flashcards.list_decks()
+
+
+@app.get("/api/flashcards/decks/{deck_id}/stats")
+def flashcard_deck_stats(deck_id: str):
+    return flashcards.deck_stats(deck_id)
+
+
+@app.post("/api/flashcards/generate")
+def flashcard_generate(req: FlashcardGenerateRequest):
+    try:
+        return flashcards.generate_deck(
+            topic=req.topic, n=req.n, level=req.level,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+
+@app.get("/api/flashcards/decks/{deck_id}/due")
+def flashcard_due(deck_id: str, limit: int = 20):
+    return flashcards.due_cards(deck_id, limit=limit)
+
+
+@app.post("/api/flashcards/review")
+def flashcard_review(req: FlashcardReviewRequest):
+    try:
+        return flashcards.review_card(req.card_id, req.difficulty)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+# ── Tutor: Study Plans ─────────────────────────────────────────────────────────
+
+
+@app.get("/api/study-plans")
+def study_plan_list():
+    return study_plan.list_plans()
+
+
+@app.post("/api/study-plans/generate")
+def study_plan_generate(req: StudyPlanRequest):
+    try:
+        return study_plan.generate_plan(topic=req.topic, level=req.level)
+    except ValueError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+
+@app.get("/api/study-plans/{plan_id}")
+def study_plan_get(plan_id: str):
+    plan = study_plan.get_plan(plan_id)
+    if not plan:
+        raise HTTPException(status_code=404, detail="Plano não encontrado")
+    return plan
+
+
+@app.post("/api/study-plans/items/{item_id}/toggle")
+def study_plan_toggle(item_id: int):
+    try:
+        return study_plan.toggle_item(item_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+# ── Tutor: Stats ───────────────────────────────────────────────────────────────
+
+
+@app.get("/api/stats/dashboard")
+def stats_dashboard():
+    return tutor_stats.dashboard()
 
 
 @app.get("/api/documents/{doc_id}/file")
