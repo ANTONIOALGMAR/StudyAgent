@@ -5,7 +5,6 @@ from app.core.context_manager import (
     SYSTEM_PROMPT,
     ContextManager,
     build_document_block,
-    build_image_note,
     whole_doc_body,
 )
 
@@ -82,7 +81,5 @@ def test_prompt_de_resumo_tem_estrutura():
 def test_builders_de_mensagem():
     bloco = build_document_block("livro.pdf", 12, "conteúdo")
     assert bloco.startswith("DOCUMENTO ANEXADO E DISPONÍVEL PARA LEITURA: 'livro.pdf' (12 páginas)")
-    assert build_image_note(camera=False).startswith("(A imagem anexada é uma captura de minha tela.")
-    assert "câmera" in build_image_note(camera=True)
     corpo = whole_doc_body("abc")
     assert corpo.startswith("Conteúdo COMPLETO") and corpo.endswith("[fim do documento]")

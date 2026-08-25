@@ -62,15 +62,6 @@ def build_document_block(name: str, pages: int, body: str) -> str:
     )
 
 
-def build_image_note(camera: bool) -> str:
-    origem = "minha câmera" if camera else "minha tela"
-    return (
-        f"(A imagem anexada é uma captura de {origem}. Se a pergunta "
-        "for sobre a tela ou o que está visível nela, responda com "
-        "base NA IMAGEM.)"
-    )
-
-
 def whole_doc_body(text: str) -> str:
     return f"Conteúdo COMPLETO do documento:\n\n{text}\n\n[fim do documento]"
 

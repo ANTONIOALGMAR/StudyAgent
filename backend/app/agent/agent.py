@@ -4,7 +4,6 @@ import logging
 from ..core.context_manager import (
     ContextManager,
     build_document_block,
-    build_image_note,
     digest_body,
     excerpts_body,
     whole_doc_body,
@@ -13,9 +12,10 @@ from ..core.model_manager import available_models
 from ..core.planner import WHOLE_DOC_MAX_CHARS, build_plan
 from ..core.registered_tools import calculate_tool, open_url_tool, web_search_tool  # noqa: F401
 from ..core.tool_registry import all_schemas, get
+from ..core.vision_router import build_image_note, decide_ocr_block, format_window_note
 from ..security.permissions import PermissionDeniedError
 from ..tools import calculator
-from ..vision import ocr, screen
+from ..vision import ocr, screen, window
 from .llm import chat, chat_with_tools
 from .memory import Memory
 
@@ -55,21 +55,39 @@ class StudyAgent:
         if plan.monitor:
             monitor = plan.monitor
 
+        ocr_text = None
         if plan.capture_screen:
             self._require("screen_capture")
             shot = screen.capture(monitor=monitor, region=region)
             images.append(screen.image_to_base64(shot))
             tools_used.append("screen_capture")
+            ocr_text = self._safe_ocr(shot)
 
+        camera_image = image_b64 is not None
         if image_b64:
             if isinstance(image_b64, str):
                 image_b64 = base64.b64decode(image_b64)
             images.append(image_b64)
             tools_used.append("image_input")
+            ocr_text = ocr_text or self._safe_ocr_bytes(image_b64)
 
         msg_parts = [message]
         if images:
-            msg_parts.append(build_image_note(camera=image_b64 is not None))
+            size = shot.size if plan.capture_screen else None
+            msg_parts.append(
+                build_image_note(
+                    camera=camera_image,
+                    monitor=None if camera_image else monitor,
+                    size=size,
+                )
+            )
+            if not camera_image:
+                janela = format_window_note(window.active_window())
+                if janela:
+                    msg_parts.append(janela)
+            bloco_ocr = decide_ocr_block(ocr_text)
+            if bloco_ocr:
+                msg_parts.append(bloco_ocr)
 
         # ── Documento anexado / lembrado pela sessão ─────────────────────
         if plan.wants_document:
@@ -174,6 +192,27 @@ class StudyAgent:
                             )
                 current.append({"role": "tool", "name": name, "content": result})
         return reply.get("content") or ""
+
+    @staticmethod
+    def _safe_ocr(pil_image):
+        if not ocr.available():
+            return None
+        try:
+            return ocr.read_text(pil_image)
+        except Exception as exc:
+            logging.getLogger("uvicorn.error").warning("OCR falhou: %s", exc)
+            return None
+
+    @staticmethod
+    def _safe_ocr_bytes(data):
+        from io import BytesIO
+
+        from PIL import Image
+
+        try:
+            return StudyAgent._safe_ocr(Image.open(BytesIO(data)))
+        except Exception:
+            return None
 
     def capture_and_read_screen(self, region=None, monitor=1):
         self._require("screen_capture")

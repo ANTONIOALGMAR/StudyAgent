@@ -52,6 +52,8 @@ backend/app/
 ├── core/                Núcleo V2 (desacoplado do agente)
 │   ├── model_manager.py    Papéis de modelos por env (text/vision/synthesis/stt/tts)
 │   ├── planner.py          Decide captura de tela, monitor e estratégia de documento
+│   ├── context_manager.py  System prompt, resumo rolante, montagem de contexto
+│   ├── vision_router.py    Notas de imagem, bloco híbrido de OCR, janela ativa
 │   ├── tool_registry.py    Registro decorado de ferramentas + schemas p/ tool-calling
 │   └── registered_tools.py web_search, open_url, calculate
 ├── agent/
@@ -61,7 +63,8 @@ backend/app/
 │   └── exercises.py     Gerador de questões + corretor com equivalência
 ├── vision/
 │   ├── screen.py        Captura multi-monitor (mss + cosmic-screenshot p/ Wayland)
-│   └── ocr.py           OCR Tesseract (opcional)
+│   ├── window.py        Janela ativa (xdotool/swaymsg; None em Wayland sem suporte)
+│   └── ocr.py           OCR Tesseract (híbrido com a visão do modelo)
 ├── audio/
 │   ├── speech_to_text.py  faster-whisper
 │   └── text_to_speech.py  Piper
