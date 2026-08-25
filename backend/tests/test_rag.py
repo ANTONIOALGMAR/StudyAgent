@@ -1,18 +1,19 @@
 import numpy as np
 import pytest
+import zlib
 
 from app.tools import rag
 
 
 def fake_embed_factory(dim=64, calls=None):
-    """Embedding determinístico: histograma de palavras no vetor."""
+    """Embedding determinístico estável entre processos (hash() varia)."""
 
     def embed(texto: str) -> list[float]:
         if calls is not None:
             calls.append(texto)
         vec = np.zeros(dim, dtype=np.float32)
         for palavra in texto.lower().split():
-            vec[hash(palavra) % dim] += 1.0
+            vec[zlib.crc32(palavra.encode()) % dim] += 1.0
         return vec.tolist()
 
     return embed
