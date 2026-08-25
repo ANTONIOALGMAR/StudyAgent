@@ -23,7 +23,7 @@ def test_montagem_basica_sem_historico(tmp_path):
     sid = mem.get_or_create_session(None)
     msgs = ctx.assemble(sid, "olá")
     assert msgs[0]["role"] == "system"
-    assert msgs[0]["content"] == SYSTEM_PROMPT
+    assert msgs[0]["content"].startswith(SYSTEM_PROMPT)
     assert msgs[-1] == {"role": "user", "content": "olá"}
 
 

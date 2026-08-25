@@ -367,3 +367,92 @@ export async function getDashboard(): Promise<Dashboard> {
   if (!res.ok) throw new Error('Falha ao carregar dashboard')
   return res.json()
 }
+
+// ── P6: Profile ────────────────────────────────────────────────────────────────
+
+export interface Profile {
+  name: string
+  grade: string
+  school: string
+  preferences: string
+}
+
+export interface TopicMastery {
+  topic: string
+  attempts: number
+  correct: number
+  total_questions: number
+  avg_percent: number
+  last_practiced: string | null
+}
+
+export interface ProfileInsights {
+  profile: Profile | null
+  weak_topics: { topic: string; avg_percent: number; attempts: number }[]
+  strong_topics: { topic: string; avg_percent: number; attempts: number }[]
+  suggestions: { topic: string; avg_percent: number }[]
+  total_topics_studied: number
+}
+
+export async function getProfile(): Promise<Profile> {
+  const res = await fetch(`${API}/api/profile`)
+  if (!res.ok) throw new Error('Falha ao carregar perfil')
+  return res.json()
+}
+
+export async function saveProfile(
+  name: string, grade: string, school: string, preferences: string,
+): Promise<Profile> {
+  const res = await fetch(`${API}/api/profile`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name, grade, school, preferences }),
+  })
+  if (!res.ok) throw new Error('Falha ao salvar perfil')
+  return res.json()
+}
+
+export async function getProfileInsights(): Promise<ProfileInsights> {
+  const res = await fetch(`${API}/api/profile/insights`)
+  if (!res.ok) throw new Error('Falha ao carregar insights')
+  return res.json()
+}
+
+export async function getMastery(): Promise<TopicMastery[]> {
+  const res = await fetch(`${API}/api/mastery`)
+  if (!res.ok) throw new Error('Falha ao carregar mastery')
+  return res.json()
+}
+
+// ── P7: Action Proposals ──────────────────────────────────────────────────────
+
+export interface ActionProposal {
+  id: string
+  action_type: string
+  label: string
+  description: string
+  params: Record<string, unknown>
+  status: string
+}
+
+export async function getPendingActions(): Promise<ActionProposal[]> {
+  const res = await fetch(`${API}/api/actions/pending`)
+  if (!res.ok) throw new Error('Falha ao buscar ações pendentes')
+  return res.json()
+}
+
+export async function approveAction(proposalId: string) {
+  const res = await fetch(`${API}/api/actions/${proposalId}/approve`, { method: 'POST' })
+  if (!res.ok) throw new Error('Falha ao aprovar ação')
+  return res.json()
+}
+
+export async function rejectAction(proposalId: string) {
+  const res = await fetch(`${API}/api/actions/${proposalId}/reject`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ reason: 'Recusado pelo aluno' }),
+  })
+  if (!res.ok) throw new Error('Falha ao rejeitar ação')
+  return res.json()
+}

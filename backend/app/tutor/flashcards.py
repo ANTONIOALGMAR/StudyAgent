@@ -178,6 +178,7 @@ def review_card(card_id: str, difficulty: str) -> dict:
             (card_id, quality, now_iso),
         )
         conn.commit()
+        _track_flashcard_topic(card["deck_id"], quality)
     finally:
         conn.close()
 
@@ -188,6 +189,25 @@ def review_card(card_id: str, difficulty: str) -> dict:
         "interval_days": new_interval,
         "next_review": next_review,
     }
+
+
+def _track_flashcard_topic(deck_id: str, quality: int) -> None:
+    """Update topic mastery from a flashcard review (best-effort)."""
+    try:
+        from .profile import update_from_flashcard_review
+
+        conn = sqlite3.connect(str(MEMORY_DB_PATH))
+        conn.row_factory = sqlite3.Row
+        try:
+            row = conn.execute(
+                "SELECT topic FROM flashcard_decks WHERE id = ?", (deck_id,)
+            ).fetchone()
+        finally:
+            conn.close()
+        if row and row["topic"]:
+            update_from_flashcard_review(row["topic"], quality)
+    except Exception:
+        pass
 
 
 def deck_stats(deck_id: str) -> dict:

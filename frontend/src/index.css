@@ -900,3 +900,68 @@ body {
   color: #5ba3f5; border-radius: 8px; padding: 8px 12px; font-size: 0.85rem;
   text-align: center;
 }
+
+/* ── Profile panel ──────────────────────────────────────────────────── */
+.profile-panel {
+  max-height: 55%;
+  overflow-y: auto;
+}
+.profile { padding: 4px 0; }
+.profile h3 { margin: 4px 0 10px; font-size: 0.95rem; color: #c9cede; }
+.prof-loading { text-align: center; color: #8b93a7; padding: 20px; }
+.prof-form { display: flex; flex-direction: column; gap: 8px; }
+.prof-field { display: flex; flex-direction: column; gap: 3px; }
+.prof-field span { font-size: 0.78rem; color: #8b93a7; text-transform: uppercase; letter-spacing: 0.04em; }
+.prof-field input {
+  background: #12151d; border: 1px solid #2a2f3d; border-radius: 6px;
+  color: #e8eaf0; padding: 8px 10px; font-size: 0.9rem;
+}
+.prof-field input:focus { border-color: #5ba3f5; outline: none; }
+.prof-save {
+  background: linear-gradient(135deg, #34d27b, #16a34a);
+  border: none; border-radius: 8px; color: white;
+  cursor: pointer; padding: 9px; font-weight: 600; font-size: 0.92rem;
+  margin-top: 4px;
+}
+.prof-save:disabled { opacity: 0.4; }
+.prof-insights { margin-top: 14px; }
+.prof-insights h4 { font-size: 0.88rem; color: #c9cfdb; margin-bottom: 6px; }
+.prof-stat { font-size: 0.84rem; color: #8b93a7; margin-bottom: 8px; }
+.prof-section { margin-bottom: 10px; }
+.prof-label {
+  display: inline-block; font-size: 0.76rem; font-weight: 600;
+  text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 4px;
+  padding: 2px 7px; border-radius: 4px;
+}
+.prof-label-weak { background: #3b1220; color: #f87171; }
+.prof-label-strong { background: #12321f; color: #34d27b; }
+.prof-label-hint { background: #16233a; color: #5ba3f5; }
+.prof-row {
+  display: flex; justify-content: space-between; font-size: 0.84rem;
+  padding: 4px 0; border-bottom: 1px solid #1d2230;
+}
+.prof-pct-bad { color: #f87171; font-weight: 600; }
+.prof-pct-good { color: #34d27b; font-weight: 600; }
+.prof-pct-warn { color: #f59e0b; font-weight: 600; }
+
+/* ── Action Confirm Bar (P7) ──────────────────────────────────────── */
+.action-confirm-bar {
+  position: fixed; bottom: 72px; left: 50%; transform: translateX(-50%);
+  z-index: 60; display: flex; flex-direction: column; gap: 6px;
+  max-width: 500px; width: 90%;
+}
+.action-proposal {
+  display: flex; align-items: center; justify-content: space-between;
+  background: #1a2332; border: 1px solid #f59e0b; border-radius: 10px;
+  padding: 10px 14px; box-shadow: 0 4px 16px rgba(0,0,0,0.4);
+}
+.action-label { font-size: 0.88rem; color: #e4e6eb; flex: 1; }
+.action-buttons { display: flex; gap: 6px; margin-left: 10px; }
+.action-approve {
+  background: #166534; border: none; border-radius: 6px; color: white;
+  padding: 6px 12px; cursor: pointer; font-size: 0.82rem; font-weight: 600;
+}
+.action-reject {
+  background: #991b1b; border: none; border-radius: 6px; color: white;
+  padding: 6px 12px; cursor: pointer; font-size: 0.82rem;
+}

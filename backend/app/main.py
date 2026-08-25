@@ -12,7 +12,7 @@ from .agent.agent import PermissionDeniedError, StudyAgent
 from .audio import speech_to_text, text_to_speech
 from .config import DOCUMENTS_DIR as documents_dir
 from .security.permissions import PermissionManager
-from .tutor import flashcards, study_plan
+from .tutor import automation, flashcards, profile, study_plan
 from .tutor import stats as tutor_stats
 from .vision import screen
 from .vision.screen import image_to_base64, image_to_jpeg_base64
@@ -80,6 +80,23 @@ class FlashcardReviewRequest(BaseModel):
 class StudyPlanRequest(BaseModel):
     topic: str
     level: str = "ensino fundamental"
+
+
+class ProfileRequest(BaseModel):
+    name: str = ""
+    grade: str = ""
+    school: str = ""
+    preferences: str = ""
+
+
+class ActionProposalRequest(BaseModel):
+    action_type: str
+    params: dict = {}
+    description: str = ""
+
+
+class ProposalRejectRequest(BaseModel):
+    reason: str = ""
 
 
 @app.get("/api/health")
@@ -252,19 +269,7 @@ def exercises_generate(req: ExerciseGenerateRequest):
 @app.post("/api/exercises/grade")
 def exercises_grade(req: ExerciseGradeRequest):
     try:
-        result = exercises.grade(exercise_id=req.exercise_id, answers=req.answers)
-        # persist to history for stats
-        try:
-            ex_entry = exercises._store.get(req.exercise_id)
-            topic = ex_entry["topic"] if ex_entry else ""
-            level = ex_entry.get("level", "") if ex_entry else ""
-            tutor_stats.save_exercise_result(
-                req.exercise_id, topic,
-                result["score"], result["total"], result["percent"],
-                level,
-            )
-        except Exception:
-            pass
+        result = exercises.grade_and_track(exercise_id=req.exercise_id, answers=req.answers)
         return result
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
@@ -344,6 +349,73 @@ def study_plan_toggle(item_id: int):
 @app.get("/api/stats/dashboard")
 def stats_dashboard():
     return tutor_stats.dashboard()
+
+
+# ── P6: Perfil do aluno ────────────────────────────────────────────────────────
+
+
+@app.get("/api/profile")
+def profile_get():
+    return profile.get_profile() or {"name": "", "grade": "", "school": "", "preferences": ""}
+
+
+@app.post("/api/profile")
+def profile_save(req: ProfileRequest):
+    return profile.save_profile(
+        name=req.name, grade=req.grade, school=req.school, preferences=req.preferences,
+    )
+
+
+@app.get("/api/profile/insights")
+def profile_insights():
+    return profile.profile_insights()
+
+
+@app.get("/api/mastery")
+def mastery_list():
+    return profile.all_mastery()
+
+
+@app.get("/api/mastery/{topic}")
+def mastery_detail(topic: str):
+    result = profile.topic_details(topic)
+    if not result:
+        raise HTTPException(status_code=404, detail="Tema não encontrado")
+    return result
+
+
+# ── P7: Automação com confirmação ──────────────────────────────────────────────
+
+
+@app.post("/api/actions/propose")
+def action_propose(req: ActionProposalRequest):
+    try:
+        return automation.create_proposal(req.action_type, req.params, req.description)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.post("/api/actions/{proposal_id}/approve")
+def action_approve(proposal_id: str):
+    try:
+        return automation.approve(proposal_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@app.post("/api/actions/{proposal_id}/reject")
+def action_reject(proposal_id: str, body: ProposalRejectRequest = ProposalRejectRequest()):
+    return automation.reject(proposal_id, reason=body.reason)
+
+
+@app.get("/api/actions/pending")
+def action_pending():
+    return automation.get_pending()
+
+
+@app.get("/api/actions/recent")
+def action_recent(limit: int = 10):
+    return automation.list_recent(limit=limit)
 
 
 @app.get("/api/documents/{doc_id}/file")

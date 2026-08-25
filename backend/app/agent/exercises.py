@@ -162,3 +162,17 @@ def grade(exercise_id: str, answers: dict[str, str]) -> dict:
         "message": message,
         "results": results,
     }
+
+
+def grade_and_track(exercise_id: str, answers: dict[str, str]) -> dict:
+    """Grade and update topic mastery. Used by main.py endpoints."""
+    from ..tutor.profile import update_from_exercise
+
+    entry = _store.get(exercise_id)
+    result = grade(exercise_id, answers)
+    if entry:
+        try:
+            update_from_exercise(entry["topic"], result["score"], result["total"], result["percent"])
+        except Exception:
+            pass
+    return result

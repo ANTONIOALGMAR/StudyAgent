@@ -119,6 +119,38 @@ class Memory:
                     done       INTEGER NOT NULL DEFAULT 0,
                     sort_order INTEGER NOT NULL DEFAULT 0
                 );
+
+                CREATE TABLE IF NOT EXISTS student_profile (
+                    id          TEXT PRIMARY KEY,
+                    name        TEXT NOT NULL DEFAULT '',
+                    grade       TEXT NOT NULL DEFAULT '',
+                    school      TEXT NOT NULL DEFAULT '',
+                    preferences TEXT NOT NULL DEFAULT '',
+                    created_at  TEXT NOT NULL,
+                    updated_at  TEXT NOT NULL
+                );
+
+                CREATE TABLE IF NOT EXISTS topic_mastery (
+                    topic           TEXT PRIMARY KEY,
+                    attempts        INTEGER NOT NULL DEFAULT 0,
+                    correct         INTEGER NOT NULL DEFAULT 0,
+                    total_questions INTEGER NOT NULL DEFAULT 0,
+                    avg_percent     INTEGER NOT NULL DEFAULT 0,
+                    last_practiced  TEXT,
+                    created_at      TEXT NOT NULL,
+                    updated_at      TEXT NOT NULL
+                );
+
+                CREATE TABLE IF NOT EXISTS action_proposals (
+                    id               TEXT PRIMARY KEY,
+                    action_type      TEXT NOT NULL,
+                    params           TEXT NOT NULL DEFAULT '{}',
+                    description      TEXT NOT NULL DEFAULT '',
+                    status           TEXT NOT NULL DEFAULT 'pending',
+                    rejection_reason TEXT NOT NULL DEFAULT '',
+                    created_at       TEXT NOT NULL,
+                    resolved_at      TEXT
+                );
                 """
             )
 

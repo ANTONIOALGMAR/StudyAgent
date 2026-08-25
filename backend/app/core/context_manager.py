@@ -7,6 +7,8 @@ injetada via ``summarize_fn`` (texto -> texto).
 
 import re
 
+from ..tutor import automation, profile
+
 HISTORY_LIMIT = 10
 SUMMARY_REFRESH_DELTA = 8
 
@@ -97,10 +99,34 @@ class ContextManager:
         self._summarize = summarize_fn
 
     def assemble(self, session_id: str, user_message: str) -> list[dict]:
-        """Monta [system(+resumo), *histórico, user] para enviar ao modelo."""
+        """Monta [system(+resumo+perfil), *histórico, user] para enviar ao modelo."""
         history = self.memory.history(session_id, limit=HISTORY_LIMIT)
         summary = self._rolling_summary(session_id)
         system_content = SYSTEM_PROMPT
+
+        # profile insights
+        try:
+            insights = profile.profile_insights()
+            profile_info = insights.get("profile")
+            weak = insights.get("weak_topics", [])
+            if profile_info and profile_info.get("name"):
+                system_content += (
+                    f"\n\nPerfil do aluno: {profile_info['name']}"
+                    f", {profile_info.get('grade', 'nível não definido')}"
+                    f", escola: {profile_info.get('school', 'não informada')}."
+                )
+            if weak:
+                weak_list = ", ".join(f"{w['topic']} ({w['avg_percent']}%)" for w in weak[:5])
+                system_content += f"\nPontos fracos detectados: {weak_list}. Priorize esses temas."
+        except Exception:
+            pass
+
+        # proposal prompt
+        try:
+            system_content += automation.inject_proposal_prompt()
+        except Exception:
+            pass
+
         if summary:
             system_content += (
                 f"\n\nResumo do que já foi conversado nesta sessão:\n{summary}"

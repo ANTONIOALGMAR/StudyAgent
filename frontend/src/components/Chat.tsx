@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
 import AgentFace, { type FaceState } from './AgentFace'
+import ActionConfirm from './ActionConfirm'
 import ExercisesPanel from './ExercisesPanel'
 import FlashcardsPanel from './FlashcardsPanel'
 import PdfViewer from './PdfViewer'
+import ProfilePanel from './ProfilePanel'
 import Sidebar from './Sidebar'
 import StatsPanel from './StatsPanel'
 import StudyPlanPanel from './StudyPlanPanel'
@@ -118,6 +120,7 @@ export default function Chat() {
   const [fcOpen, setFcOpen] = useState(false)
   const [spOpen, setSpOpen] = useState(false)
   const [stOpen, setStOpen] = useState(false)
+  const [profOpen, setProfOpen] = useState(false)
   const [stage, setStage] = useState(false)
   const [watchMode, setWatchMode] = useState(false)
   const [monitors, setMonitors] = useState<MonitorInfo[]>([])
@@ -597,6 +600,13 @@ export default function Chat() {
       title: 'Dashboard de progresso',
     },
     {
+      icon: '👤',
+      label: 'Perfil',
+      active: profOpen,
+      onClick: () => setProfOpen(!profOpen),
+      title: 'Perfil do aluno e análise de aprendizado',
+    },
+    {
       icon: '👁',
       label: 'Olhar agora',
       active: false,
@@ -665,6 +675,8 @@ export default function Chat() {
       )}
 
       {handsFree && statusLabel && <div className={`status-pill st-${hfState}`}>{statusLabel}</div>}
+
+      <ActionConfirm />
 
       {liveOpen && !liveMinimized && (
         <div className="live-panel">
@@ -771,6 +783,18 @@ export default function Chat() {
             </button>
           </div>
           <StatsPanel />
+        </div>
+      )}
+
+      {profOpen && (
+        <div className="live-panel profile-panel">
+          <div className="live-head">
+            <strong>👤 perfil</strong>
+            <button className="btn-screen" onClick={() => setProfOpen(false)}>
+              ✕
+            </button>
+          </div>
+          <ProfilePanel />
         </div>
       )}
 
