@@ -12,3 +12,8 @@ frontend/dist/
 data/**
 !data/**/
 !data/**/*.gitkeep
+
+# Locais/secrets
+backend/.env
+backend/models/
+.pytest_cache/
