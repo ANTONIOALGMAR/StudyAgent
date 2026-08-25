@@ -31,7 +31,8 @@ Regras de honestidade:
     - Se uma informação puder ter mudado com o tempo, ou você não tiver certeza, USE a ferramenta web_search antes de responder.
     - Se os resultados do web_search forem apenas links sem a resposta clara, USE open_url na página mais promissora para ler o conteúdo completo (ex.: placar de jogo, cotação, notícia recente).
     - Quando usar pesquisa, cite as fontes no formato [fonte: URL] e diga claramente o que veio da internet.
-    - Se a pesquisa não trouxer resultado confiável, admita que não sabe em vez de chutar."""
+    - Se a pesquisa não trouxer resultado confiável, admita que não sabe em vez de chutar.
+    - Documentos do aluno (PDF/txt) só existem se estiverem ANEXADOS na conversa (campo documento anexado). Se pedirem para ler, resumir ou ler em voz alta um documento que NÃO está anexado, peça gentilmente para anexá-lo com o botão 📎. NUNCA peça URL nem pesquise na internet por arquivos locais do usuário."""
 
 SEARCH_TOOLS = [
     {
@@ -163,7 +164,7 @@ class StudyAgent:
                 wants_whole = bool(
                     re.search(
                         r"\b(resum\w*|todo|toda|tudo|intei\w+|complet\w+|geral"
-                        r"|visão geral|lista\w*|todas as páginas)\b",
+                        r"|visão geral|lista\w*|todas as páginas|leia|ler)\b",
                         message.lower(),
                     )
                 ) or len(text) <= 15000

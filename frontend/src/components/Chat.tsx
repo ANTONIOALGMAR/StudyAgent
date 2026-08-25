@@ -31,7 +31,7 @@ const SPEAK_CAP_MS = 45000
 const POLL_MS = 100
 
 function stripForSpeech(text: string): string {
-  return text.replace(/\[[^\]]*\]/g, '').replace(/[*#`_]/g, '').slice(0, 600)
+  return text.replace(/\[[^\]]*\]/g, '').replace(/[*#`_]/g, '').slice(0, 3000)
 }
 
 function rmsOf(buf: Float32Array): number {
@@ -94,8 +94,20 @@ export default function Chat() {
   const [camOpen, setCamOpen] = useState(false)
 
   const fileInputRef = useRef<HTMLInputElement | null>(null)
-  const [activeDoc, setActiveDoc] = useState<UploadedDoc | null>(null)
+  const [activeDoc, setActiveDoc] = useState<UploadedDoc | null>(() => {
+    try {
+      const saved = localStorage.getItem('studyagent.doc')
+      return saved ? (JSON.parse(saved) as UploadedDoc) : null
+    } catch {
+      return null
+    }
+  })
   const [viewerDoc, setViewerDoc] = useState<UploadedDoc | null>(null)
+
+  useEffect(() => {
+    if (activeDoc) localStorage.setItem('studyagent.doc', JSON.stringify(activeDoc))
+    else localStorage.removeItem('studyagent.doc')
+  }, [activeDoc])
 
   const [liveOpen, setLiveOpen] = useState(false)
   const [liveMinimized, setLiveMinimized] = useState(false)
