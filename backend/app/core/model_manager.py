@@ -25,8 +25,14 @@ MODEL_ROLES = {
 
 _context_tokens = {
     "text": int(os.getenv("STUDY_TEXT_CTX", "16384")),
-    "vision": int(os.getenv("STUDY_VISION_CTX", "8192")),
+    "vision": int(os.getenv("STUDY_VISION_CTX", "16384")),
+    "synthesis": int(os.getenv("STUDY_SYNTH_CTX", "16384")),
 }
+
+
+def num_predict() -> int:
+    """Teto de tokens gerados por resposta (evita cortes no meio)."""
+    return int(os.getenv("STUDY_NUM_PREDICT", "2048"))
 
 
 def model(role: str) -> str:

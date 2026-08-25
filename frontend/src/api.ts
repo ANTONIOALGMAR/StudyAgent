@@ -51,6 +51,25 @@ export async function uploadDocument(file: File): Promise<UploadedDoc> {
   return res.json()
 }
 
+export interface DocAudioPlan {
+  total: number
+  kind: 'página' | 'parte'
+  name: string
+}
+
+export async function getDocAudioPlan(docId: string): Promise<DocAudioPlan> {
+  const res = await fetch(`${API}/api/documents/${docId}/audio/plan`)
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: res.statusText }))
+    throw new Error(err.detail ?? `Erro ${res.status}`)
+  }
+  return res.json()
+}
+
+export function documentAudioUrl(docId: string, idx: number): string {
+  return `${API}/api/documents/${docId}/audio?idx=${idx}`
+}
+
 export interface PermissionMap {
   [key: string]: boolean
 }

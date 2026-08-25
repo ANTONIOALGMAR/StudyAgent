@@ -112,3 +112,64 @@ def load_document_text(path: Path) -> tuple[int, str]:
         return extract_pdf(path)
     text = path.read_text(encoding="utf-8", errors="ignore")
     return 1, text
+
+
+NARRATION_MAX_CHARS = 1800
+PAGE_NARRATION_MAX_CHARS = 2500
+
+
+def narration_clean(text: str) -> str:
+    """Remove marcadores e ruído de formatação para leitura em voz alta."""
+    import re as _re
+
+    texto = _re.sub(r"\[página\s*\d+\]", " ", text)
+    texto = _re.sub(r"[ \t]+", " ", texto)
+    return _re.sub(r"\n{3,}", "\n\n", texto).strip()
+
+
+def split_narration(text: str) -> list[str]:
+    """Uma parte por página (quando marcada) ou pedaços por frase (~1800 chars)."""
+    limpo = narration_clean(text)
+    if not limpo:
+        return []
+    if "[página" in text:
+        partes = []
+        for pedaco in text.split("[página"):
+            corpo = narration_clean(pedaco.split("]", 1)[-1])
+            if not corpo:
+                continue
+            while len(corpo) > PAGE_NARRATION_MAX_CHARS:
+                corte = corpo.rfind(".", 0, PAGE_NARRATION_MAX_CHARS) + 1
+                if corte < 200:
+                    corte = PAGE_NARRATION_MAX_CHARS
+                partes.append(corpo[:corte].strip())
+                corpo = corpo[corte:].strip()
+            if corpo:
+                partes.append(corpo)
+        return partes
+
+    sentencas = _re_split_sentences(limpo)
+    partes: list[str] = []
+    atual = ""
+    for frase in sentencas:
+        if len(atual) + len(frase) + 1 > NARRATION_MAX_CHARS and atual:
+            partes.append(atual.strip())
+            atual = ""
+        atual += (" " if atual else "") + frase
+    if atual.strip():
+        partes.append(atual.strip())
+    return partes
+
+
+def _re_split_sentences(texto: str) -> list[str]:
+    import re as _re
+
+    bruto = _re.split(r"(?<=[.!?])\s+", texto)
+    saida: list[str] = []
+    for s in bruto:
+        while len(s) > NARRATION_MAX_CHARS:
+            saida.append(s[:NARRATION_MAX_CHARS])
+            s = s[NARRATION_MAX_CHARS:]
+        if s:
+            saida.append(s)
+    return saida

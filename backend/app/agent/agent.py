@@ -118,7 +118,18 @@ class StudyAgent:
                         self._digest_cache[plan.doc_id] = digest
                     body = digest_body(digest)
                 else:
-                    body = excerpts_body(retrieve_relevant(message, text))
+                    trechos = None
+                    try:
+                        from ..tools import rag
+
+                        trechos = rag.search(plan.doc_id, text, message)
+                    except Exception as exc:
+                        logging.getLogger("uvicorn.error").warning(
+                            "RAG falhou: %s", exc
+                        )
+                    if not trechos:
+                        trechos = retrieve_relevant(message, text)
+                    body = excerpts_body(trechos)
                 msg_parts.append(
                     build_document_block(doc["name"], doc["pages"], body)
                 )
@@ -131,7 +142,11 @@ class StudyAgent:
 
         messages = self.ctx.assemble(session_id, enriched_message)
 
-        response_text = self._run_tool_loop(messages, images, tools_used)
+        # Com documento anexado não há necessidade de ferramentas: evita que
+        # o modelo distraia-se com chamadas em vez de ler o texto fornecido.
+        response_text = self._run_tool_loop(
+            messages, images, tools_used, allow_tools=not plan.wants_document
+        )
 
         self.memory.add_message(session_id, "user", message)
         self.memory.add_message(session_id, "assistant", response_text)
@@ -142,9 +157,11 @@ class StudyAgent:
             "tools_used": tools_used,
         }
 
-    def _run_tool_loop(self, messages, images, tools_used):
+    def _run_tool_loop(self, messages, images, tools_used, allow_tools=True):
         if images:
             return chat(messages, images=images)
+        if not allow_tools:
+            return chat(messages)
         from .llm import synthesize
 
         last_user = next(

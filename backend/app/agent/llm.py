@@ -3,7 +3,7 @@ import base64
 import ollama
 
 from ..config import OLLAMA_HOST
-from ..core.model_manager import context_tokens, resolve
+from ..core.model_manager import context_tokens, num_predict, resolve
 
 _client = ollama.Client(host=OLLAMA_HOST)
 
@@ -22,7 +22,7 @@ def chat(messages, images=None):
         response = _client.chat(
             model=resolve(role),
             messages=messages,
-            options={"num_ctx": context_tokens(role)},
+            options={"num_ctx": context_tokens(role), "num_predict": num_predict()},
         )
         return response["message"]["content"]
     except Exception as exc:
@@ -40,7 +40,7 @@ def chat_with_tools(messages, tools):
         model=resolve("text"),
         messages=messages,
         tools=tools,
-        options={"num_ctx": context_tokens("text")},
+        options={"num_ctx": context_tokens("text"), "num_predict": num_predict()},
     )
     message = response["message"]
     tool_calls = [
@@ -78,7 +78,7 @@ def synthesize(question: str, material: str) -> str:
                 "content": f"Pergunta: {question}\n\nMaterial da pesquisa:\n{material}",
             },
         ],
-        options={"num_ctx": context_tokens("text")},
+        options={"num_ctx": context_tokens("synthesis"), "num_predict": num_predict()},
     )
     return response["message"]["content"]
 

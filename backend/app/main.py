@@ -1,3 +1,4 @@
+import base64
 from pathlib import Path
 
 from fastapi import FastAPI, File, HTTPException, UploadFile
@@ -106,7 +107,7 @@ def screen_capture(region: dict | None = None, monitor: int = 1):
         shot, info = agent.capture_and_read_screen(region=region, monitor=monitor)
     except PermissionDeniedError as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
-    return {"image_b64": image_to_base64(shot).decode("ascii"), **info}
+    return {"image_b64": base64.b64encode(image_to_base64(shot)).decode("ascii"), **info}
 
 
 @app.get("/api/screen/monitors")
@@ -255,4 +256,50 @@ def document_file(doc_id: str):
             "Content-Disposition": f'inline; filename="{doc["name"]}"',
             "Cache-Control": "private, max-age=3600",
         },
+    )
+
+
+def _doc_parts(doc_id: str):
+    """Partes de narração do documento (uma por página ou ~1800 chars)."""
+    doc = agent.memory.get_document(doc_id)
+    if not doc:
+        raise HTTPException(status_code=404, detail="documento não encontrado")
+    from pathlib import Path as _Path
+
+    from .tools.documents import load_document_text, split_narration
+
+    path = _Path(doc["path"])
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="arquivo não encontrado no disco")
+    _, text = load_document_text(path)
+    return doc, split_narration(text)
+
+
+@app.get("/api/documents/{doc_id}/audio/plan")
+def document_audio_plan(doc_id: str):
+    try:
+        permissions.require("file_access")
+    except PermissionDeniedError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    doc, partes = _doc_parts(doc_id)
+    if not partes:
+        raise HTTPException(status_code=400, detail="documento sem texto legível")
+    kind = "página" if (doc["pages"] or 1) > 1 else "parte"
+    return {"total": len(partes), "kind": kind, "name": doc["name"]}
+
+
+@app.get("/api/documents/{doc_id}/audio")
+async def document_audio(doc_id: str, idx: int = 0):
+    try:
+        permissions.require("file_access")
+    except PermissionDeniedError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    _, partes = _doc_parts(doc_id)
+    if not 0 <= idx < len(partes):
+        raise HTTPException(status_code=404, detail=f"parte {idx} fora do alcance")
+    wav = await run_in_threadpool(text_to_speech.synthesize, partes[idx])
+    return Response(
+        content=wav,
+        media_type="audio/wav",
+        headers={"Cache-Control": "no-store"},
     )

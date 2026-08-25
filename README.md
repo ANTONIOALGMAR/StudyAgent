@@ -70,7 +70,8 @@ backend/app/
 │   └── text_to_speech.py  Piper
 ├── tools/
 │   ├── calculator.py    Avaliador AST seguro
-│   ├── documents.py     Extração PDF, digest map-reduce, recuperação por trechos
+│   ├── documents.py     Extração PDF, digest map-reduce, RAG semântico, narração
+│   ├── rag.py           Busca semântica local (nomic-embed-text + numpy)
 │   └── web_search.py    DDG→Bing→Wikipédia, fetch de páginas, destilação
 └── security/permissions.py  Portão de permissões
 
@@ -194,6 +195,8 @@ cd backend && source .venv/bin/activate && python ../scripts/cli_chat.py
 | POST | `/api/calculate` | Calculadora segura |
 | POST | `/api/documents/upload` | Upload pdf/txt/md |
 | GET | `/api/documents/{id}/file` | Arquivo original (leitor) |
+| GET | `/api/documents/{id}/audio/plan` | Plano do audiobook (total de partes) |
+| GET | `/api/documents/{id}/audio?idx=N` | Áudio WAV da parte N (🎧 acessibilidade) |
 | POST | `/api/exercises/generate` | Gera questões (gabarito fica no servidor) |
 | POST | `/api/exercises/grade` | Corrige com equivalência de respostas |
 | GET | `/api/sessions` | Lista sessões |
