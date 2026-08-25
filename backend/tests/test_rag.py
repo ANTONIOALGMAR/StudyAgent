@@ -1,6 +1,7 @@
+import zlib
+
 import numpy as np
 import pytest
-import zlib
 
 from app.tools import rag
 

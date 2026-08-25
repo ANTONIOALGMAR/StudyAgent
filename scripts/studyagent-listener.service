@@ -1,0 +1,15 @@
+[Unit]
+Description=StudyAgent - modo viva-voz ("ei Study, ...")
+After=studyagent-api.service
+Wants=studyagent-api.service
+
+[Service]
+Type=simple
+WorkingDirectory=%h/StudyAgent/backend
+ExecStart=%h/StudyAgent/backend/.venv/bin/python -m app.audio.listener
+Restart=on-failure
+RestartSec=5
+Environment=STUDY_VAD_THRESHOLD=500
+
+[Install]
+WantedBy=default.target

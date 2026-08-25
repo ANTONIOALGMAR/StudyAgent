@@ -11,6 +11,22 @@ Tutor de estudos multimodal que roda **100% local** no seu computador (Linux): c
 - Calculadora segura embutida
 
 ### 🗣 Voz completa
+
+- Fala (TTS) com Piper e escuta (STT) com faster-whisper, 100% locais.
+- **Modo viva-voz opcional**: diga **"ei Study, sua pergunta"** em qualquer
+  aba/janela — o agente ouve pela palavra de acordar, responde no chat e
+  fala a resposta pelos alto-falantes:
+
+  ```bash
+  cp scripts/studyagent-listener.service ~/.config/systemd/user/
+  systemctl --user daemon-reload && systemctl --user enable --now studyagent-listener
+  journalctl --user -u studyagent-listener -f   # ver o que ele ouve
+  ```
+
+  Ajuste a sensibilidade do microfone com `STUDY_VAD_THRESHOLD`
+  (padrão 500; diminua se ele não acordar, aumente se acordar sozinho).
+- **🎧 Audiobook de documentos**: no leitor de PDF, toque em 🎧 para ouvir
+  o arquivo página por página (acessibilidade / estudar ouvindo).
 - **Fala → texto:** faster-whisper `small`, botão 🎙 aperta-para-falar
 - **Modo conversa automática 🔄:** o agente ouve continuamente (VAD no navegador), transcreve, responde e fala — mão livre
 - **Texto → fala:** Piper com voz brasileira `pt_BR-faber-medium`
