@@ -1,0 +1,18 @@
+[project]
+name = "studyagent-backend"
+version = "2.0.0"
+requires-python = ">=3.11"
+
+[tool.ruff]
+line-length = 110
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B"]
+ignore = ["E501"]  # prompts/regexes longos em PT-BR
+
+[tool.ruff.lint.per-file-ignores]
+"app/main.py" = ["B008"]  # File(...)/Form(...) em defaults é idiomático no FastAPI
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

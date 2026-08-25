@@ -49,8 +49,13 @@ Tutor de estudos multimodal que roda **100% local** no seu computador (Linux): c
 backend/app/
 ├── main.py              API FastAPI (chat, tela, áudio, docs, exercícios, permissões)
 ├── config.py            Caminhos, modelos Ollama
+├── core/                Núcleo V2 (desacoplado do agente)
+│   ├── model_manager.py    Papéis de modelos por env (text/vision/synthesis/stt/tts)
+│   ├── planner.py          Decide captura de tela, monitor e estratégia de documento
+│   ├── tool_registry.py    Registro decorado de ferramentas + schemas p/ tool-calling
+│   └── registered_tools.py web_search, open_url, calculate
 ├── agent/
-│   ├── agent.py         Orquestrador, persona, memória rolante, loop de ferramentas
+│   ├── agent.py         Orquestrador: plano → ferramentas → resposta
 │   ├── llm.py           Cliente Ollama + síntese de pesquisas (qwen2.5vl)
 │   ├── memory.py        SQLite: sessões, mensagens, resumos, documentos
 │   └── exercises.py     Gerador de questões + corretor com equivalência
@@ -77,6 +82,23 @@ frontend/src/
 │   └── PermissionsPanel.tsx
 └── api.ts               Cliente tipado da API
 ```
+
+### Testes
+
+O backend tem suíte pytest (planner, registry, calculadora, documentos,
+exercícios, permissões) e lint ruff:
+
+```bash
+cd backend
+.venv/bin/python -m pytest -q      # testes
+.venv/bin/python -m ruff check app tests
+```
+
+CI roda em cada push via GitHub Actions (`.github/workflows/backend.yml`).
+
+Modelos são configuráveis por variável de ambiente (`STUDY_TEXT_MODEL`,
+`STUDY_VISION_MODEL`, `STUDY_SYNTH_MODEL`, `STUDY_EMBEDDING_MODEL`,
+`STUDY_STT_MODEL`, `STUDY_TTS_MODEL`) — sem nomes fixos no código.
 
 ## Requisitos
 

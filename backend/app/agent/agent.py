@@ -1,10 +1,15 @@
 import base64
+import logging
 import re
 
+from ..core.model_manager import available_models
+from ..core.planner import WHOLE_DOC_MAX_CHARS, build_plan
+from ..core.registered_tools import calculate_tool, open_url_tool, web_search_tool  # noqa: F401
+from ..core.tool_registry import all_schemas, get
 from ..security.permissions import PermissionDeniedError
 from ..tools import calculator
 from ..vision import ocr, screen
-from .llm import available_models, chat, chat_with_tools
+from .llm import chat, chat_with_tools
 from .memory import Memory
 
 SYSTEM_PROMPT = """Você é o StudyAgent, um tutor pessoal de estudos que roda localmente no computador do usuário.
@@ -33,55 +38,6 @@ Regras de honestidade:
     - Quando usar pesquisa, cite as fontes no formato [fonte: URL] e diga claramente o que veio da internet.
     - Se a pesquisa não trouxer resultado confiável, admita que não sabe em vez de chutar.
     - IMPORTANTE sobre documentos: quando a mensagem do aluno começar com "DOCUMENTO ANEXADO E DISPONÍVEL PARA LEITURA", o conteúdo completo está NA PRÓPRIA MENSAGEM — use-o e NUNCA peça para anexar nada. Peça para anexar com o botão 📎 APENAS quando essa linha NÃO estiver presente e ele citar um arquivo próprio (pdf/documento). Nesse caso, também NUNCA peça URL nem pesquise na internet por arquivos dele."""
-
-SEARCH_TOOLS = [
-    {
-        "type": "function",
-        "function": {
-            "name": "web_search",
-            "description": (
-                "Pesquisa na internet informações atuais, fatos verificáveis, "
-                "notícias, dados e respostas que o modelo pode não conhecer. "
-                "Use SEMPRE que precisar de precisão (resultados esportivos, "
-                "cotações, eventos recentes). Monte a query com termos "
-                "diferenciadores: nome completo, contexto e ano "
-                "(ex.: 'Palmeiras futebol São Paulo resultado Brasileirão 2026' "
-                "em vez de só 'Palmeiras')."
-            ),
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "query": {
-                        "type": "string",
-                        "description": "Termos de busca em português, específicos e objetivos",
-                    }
-                },
-                "required": ["query"],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "open_url",
-            "description": (
-                "Abre uma página da internet e retorna o texto completo. "
-                "Use depois do web_search quando os resumos forem insuficientes "
-                "(placar de jogos, valores atuais, detalhes de notícias)."
-            ),
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "url": {
-                        "type": "string",
-                        "description": "URL completa da página, começando com http(s)://",
-                    }
-                },
-                "required": ["url"],
-            },
-        },
-    },
-]
 
 HISTORY_LIMIT = 10
 SUMMARY_MIN_MESSAGES = 22
@@ -125,27 +81,18 @@ class StudyAgent:
         tools_used = []
         images = []
 
-        # Sessão lembra o último documento usado: mensagens seguintes sobre
-        # "o pdf/documento" continuam funcionando mesmo sem reanexar.
-        if not doc_id and self._session_docs.get(session_id) and re.search(
-            r"\b(pdf|documento|apostila|arquivo|material|leia|ler|resum\w*|texto)\b",
-            message.lower(),
-        ):
-            doc_id = self._session_docs.get(session_id)
-
-        # "na tela 2", "monitor 3": usa exatamente o monitor citado.
-        monitor_match = re.search(
-            r"\b(?:tela|monitor)\s*(?:n?[ºo°]?\s*)?([0-9]+)\b", message.lower()
+        # ── Planner V2: decisões centralizadas ──────────────────────────
+        plan = build_plan(
+            message,
+            use_screen_requested=bool(use_screen),
+            camera_image=image_b64 is not None,
+            requested_doc_id=doc_id,
+            session_doc_id=self._session_docs.get(session_id),
         )
-        if monitor_match:
-            monitor = min(int(monitor_match.group(1)), 8)
+        if plan.monitor:
+            monitor = plan.monitor
 
-        # Documento anexado tem prioridade: não capturar a tela junto,
-        # a menos que o usuário tenha falado explicitamente de "tela".
-        explicit_screen = bool(re.search(r"\b(tela|monitor)\b", message.lower()))
-        effective_screen = use_screen and not (doc_id and not explicit_screen)
-
-        if effective_screen:
+        if plan.capture_screen:
             self._require("screen_capture")
             shot = screen.capture(monitor=monitor, region=region)
             images.append(screen.image_to_base64(shot))
@@ -166,9 +113,10 @@ class StudyAgent:
                 "base NA IMAGEM.)"
             )
 
-        if doc_id:
+        # ── Documento anexado / lembrado pela sessão ─────────────────────
+        if plan.wants_document:
             self._require("file_access")
-            doc = self.memory.get_document(doc_id)
+            doc = self.memory.get_document(plan.doc_id)
             if doc:
                 from pathlib import Path
 
@@ -180,29 +128,22 @@ class StudyAgent:
                 from .llm import chat as _chat
 
                 _, text = load_document_text(Path(doc["path"]))
-                wants_whole = bool(
-                    re.search(
-                        r"\b(resum\w*|todo|toda|tudo|intei\w+|complet\w+|geral"
-                        r"|visão geral|lista\w*|todas as páginas|leia|ler)\b",
-                        message.lower(),
-                    )
-                )
-                if len(text) <= 15000:
+                if len(text) <= WHOLE_DOC_MAX_CHARS:
                     # Cabe inteiro no contexto: manda o documento completo,
                     # sem resumo que possa perder detalhes.
                     body = (
                         "Conteúdo COMPLETO do documento:\n\n"
                         f"{text}\n\n[fim do documento]"
                     )
-                elif wants_whole:
-                    digest = self._digest_cache.get(doc_id)
+                elif plan.whole_doc:
+                    digest = self._digest_cache.get(plan.doc_id)
                     if not digest:
                         digest = build_digest(
                             text, chat_fn=lambda s: _chat([{"role": "user", "content": s}])
                         )
                         if len(self._digest_cache) > 6:
                             self._digest_cache.pop(next(iter(self._digest_cache)))
-                        self._digest_cache[doc_id] = digest
+                        self._digest_cache[plan.doc_id] = digest
                     body = (
                         "Dossiê do documento inteiro (resumo de todas as partes,"
                         " gerado página por página):\n"
@@ -215,7 +156,7 @@ class StudyAgent:
                     f"({doc['pages']} páginas). Conteúdo:\n\n{body}"
                 )
                 tools_used.append("document")
-                self._session_docs[session_id] = doc_id
+                self._session_docs[session_id] = plan.doc_id
                 if len(self._session_docs) > 50:
                     self._session_docs.pop(next(iter(self._session_docs)))
 
@@ -245,7 +186,6 @@ class StudyAgent:
     def _run_tool_loop(self, messages, images, tools_used):
         if images:
             return chat(messages, images=images)
-        from ..tools.web_search import distill_page, fetch_page, search
         from .llm import synthesize
 
         last_user = next(
@@ -256,7 +196,7 @@ class StudyAgent:
         current = list(messages)
         for _ in range(4):
             try:
-                reply = chat_with_tools(current, SEARCH_TOOLS)
+                reply = chat_with_tools(current, all_schemas())
             except Exception:
                 return chat(current)
             if not reply["tool_calls"]:
@@ -267,63 +207,30 @@ class StudyAgent:
             for call in reply["tool_calls"]:
                 name = call["function"]["name"]
                 args = call["function"]["arguments"]
-                if name == "web_search":
-                    try:
-                        self._require("internet")
-                        import logging as _log_mod
-
-                        _log = _log_mod.getLogger("uvicorn.error")
-                        _log.info("web_search query=%r", args.get("query"))
-                        results = search(str(args.get("query", "")))
-                        _log.info("web_search n_results=%d", len(results))
-                        parts = []
-                        got_distilled = False
-                        for r in results[:5]:
-                            part = f"[{r['title']}]({r['url']})\n{r['snippet'][:250]}"
-                            try:
-                                page = fetch_page(r["url"], chars=4500)
-                                if len(page) < 350:
-                                    _log.info(
-                                        "página vazia (JS?) url=%s", r["url"][:60]
-                                    )
-                                    continue
-                                _log.info(
-                                    "fetch ok url=%s len=%d", r["url"][:60], len(page)
-                                )
-                                distilled = distill_page(page)
-                                if distilled and "NADA CLARO" not in distilled:
-                                    part += f"\nTrechos objetivos da página:\n{distilled}"
-                                else:
-                                    part += f"\nTrechos da página:\n{page[:1200]}"
-                                got_distilled = True
-                            except Exception as exc:
-                                _log.warning("fetch falhou url=%s: %s", r["url"][:60], exc)
-                            parts.append(part)
-                        result = (
-                            "\n\n---\n\n".join(parts)
-                            or "Nenhum resultado encontrado na pesquisa. "
-                            "Tente outros termos ou admita que não sabe."
-                        )
-                        _log.info("web_search result_len=%d", len(result))
-                        if parts:
-                            try:
-                                return synthesize(last_user, result)
-                            except Exception as exc:
-                                _log.warning("síntese falhou: %s", exc)
-                    except PermissionDeniedError as exc:
-                        result = f"Pesquisa indisponível: {exc}"
-                    tools_used.append("web_search")
-                elif name == "open_url":
-                    try:
-                        self._require("internet")
-                        result = fetch_page(str(args.get("url", "")))
-                    except PermissionDeniedError as exc:
-                        result = f"Navegação indisponível: {exc}"
-                    except Exception as exc:
-                        result = f"Falha ao abrir a página: {exc}"
-                    tools_used.append("open_url")
-                else:
+                entry = get(name)
+                if not entry:
                     result = f"Ferramenta desconhecida: {name}"
+                else:
+                    try:
+                        if entry.permission:
+                            self._require(entry.permission)
+                        logging.getLogger("uvicorn.error").info(
+                            "tool=%s args=%s", name, str(args)[:120]
+                        )
+                        result = entry.handler(args)
+                    except PermissionDeniedError as exc:
+                        result = f"Permissão negada para {name}: {exc}"
+                    except Exception as exc:
+                        result = f"Falha ao executar {name}: {exc}"
+                    tools_used.append(name)
+                    # Busca bem-sucedida → síntese dedicada com citações
+                    if name == "web_search" and "---" in result:
+                        try:
+                            return synthesize(last_user, result)
+                        except Exception as exc:
+                            logging.getLogger("uvicorn.error").warning(
+                                "síntese falhou: %s", exc
+                            )
                 current.append({"role": "tool", "name": name, "content": result})
         return reply.get("content") or ""
 
@@ -357,7 +264,6 @@ class StudyAgent:
                 }
             ]
         ).strip()
-        import re
 
         summary_text = re.sub(r"^(assistant|user|tutor)\s*[:\-]?\s*", "", summary_text).strip()
         self.memory.set_summary(session_id, summary_text, total - HISTORY_LIMIT)

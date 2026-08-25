@@ -1,13 +1,13 @@
+from pathlib import Path
+
 from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.concurrency import run_in_threadpool
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response
 from pydantic import BaseModel
 
-from pathlib import Path
-
-from .agent.agent import PermissionDeniedError, StudyAgent
 from .agent import exercises
+from .agent.agent import PermissionDeniedError, StudyAgent
 from .audio import speech_to_text, text_to_speech
 from .config import DOCUMENTS_DIR as documents_dir
 from .security.permissions import PermissionManager
@@ -77,8 +77,8 @@ def get_permissions():
 def set_permission(name: str, body: PermissionUpdate):
     try:
         permissions.set(name, body.value)
-    except KeyError:
-        raise HTTPException(status_code=404, detail=f"permissão desconhecida: {name}")
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=f"permissão desconhecida: {name}") from exc
     return {name: body.value}
 
 
@@ -97,7 +97,7 @@ def chat(req: ChatRequest):
             doc_id=req.doc_id,
         )
     except PermissionDeniedError as exc:
-        raise HTTPException(status_code=403, detail=str(exc))
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
 
 
 @app.post("/api/screen/capture")
@@ -105,7 +105,7 @@ def screen_capture(region: dict | None = None, monitor: int = 1):
     try:
         shot, info = agent.capture_and_read_screen(region=region, monitor=monitor)
     except PermissionDeniedError as exc:
-        raise HTTPException(status_code=403, detail=str(exc))
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
     return {"image_b64": image_to_base64(shot).decode("ascii"), **info}
 
 
@@ -120,7 +120,7 @@ def screen_preview(monitor: int = 0):
         permissions.require("screen_capture")
         shot = screen.capture(monitor=monitor)
     except PermissionDeniedError as exc:
-        raise HTTPException(status_code=403, detail=str(exc))
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
     jpeg = image_to_jpeg_base64(shot)
     return Response(
         content=jpeg,
@@ -139,7 +139,7 @@ def screen_analyze(req: AnalyzeScreenRequest):
             monitor=req.monitor,
         )
     except PermissionDeniedError as exc:
-        raise HTTPException(status_code=403, detail=str(exc))
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
     return result
 
 
@@ -148,7 +148,7 @@ def calculate(req: CalculateRequest):
     try:
         return {"result": agent.calculate(req.expression)}
     except Exception as exc:
-        raise HTTPException(status_code=400, detail=str(exc))
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @app.get("/api/sessions")
@@ -170,7 +170,7 @@ async def upload_document(file: UploadFile = File(...)):
     try:
         permissions.require("file_access")
     except PermissionDeniedError as exc:
-        raise HTTPException(status_code=403, detail=str(exc))
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
     import uuid as uuid_mod
 
     from .tools.documents import extract_pdf
@@ -189,7 +189,7 @@ async def upload_document(file: UploadFile = File(...)):
             pages, text = extract_pdf(save_path)
         except Exception as exc:
             save_path.unlink(missing_ok=True)
-            raise HTTPException(status_code=400, detail=f"PDF inválido: {exc}")
+            raise HTTPException(status_code=400, detail=f"PDF inválido: {exc}") from exc
         save_path.with_suffix(".txt").write_text(text, encoding="utf-8")
     else:
         pages = 1
@@ -203,7 +203,7 @@ async def transcribe(file: UploadFile = File(...)):
     try:
         permissions.require("microphone")
     except PermissionDeniedError as exc:
-        raise HTTPException(status_code=403, detail=str(exc))
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
     audio_bytes = await file.read()
     if not audio_bytes:
         raise HTTPException(status_code=400, detail="áudio vazio")
@@ -216,7 +216,7 @@ def speak(req: SpeakRequest):
     try:
         wav = text_to_speech.synthesize(req.text)
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=str(exc))
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
     return Response(content=wav, media_type="audio/wav")
 
 
@@ -225,9 +225,9 @@ def exercises_generate(req: ExerciseGenerateRequest):
     try:
         return exercises.generate(topic=req.topic, n=req.n, level=req.level)
     except ValueError as exc:
-        raise HTTPException(status_code=502, detail=str(exc))
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=f"Falha ao gerar exercícios: {exc}")
+        raise HTTPException(status_code=500, detail=f"Falha ao gerar exercícios: {exc}") from exc
 
 
 @app.post("/api/exercises/grade")
@@ -235,7 +235,7 @@ def exercises_grade(req: ExerciseGradeRequest):
     try:
         return exercises.grade(exercise_id=req.exercise_id, answers=req.answers)
     except KeyError as exc:
-        raise HTTPException(status_code=404, detail=str(exc))
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
 @app.get("/api/documents/{doc_id}/file")

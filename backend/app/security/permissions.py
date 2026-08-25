@@ -8,6 +8,18 @@ class PermissionDeniedError(Exception):
     pass
 
 
+DEFAULT_PERMISSIONS = {
+    "microphone": False,
+    "camera": False,
+    "screen_capture": True,
+    "file_access": True,
+    "internet": True,
+    "mouse_control": False,
+    "keyboard_control": False,
+    "command_execution": False,
+}
+
+
 class PermissionManager:
     def __init__(self, path=PERMISSIONS_PATH):
         self._path = path
@@ -16,9 +28,14 @@ class PermissionManager:
 
     def _load(self):
         try:
-            self._permissions = json.loads(self._path.read_text(encoding="utf-8"))
+            data = json.loads(self._path.read_text(encoding="utf-8"))
         except FileNotFoundError:
-            self._permissions = {}
+            data = {}
+        except json.JSONDecodeError:
+            data = {}
+        merged = dict(DEFAULT_PERMISSIONS)
+        merged.update({k: bool(v) for k, v in data.items()})
+        self._permissions = merged
 
     def _save(self):
         self._path.write_text(

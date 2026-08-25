@@ -53,11 +53,11 @@ def _normalize(value: str) -> str:
     value = unicodedata.normalize("NFKD", value)
     value = "".join(ch for ch in value if not unicodedata.combining(ch))
     value = value.lower().strip()
+    # remove prefixos de alternativa tipo "b) " ANTES de limpar pontuação
+    value = re.sub(r"^[a-d]\)\s*", "", value)
     value = re.sub(r"[^\w\s/.,]", "", value)
     value = value.replace(",", ".")
     value = re.sub(r"\s+", " ", value)
-    # remove prefixos de alternativa tipo "b) "
-    value = re.sub(r"^[a-d]\)\s*", "", value)
     return value.strip(" .")
 
 

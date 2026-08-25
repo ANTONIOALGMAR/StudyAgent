@@ -2,7 +2,8 @@ import base64
 
 import ollama
 
-from ..config import OLLAMA_HOST, TEXT_MODEL, VISION_MODEL
+from ..config import OLLAMA_HOST
+from ..core.model_manager import context_tokens, resolve
 
 _client = ollama.Client(host=OLLAMA_HOST)
 
@@ -11,23 +12,17 @@ def available_models():
     return [m.model for m in _client.list().models]
 
 
-TEXT_CONTEXT_TOKENS = 16384
-VISION_CONTEXT_TOKENS = 8192
-
-
 def chat(messages, images=None):
     if images:
         messages = _attach_images(messages, images)
-        model = VISION_MODEL
-        num_ctx = VISION_CONTEXT_TOKENS
+        role = "vision"
     else:
-        model = TEXT_MODEL
-        num_ctx = TEXT_CONTEXT_TOKENS
+        role = "text"
     try:
         response = _client.chat(
-            model=model,
+            model=resolve(role),
             messages=messages,
-            options={"num_ctx": num_ctx},
+            options={"num_ctx": context_tokens(role)},
         )
         return response["message"]["content"]
     except Exception as exc:
@@ -42,10 +37,10 @@ def chat(messages, images=None):
 
 def chat_with_tools(messages, tools):
     response = _client.chat(
-        model=TEXT_MODEL,
+        model=resolve("text"),
         messages=messages,
         tools=tools,
-        options={"num_ctx": TEXT_CONTEXT_TOKENS},
+        options={"num_ctx": context_tokens("text")},
     )
     message = response["message"]
     tool_calls = [
@@ -75,7 +70,7 @@ SYNTH_SYSTEM = (
 
 def synthesize(question: str, material: str) -> str:
     response = _client.chat(
-        model=VISION_MODEL,
+        model=resolve("synthesis"),
         messages=[
             {"role": "system", "content": SYNTH_SYSTEM},
             {
@@ -83,7 +78,7 @@ def synthesize(question: str, material: str) -> str:
                 "content": f"Pergunta: {question}\n\nMaterial da pesquisa:\n{material}",
             },
         ],
-        options={"num_ctx": TEXT_CONTEXT_TOKENS},
+        options={"num_ctx": context_tokens("text")},
     )
     return response["message"]["content"]
 
