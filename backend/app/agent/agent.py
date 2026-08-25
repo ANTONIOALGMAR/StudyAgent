@@ -1,7 +1,14 @@
 import base64
 import logging
-import re
 
+from ..core.context_manager import (
+    ContextManager,
+    build_document_block,
+    build_image_note,
+    digest_body,
+    excerpts_body,
+    whole_doc_body,
+)
 from ..core.model_manager import available_models
 from ..core.planner import WHOLE_DOC_MAX_CHARS, build_plan
 from ..core.registered_tools import calculate_tool, open_url_tool, web_search_tool  # noqa: F401
@@ -12,58 +19,14 @@ from ..vision import ocr, screen
 from .llm import chat, chat_with_tools
 from .memory import Memory
 
-SYSTEM_PROMPT = """Você é o StudyAgent, um tutor pessoal de estudos que roda localmente no computador do usuário.
-
-Diretrizes:
-- Responda SEMPRE em português do Brasil, de forma clara e didática.
-- Modo padrão é TUTOR: guie o aluno passo a passo com perguntas e pistas, em vez de entregar a resposta final pronta.
-- Se o usuário pedir explicitamente ("me dê a resposta", "resolva direto"), aí sim entregue a solução completa.
-- Quando receber uma imagem da tela, descreva primeiro o que você identificou (matéria, tipo de conteúdo) antes de explicar.
-- Use cálculos exatos quando possível e mostre o raciocínio.
-- Se não tiver certeza sobre algo que viu na tela, diga o que vê e peça confirmação.
-- Seja encorajador, mas honesto: aponte erros com clareza.
-
-Modos disponíveis (o usuário pode pedir):
-- professor: explicação detalhada do zero
-- tutor: pistas e condução sem dar a resposta
-- exercicios: gerar exercícios parecidos
-- revisao: fazer perguntas para checar aprendizado
-- resumo: condensar material
-- simples: explicar como para um iniciante
-
-Regras de honestidade:
-- NUNCA invente fatos, datas, números, nomes ou notícias.
-    - Se uma informação puder ter mudado com o tempo, ou você não tiver certeza, USE a ferramenta web_search antes de responder.
-    - Se os resultados do web_search forem apenas links sem a resposta clara, USE open_url na página mais promissora para ler o conteúdo completo (ex.: placar de jogo, cotação, notícia recente).
-    - Quando usar pesquisa, cite as fontes no formato [fonte: URL] e diga claramente o que veio da internet.
-    - Se a pesquisa não trouxer resultado confiável, admita que não sabe em vez de chutar.
-    - IMPORTANTE sobre documentos: quando a mensagem do aluno começar com "DOCUMENTO ANEXADO E DISPONÍVEL PARA LEITURA", o conteúdo completo está NA PRÓPRIA MENSAGEM — use-o e NUNCA peça para anexar nada. Peça para anexar com o botão 📎 APENAS quando essa linha NÃO estiver presente e ele citar um arquivo próprio (pdf/documento). Nesse caso, também NUNCA peça URL nem pesquise na internet por arquivos dele."""
-
-HISTORY_LIMIT = 10
-SUMMARY_MIN_MESSAGES = 22
-SUMMARY_REFRESH_DELTA = 8
-
-SUMMARY_PROMPT = """Atualize o resumo desta sessão de estudos.
-
-Resumo anterior:
-{previous}
-
-Mensagens novas (mais antigas que a janela recente):
-{transcript}
-
-Escreva o resumo atualizado em português com esta estrutura obrigatória:
-FATOS IMPORTANTES: nome do aluno, datas de provas/trabalhos, metas e compromissos citados (se existirem).
-CONTEÚDO ESTUDADO: matérias e tópicos com pontos-chave.
-DIFICULDADES E PRÓXIMOS PASSOS: dificuldades do aluno e pendências.
-
-Regras: no máximo 12 linhas; preserve nomes, datas e números EXATAMENTE como foram citados;
-nunca invente informações; responda APENAS com o texto do resumo, sem prefixos,
-saudações ou comentários."""
-
 
 class StudyAgent:
     def __init__(self):
         self.memory = Memory()
+        self.ctx = ContextManager(
+            self.memory,
+            summarize_fn=lambda prompt: chat([{"role": "system", "content": prompt}]),
+        )
         self._digest_cache: dict[str, str] = {}
         self._session_docs: dict[str, str] = {}
 
@@ -106,12 +69,7 @@ class StudyAgent:
 
         msg_parts = [message]
         if images:
-            origem = "minha câmera" if image_b64 else "minha tela"
-            msg_parts.append(
-                f"(A imagem anexada é uma captura de {origem}. Se a pergunta "
-                "for sobre a tela ou o que está visível nela, responda com "
-                "base NA IMAGEM.)"
-            )
+            msg_parts.append(build_image_note(camera=image_b64 is not None))
 
         # ── Documento anexado / lembrado pela sessão ─────────────────────
         if plan.wants_document:
@@ -125,35 +83,26 @@ class StudyAgent:
                     load_document_text,
                     retrieve_relevant,
                 )
-                from .llm import chat as _chat
 
                 _, text = load_document_text(Path(doc["path"]))
                 if len(text) <= WHOLE_DOC_MAX_CHARS:
                     # Cabe inteiro no contexto: manda o documento completo,
                     # sem resumo que possa perder detalhes.
-                    body = (
-                        "Conteúdo COMPLETO do documento:\n\n"
-                        f"{text}\n\n[fim do documento]"
-                    )
+                    body = whole_doc_body(text)
                 elif plan.whole_doc:
                     digest = self._digest_cache.get(plan.doc_id)
                     if not digest:
                         digest = build_digest(
-                            text, chat_fn=lambda s: _chat([{"role": "user", "content": s}])
+                            text, chat_fn=lambda s: chat([{"role": "user", "content": s}])
                         )
                         if len(self._digest_cache) > 6:
                             self._digest_cache.pop(next(iter(self._digest_cache)))
                         self._digest_cache[plan.doc_id] = digest
-                    body = (
-                        "Dossiê do documento inteiro (resumo de todas as partes,"
-                        " gerado página por página):\n"
-                        f"{digest}"
-                    )
+                    body = digest_body(digest)
                 else:
-                    body = f"Trechos relevantes:\n{retrieve_relevant(message, text)}"
+                    body = excerpts_body(retrieve_relevant(message, text))
                 msg_parts.append(
-                    f"DOCUMENTO ANEXADO E DISPONÍVEL PARA LEITURA: '{doc['name']}' "
-                    f"({doc['pages']} páginas). Conteúdo:\n\n{body}"
+                    build_document_block(doc["name"], doc["pages"], body)
                 )
                 tools_used.append("document")
                 self._session_docs[session_id] = plan.doc_id
@@ -162,15 +111,7 @@ class StudyAgent:
 
         enriched_message = "\n\n".join(msg_parts)
 
-        history = self.memory.history(session_id, limit=HISTORY_LIMIT)
-        summary_entry = self._rolling_summary(session_id)
-        system_content = SYSTEM_PROMPT
-        if summary_entry:
-            system_content += (
-                f"\n\nResumo do que já foi conversado nesta sessão:\n{summary_entry}"
-            )
-        messages = [{"role": "system", "content": system_content}, *history]
-        messages.append({"role": "user", "content": enriched_message})
+        messages = self.ctx.assemble(session_id, enriched_message)
 
         response_text = self._run_tool_loop(messages, images, tools_used)
 
@@ -233,41 +174,6 @@ class StudyAgent:
                             )
                 current.append({"role": "tool", "name": name, "content": result})
         return reply.get("content") or ""
-
-    def _rolling_summary(self, session_id):
-        total = self.memory.count_messages(session_id)
-        if total <= HISTORY_LIMIT + SUMMARY_REFRESH_DELTA:
-            return None
-        entry = self.memory.get_summary(session_id)
-        needs_refresh = entry is None or (
-            total - entry["msg_count"] >= SUMMARY_REFRESH_DELTA
-        )
-        if not needs_refresh:
-            return entry["summary"]
-        older = self.memory.history_head(
-            session_id, max(total - HISTORY_LIMIT, 0)
-        )
-        if not older:
-            return entry["summary"] if entry else None
-        transcript = "\n".join(
-            f"{'aluno' if m['role'] == 'user' else 'tutor'}: {m['content'][:400]}"
-            for m in older
-        )
-        summary_text = chat(
-            [
-                {
-                    "role": "system",
-                    "content": SUMMARY_PROMPT.format(
-                        previous=entry["summary"] if entry else "(nenhum)",
-                        transcript=transcript,
-                    ),
-                }
-            ]
-        ).strip()
-
-        summary_text = re.sub(r"^(assistant|user|tutor)\s*[:\-]?\s*", "", summary_text).strip()
-        self.memory.set_summary(session_id, summary_text, total - HISTORY_LIMIT)
-        return summary_text
 
     def capture_and_read_screen(self, region=None, monitor=1):
         self._require("screen_capture")
