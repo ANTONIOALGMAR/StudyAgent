@@ -1,16 +1,14 @@
-backend/.venv/
-backend/models/piper/*.onnx
-backend/models/piper/*.json
-frontend/node_modules/
-frontend/dist/
-frontend/tsconfig.tsbuildinfo
-**/__pycache__/
+# Python
+__pycache__/
 *.pyc
-.env
-data/memory/*.db
-data/documents/*
-data/conversations/*
-!data/memory/.gitkeep
-!data/documents/.gitkeep
-!data/conversations/.gitkeep
-data/
+.venv/
+
+# Node / frontend
+node_modules/
+frontend/dist/
+*.tsbuildinfo
+
+# Dados gerados em runtime — estrutura preservada via .gitkeep
+data/**
+!data/**/
+!data/**/*.gitkeep
