@@ -182,3 +182,7 @@ export async function gradeExercise(
   if (!res.ok) throw new Error((await res.json()).detail || 'Falha ao corrigir')
   return res.json()
 }
+
+export function documentFileUrl(id: string): string {
+  return `${API}/api/documents/${id}/file`
+}

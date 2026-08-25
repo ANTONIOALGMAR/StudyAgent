@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import AgentFace, { type FaceState } from './AgentFace'
 import ExercisesPanel from './ExercisesPanel'
+import PdfViewer from './PdfViewer'
 import Sidebar from './Sidebar'
 import {
   chat,
@@ -94,6 +95,7 @@ export default function Chat() {
 
   const fileInputRef = useRef<HTMLInputElement | null>(null)
   const [activeDoc, setActiveDoc] = useState<UploadedDoc | null>(null)
+  const [viewerDoc, setViewerDoc] = useState<UploadedDoc | null>(null)
 
   const [liveOpen, setLiveOpen] = useState(false)
   const [liveMinimized, setLiveMinimized] = useState(false)
@@ -208,6 +210,7 @@ export default function Chat() {
     try {
       const doc = await uploadDocument(file)
       setActiveDoc(doc)
+      setViewerDoc(doc)
       setMessages((m) => [
         ...m,
         {
@@ -541,6 +544,13 @@ export default function Chat() {
       title: 'Estudar um documento',
     },
     {
+      icon: '📖',
+      label: 'Ler PDF',
+      active: !!viewerDoc,
+      onClick: () => setViewerDoc(viewerDoc ? null : activeDoc),
+      title: 'Abrir/fechar leitor de documentos',
+    },
+    {
       icon: '🎯',
       label: 'Exercícios',
       active: exOpen,
@@ -606,8 +616,13 @@ export default function Chat() {
       {activeDoc && (
         <div className="doc-chip">
           📄 {activeDoc.name}
+          <button onClick={() => setViewerDoc(activeDoc)} title="Abrir leitor de PDF">👁</button>
           <button onClick={() => setActiveDoc(null)} title="Remover documento">✕</button>
         </div>
+      )}
+
+      {viewerDoc && (
+        <PdfViewer doc={viewerDoc} onClose={() => setViewerDoc(null)} />
       )}
 
       {handsFree && statusLabel && <div className={`status-pill st-${hfState}`}>{statusLabel}</div>}

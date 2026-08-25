@@ -236,3 +236,16 @@ def exercises_grade(req: ExerciseGradeRequest):
         return exercises.grade(exercise_id=req.exercise_id, answers=req.answers)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
+
+
+@app.get("/api/documents/{doc_id}/file")
+def document_file(doc_id: str):
+    doc = agent.memory.get_document(doc_id)
+    if not doc:
+        raise HTTPException(status_code=404, detail="documento não encontrado")
+    path = Path(doc["path"])
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="arquivo não encontrado no disco")
+    from fastapi.responses import FileResponse
+
+    return FileResponse(path, media_type="application/pdf", filename=doc["name"])
