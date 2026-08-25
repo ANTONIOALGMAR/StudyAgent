@@ -456,3 +456,144 @@ export async function rejectAction(proposalId: string) {
   if (!res.ok) throw new Error('Falha ao rejeitar ação')
   return res.json()
 }
+
+// ── P8: Advanced Profile ──────────────────────────────────────────────────────
+
+export async function startTime(type: string, metadata: Record<string, unknown> = {}): Promise<{ session_id: string }> {
+  const res = await fetch(`${API}/api/sessions/start`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ session_type: type, metadata }),
+  })
+  if (!res.ok) throw new Error('Falha ao iniciar sessão')
+  return res.json()
+}
+
+export async function endTime(sessionId: string): Promise<{ duration_seconds: number }> {
+  const res = await fetch(`${API}/api/sessions/${sessionId}/end`, { method: 'POST' })
+  if (!res.ok) throw new Error('Falha ao encerrar sessão')
+  return res.json()
+}
+
+export interface TimeAnalytics {
+  total_sessions: number
+  total_study_minutes: number
+  avg_session_minutes: number
+  best_hours: { hour: number; sessions: number }[]
+  by_type: Record<string, { count: number; avg_minutes: number }>
+}
+
+export async function getTimeAnalytics(): Promise<TimeAnalytics> {
+  const res = await fetch(`${API}/api/stats/time-analytics`)
+  if (!res.ok) throw new Error('Falha ao carregar analytics')
+  return res.json()
+}
+
+export interface Recommendation {
+  type: string
+  description: string
+  estimated_minutes: number
+  priority: string
+}
+
+export async function getRecommendations(minutes: number): Promise<{ available_minutes: number; suggestions: Recommendation[] }> {
+  const res = await fetch(`${API}/api/recommendations/${minutes}`)
+  if (!res.ok) throw new Error('Falha ao carregar recomendações')
+  return res.json()
+}
+
+export async function getDifficulty(topic: string) {
+  const res = await fetch(`${API}/api/mastery/${topic}/difficulty`)
+  if (!res.ok) throw new Error('Falha ao carregar dificuldade')
+  return res.json()
+}
+
+// ── P9: Gamification ─────────────────────────────────────────────────────────
+
+export interface Achievement {
+  id: string
+  title: string
+  description: string
+  icon: string
+  category: string
+  threshold: number
+  earned: boolean
+  earned_at: string | null
+}
+
+export interface AchievementProgress {
+  locked: { id: string; title: string; icon: string; current: number; target: number; percent: number }[]
+  total: number
+  earned: number
+}
+
+export async function getAchievements(): Promise<Achievement[]> {
+  const res = await fetch(`${API}/api/achievements`)
+  if (!res.ok) throw new Error('Falha ao carregar conquistas')
+  return res.json()
+}
+
+export async function getAchievementProgress(): Promise<AchievementProgress> {
+  const res = await fetch(`${API}/api/achievements/progress`)
+  if (!res.ok) throw new Error('Falha ao carregar progresso')
+  return res.json()
+}
+
+export async function checkAchievements(): Promise<{ newly_earned: Achievement[] }> {
+  const res = await fetch(`${API}/api/achievements/check`)
+  if (!res.ok) throw new Error('Falha ao verificar conquistas')
+  return res.json()
+}
+
+export interface TopicStreak {
+  topic: string
+  days_practiced: number
+  current_streak: number
+  last_practiced: string | null
+}
+
+export async function getTopicStreaks(): Promise<TopicStreak[]> {
+  const res = await fetch(`${API}/api/streaks`)
+  if (!res.ok) throw new Error('Falha ao carregar streaks')
+  return res.json()
+}
+
+// ── P10: Export/Import ────────────────────────────────────────────────────────
+
+export function exportDeckCsvUrl(deckId: string): string {
+  return `${API}/api/flashcards/decks/${deckId}/export/csv`
+}
+
+export async function exportDeckJson(deckId: string) {
+  const res = await fetch(`${API}/api/flashcards/decks/${deckId}/export/json`)
+  if (!res.ok) throw new Error('Falha ao exportar deck')
+  return res.json()
+}
+
+export async function importFlashcards(content: string, topic: string, title: string) {
+  const res = await fetch(`${API}/api/flashcards/import`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ content, topic, title }),
+  })
+  if (!res.ok) throw new Error((await res.json()).detail || 'Falha ao importar')
+  return res.json()
+}
+
+export function studyPlanExportUrl(planId: string): string {
+  return `${API}/api/study-plans/${planId}/export`
+}
+
+export async function exportProfile() {
+  const res = await fetch(`${API}/api/profile/export`)
+  if (!res.ok) throw new Error('Falha ao exportar perfil')
+  return res.json()
+}
+
+export async function importProfile(file: File) {
+  const form = new FormData()
+  form.append('file', file)
+  const res = await fetch(`${API}/api/profile/import`, { method: 'POST', body: form })
+  if (!res.ok) throw new Error((await res.json()).detail || 'Falha ao importar')
+  return res.json()
+}

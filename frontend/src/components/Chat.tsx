@@ -4,6 +4,7 @@ import ActionConfirm from './ActionConfirm'
 import ExercisesPanel from './ExercisesPanel'
 import FlashcardsPanel from './FlashcardsPanel'
 import PdfViewer from './PdfViewer'
+import AchievementsPanel from './AchievementsPanel'
 import ProfilePanel from './ProfilePanel'
 import Sidebar from './Sidebar'
 import StatsPanel from './StatsPanel'
@@ -121,6 +122,7 @@ export default function Chat() {
   const [spOpen, setSpOpen] = useState(false)
   const [stOpen, setStOpen] = useState(false)
   const [profOpen, setProfOpen] = useState(false)
+  const [achOpen, setAchOpen] = useState(false)
   const [stage, setStage] = useState(false)
   const [watchMode, setWatchMode] = useState(false)
   const [monitors, setMonitors] = useState<MonitorInfo[]>([])
@@ -607,6 +609,13 @@ export default function Chat() {
       title: 'Perfil do aluno e análise de aprendizado',
     },
     {
+      icon: '🏆',
+      label: 'Conquistas',
+      active: achOpen,
+      onClick: () => setAchOpen(!achOpen),
+      title: 'Conquistas e sequências de estudo',
+    },
+    {
       icon: '👁',
       label: 'Olhar agora',
       active: false,
@@ -795,6 +804,18 @@ export default function Chat() {
             </button>
           </div>
           <ProfilePanel />
+        </div>
+      )}
+
+      {achOpen && (
+        <div className="live-panel achievements-panel">
+          <div className="live-head">
+            <strong>🏆 conquistas</strong>
+            <button className="btn-screen" onClick={() => setAchOpen(false)}>
+              ✕
+            </button>
+          </div>
+          <AchievementsPanel />
         </div>
       )}
 

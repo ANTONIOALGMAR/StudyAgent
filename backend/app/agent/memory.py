@@ -151,6 +151,32 @@ class Memory:
                     created_at       TEXT NOT NULL,
                     resolved_at      TEXT
                 );
+
+                -- P8: Perfil avançado
+                CREATE TABLE IF NOT EXISTS session_log (
+                    id               TEXT PRIMARY KEY,
+                    session_type     TEXT NOT NULL,
+                    started_at       TEXT NOT NULL,
+                    ended_at         TEXT,
+                    duration_seconds INTEGER,
+                    metadata         TEXT NOT NULL DEFAULT '{}'
+                );
+
+                CREATE TABLE IF NOT EXISTS adaptive_difficulty (
+                    topic        TEXT PRIMARY KEY,
+                    current_level TEXT NOT NULL DEFAULT 'médio',
+                    window_avg   REAL NOT NULL DEFAULT 50.0,
+                    window_count INTEGER NOT NULL DEFAULT 0,
+                    updated_at   TEXT NOT NULL
+                );
+
+                -- P9: Gamificação
+                CREATE TABLE IF NOT EXISTS achievements (
+                    id             TEXT PRIMARY KEY,
+                    achievement_id TEXT NOT NULL,
+                    earned_at      TEXT NOT NULL,
+                    metadata       TEXT NOT NULL DEFAULT '{}'
+                );
                 """
             )
 

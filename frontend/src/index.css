@@ -965,3 +965,100 @@ body {
   background: #991b1b; border: none; border-radius: 6px; color: white;
   padding: 6px 12px; cursor: pointer; font-size: 0.82rem;
 }
+
+/* ── Achievements Panel (P9) ─────────────────────────────────────── */
+.achievements-panel { max-height: 55%; overflow-y: auto; }
+.achievements { padding: 4px 0; }
+.achievements h3 { margin: 4px 0 10px; font-size: 0.95rem; color: #c9cede; }
+.ach-loading { text-align: center; color: #8b93a7; padding: 20px; }
+.ach-summary { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+.ach-count { font-weight: 700; font-size: 0.9rem; color: #e4e6eb; white-space: nowrap; }
+.ach-bar { flex: 1; height: 8px; background: #1d2230; border-radius: 4px; overflow: hidden; }
+.ach-fill { height: 100%; background: linear-gradient(90deg, #f59e0b, #34d27b); transition: width 0.6s ease; }
+.ach-section { margin-bottom: 14px; }
+.ach-label {
+  display: inline-block; font-size: 0.76rem; font-weight: 600;
+  text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 6px;
+  padding: 2px 7px; border-radius: 4px;
+}
+.ach-label-earned { background: #12321f; color: #34d27b; }
+.ach-label-locked { background: #1d2230; color: #8b93a7; }
+.ach-label-streak { background: #3b1220; color: #f59e0b; }
+.ach-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+.ach-card {
+  background: #141824; border: 1px solid #232936; border-radius: 8px;
+  padding: 8px; text-align: center; display: flex; flex-direction: column; align-items: center; gap: 3px;
+}
+.ach-earned { border-color: #2f6f4f; }
+.ach-locked { opacity: 0.6; }
+.ach-icon { font-size: 1.4rem; }
+.ach-icon-muted { filter: grayscale(1); opacity: 0.4; }
+.ach-title { font-size: 0.72rem; font-weight: 600; color: #e4e6eb; }
+.ach-desc { font-size: 0.65rem; color: #8b93a7; }
+.ach-progress-bar {
+  width: 100%; height: 4px; background: #1d2230; border-radius: 2px;
+  overflow: hidden; position: relative;
+}
+.ach-progress-fill { height: 100%; background: #5ba3f5; transition: width 0.4s; }
+.ach-progress-text { font-size: 0.6rem; color: #8b93a7; }
+.streak-row {
+  display: flex; justify-content: space-between; font-size: 0.84rem;
+  padding: 4px 0; border-bottom: 1px solid #1d2230;
+}
+.streak-topic { color: #c9cfdb; }
+.streak-days { color: #f59e0b; font-weight: 600; }
+
+/* ── Recommendations (P8) ──────────────────────────────────────── */
+.rec-controls {
+  display: flex; align-items: center; gap: 6px; margin-bottom: 8px;
+}
+.rec-input {
+  width: 54px; background: #12151d; border: 1px solid #2a2f3d; border-radius: 6px;
+  color: #e8eaf0; padding: 5px 7px; font-size: 0.85rem;
+}
+.rec-label { font-size: 0.8rem; color: #8b93a7; }
+.rec-btn {
+  background: linear-gradient(135deg, #5ba3f5, #7c5bf0);
+  border: none; border-radius: 6px; color: white;
+  padding: 5px 10px; cursor: pointer; font-size: 0.82rem; font-weight: 600;
+}
+.rec-list { display: flex; flex-direction: column; gap: 4px; }
+.rec-item {
+  display: flex; align-items: center; gap: 6px;
+  background: #141824; border: 1px solid #232936; border-radius: 6px;
+  padding: 7px 10px; font-size: 0.84rem;
+}
+.rec-type { font-size: 1rem; }
+.rec-desc { flex: 1; color: #c9cfdb; }
+.rec-priority { font-size: 0.7rem; text-transform: uppercase; padding: 2px 5px; border-radius: 3px; font-weight: 600; }
+.rec-priority-alta { background: #3b1220; color: #f87171; }
+.rec-priority-média { background: #16233a; color: #5ba3f5; }
+.rec-priority-baixa { background: #1d2230; color: #8b93a7; }
+.rec-item.rec-alta { border-color: #7f1d2d; }
+.stat-hint {
+  margin-top: 6px; background: #16233a; border: 1px solid #2a3b5d;
+  color: #5ba3f5; border-radius: 8px; padding: 6px 10px; font-size: 0.82rem;
+  text-align: center;
+}
+
+/* ── Flashcards Export/Import (P10) ─────────────────────────────── */
+.fc-deck-actions { display: flex; gap: 4px; align-items: center; }
+.fc-export-btn {
+  background: #1d2230; border: 1px solid #2a2f3d; border-radius: 6px;
+  color: #8b93a7; padding: 6px 8px; cursor: pointer; font-size: 0.85rem;
+}
+.fc-export-btn:hover { border-color: #34d27b; color: #34d27b; }
+.fc-import { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
+.fc-import-text {
+  background: #12151d; border: 1px solid #2a2f3d; border-radius: 8px;
+  color: #e8eaf0; padding: 8px 10px; font-size: 0.85rem; font-family: monospace;
+  resize: vertical;
+}
+.fc-new { display: flex; gap: 6px; text-align: center; }
+
+/* ── Study Plan Export (P10) ─────────────────────────────────────── */
+.sp-export-btn {
+  background: #1d2230; border: 1px solid #2a2f3d; border-radius: 6px;
+  color: #8b93a7; padding: 5px 8px; cursor: pointer; font-size: 0.85rem;
+}
+.sp-export-btn:hover { border-color: #34d27b; color: #34d27b; }

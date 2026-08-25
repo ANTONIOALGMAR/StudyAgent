@@ -4,6 +4,7 @@ import {
   getStudyPlans,
   getStudyPlan,
   toggleStudyItem,
+  studyPlanExportUrl,
   type StudyPlan,
   type StudyItem,
 } from '../api'
@@ -77,6 +78,14 @@ export default function StudyPlanPanel({ onMood }: Props) {
     }
   }
 
+  function handleExportPlan(planId: string) {
+    const url = studyPlanExportUrl(planId)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `plano_${planId}.json`
+    a.click()
+  }
+
   if (activePlan) {
     const pct = Math.round((activePlan.done_items / Math.max(activePlan.total_items, 1)) * 100)
     return (
@@ -90,6 +99,13 @@ export default function StudyPlanPanel({ onMood }: Props) {
             <span className="sp-topic">{activePlan.topic}</span>
           </div>
           <div className="sp-pct">{pct}%</div>
+          <button
+            className="sp-export-btn"
+            onClick={() => handleExportPlan(activePlan.id)}
+            title="Exportar plano"
+          >
+            📥
+          </button>
         </div>
         <div className="sp-bar">
           <div className="sp-fill" style={{ width: `${pct}%` }} />

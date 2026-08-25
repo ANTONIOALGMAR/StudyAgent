@@ -1,4 +1,5 @@
 import base64
+import json
 from pathlib import Path
 
 from fastapi import FastAPI, File, HTTPException, UploadFile
@@ -12,7 +13,7 @@ from .agent.agent import PermissionDeniedError, StudyAgent
 from .audio import speech_to_text, text_to_speech
 from .config import DOCUMENTS_DIR as documents_dir
 from .security.permissions import PermissionManager
-from .tutor import automation, flashcards, profile, study_plan
+from .tutor import advanced_profile, automation, export_import, flashcards, gamification, profile, study_plan
 from .tutor import stats as tutor_stats
 from .vision import screen
 from .vision.screen import image_to_base64, image_to_jpeg_base64
@@ -416,6 +417,149 @@ def action_pending():
 @app.get("/api/actions/recent")
 def action_recent(limit: int = 10):
     return automation.list_recent(limit=limit)
+
+
+# ── P8: Perfil avançado ────────────────────────────────────────────────────────
+
+
+class SessionStartRequest(BaseModel):
+    session_type: str
+    metadata: dict = {}
+
+
+@app.post("/api/sessions/start")
+def session_start(req: SessionStartRequest):
+    session_id = advanced_profile.start_session(req.session_type, req.metadata)
+    return {"session_id": session_id}
+
+
+@app.post("/api/sessions/{session_id}/end")
+def session_end(session_id: str):
+    try:
+        return advanced_profile.end_session(session_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@app.get("/api/stats/time-analytics")
+def time_analytics():
+    return advanced_profile.time_analytics()
+
+
+@app.get("/api/recommendations/{minutes}")
+def recommendations(minutes: int):
+    return advanced_profile.recommend_for_time(minutes)
+
+
+@app.get("/api/mastery/{topic}/difficulty")
+def mastery_difficulty(topic: str):
+    return advanced_profile.get_adaptive_difficulty(topic)
+
+
+@app.post("/api/mastery/{topic}/difficulty")
+def mastery_update_difficulty(topic: str):
+    topic_data = profile.topic_details(topic)
+    if not topic_data:
+        raise HTTPException(status_code=404, detail="Tema não encontrado")
+    return advanced_profile.update_difficulty(topic, topic_data["avg_percent"])
+
+
+# ── P9: Gamificação ────────────────────────────────────────────────────────────
+
+
+@app.get("/api/achievements")
+def achievements_list():
+    return gamification.list_achievements()
+
+
+@app.get("/api/achievements/progress")
+def achievements_progress():
+    return gamification.achievement_progress()
+
+
+@app.get("/api/achievements/check")
+def achievements_check():
+    newly = gamification.check_achievements()
+    return {"newly_earned": newly}
+
+
+@app.get("/api/streaks")
+def topic_streaks():
+    return gamification.topic_streaks()
+
+
+# ── P10: Export/Import ─────────────────────────────────────────────────────────
+
+
+@app.get("/api/flashcards/decks/{deck_id}/export/csv")
+def flashcard_export_csv(deck_id: str):
+    try:
+        csv_content = export_import.export_deck_csv(deck_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return Response(
+        content=csv_content,
+        media_type="text/csv",
+        headers={"Content-Disposition": f'attachment; filename="deck_{deck_id}.csv"'},
+    )
+
+
+@app.get("/api/flashcards/decks/{deck_id}/export/json")
+def flashcard_export_json(deck_id: str):
+    try:
+        return export_import.export_deck_json(deck_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+class FlashcardImportRequest(BaseModel):
+    content: str
+    topic: str = "Importado"
+    title: str = ""
+
+
+@app.post("/api/flashcards/import")
+def flashcard_import(req: FlashcardImportRequest):
+    try:
+        return export_import.import_deck_csv(req.content, req.topic, req.title)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.post("/api/flashcards/import/json")
+def flashcard_import_json(req: FlashcardImportRequest):
+    try:
+        return export_import.import_deck_json(req.content)
+    except (ValueError, KeyError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.get("/api/study-plans/{plan_id}/export")
+def study_plan_export(plan_id: str):
+    try:
+        return export_import.export_plan_json(plan_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@app.get("/api/profile/export")
+def profile_export():
+    return export_import.export_full()
+
+
+@app.post("/api/profile/import")
+async def profile_import(file: UploadFile = File(...)):
+    raw = await file.read()
+    if not raw:
+        raise HTTPException(status_code=400, detail="arquivo vazio")
+    try:
+        data = json.loads(raw.decode("utf-8"))
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=f"JSON inválido: {exc}") from exc
+    try:
+        return export_import.import_full(data)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @app.get("/api/documents/{doc_id}/file")

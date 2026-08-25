@@ -1,6 +1,6 @@
 # StudyAgent
 
-Tutor de estudos multimodal que roda **100% local** no seu computador (Linux): chat com IA local via Ollama, voz nos dois sentidos, visão computacional para ler telas e câmera, leitura completa de PDFs, pesquisa na internet com fontes citadas, gerador de exercícios com correção automática — tudo sob um sistema de permissões explícitas.
+Tutor de estudos multimodal que roda **100% local** no seu computador (Linux): chat com IA local via Ollama, voz nos dois sentidos, visão computacional para ler telas e câmera, leitura completa de PDFs, pesquisa na internet com fontes citadas, exercícios com correção automática, flashcards com repetição espaçada, planos de estudo, perfil adaptativo, gamificação com conquistas, recomendações por tempo, export/import em CSV e JSON — tudo sob um sistema de permissões explícitas.
 
 ## Funcionalidades
 
@@ -11,120 +11,187 @@ Tutor de estudos multimodal que roda **100% local** no seu computador (Linux): c
 - Calculadora segura embutida
 
 ### 🗣 Voz completa
-
-- Fala (TTS) com Piper e escuta (STT) com faster-whisper, 100% locais.
-- **Modo viva-voz opcional**: diga **"ei Study, sua pergunta"** em qualquer
-  aba/janela — o agente ouve pela palavra de acordar, responde no chat e
-  fala a resposta pelos alto-falantes:
-
+- **Modo viva-voz opcional**: diga **"ei Study, sua pergunta"** em qualquer aba/janela — o agente ouve pela palavra de acordar, responde no chat e fala a resposta pelos alto-falantes:
   ```bash
   cp scripts/studyagent-listener.service ~/.config/systemd/user/
   systemctl --user daemon-reload && systemctl --user enable --now studyagent-listener
-  journalctl --user -u studyagent-listener -f   # ver o que ele ouve
+  journalctl --user -u studyagent-listener -f
   ```
-
-  Ajuste a sensibilidade do microfone com `STUDY_VAD_THRESHOLD`
-  (padrão 500; diminua se ele não acordar, aumente se acordar sozinho).
-- **🎧 Audiobook de documentos**: no leitor de PDF, toque em 🎧 para ouvir
-  o arquivo página por página (acessibilidade / estudar ouvindo).
-- **Fala → texto:** faster-whisper `small`, botão 🎙 aperta-para-falar
+  Ajuste `STUDY_VAD_THRESHOLD=500` (diminua se não acordar, aumente se acordar sozinho).
+- **🎧 Audiobook de documentos**: no leitor de PDF, toque em 🎧 para ouvir o arquivo página por página (acessibilidade)
+- **Fala → texto:** faster-whisper `small` com VAD silero, beam=5, prompt PT-BR
 - **Modo conversa automática 🔄:** o agente ouve continuamente (VAD no navegador), transcreve, responde e fala — mão livre
 - **Texto → fala:** Piper com voz brasileira `pt_BR-faber-medium`
 
 ### 👀 Visão
 - 🖥 Anexo captura de tela à mensagem
-- 📺 Painel *ao vivo* multi-monitor com atualização contínua e **modo comentarista** (o agente avisa quando algo muda na tela); painel minimizável
+- 📺 Painel *ao vivo* multi-monitor com atualização contínua e **modo comentarista** (o agente avisa quando algo muda na tela)
 - 📷 Câmera: aponte, capture e pergunte
+- Visão por IA híbrida: OCR Tesseract + leitura do modelo de visão
 
 ### 📄 Documentos
 - Upload de PDF/txt/md com extração de texto
-- **Leitura integral (map-reduce):** pediu resumo ou "o documento todo"? O PDF é dividido em partes, cada uma é resumida e vira um dossiê completo — nada fica de fora, mesmo em arquivos grandes (com cache por documento)
+- **Leitura integral (map-reduce):** resumo completo do documento inteiro, cache por arquivo
+- **RAG semântico:** busca por embeddings `nomic-embed-text` + numpy cosine similarity, Índices persistentes em `.npz`
 - **Leitor integrado:** visualize o PDF dentro do app enquanto conversa sobre ele
 - Documento anexado tem prioridade sobre captura de tela
 
 ### 🌐 Pesquisa na internet (com honestidade)
 - Cascata de buscadores: DuckDuckGo → Bing → Wikipédia
 - Abre automaticamente as páginas mais relevantes, extrai e destila os fatos objetivos
-- Síntese final com o modelo de visão + regras de desambiguação (não confunde entidades homônimas)
-- Sempre cita fontes `[fonte: URL]`; se não achar, admite que não sabe em vez de inventar
+- Síntese final com o modelo de visão + regras de desambiguação
+- Sempre cita fontes `[fonte: URL]`; se não achar, admite que não sabe
 
 ### 🎯 Exercícios
 - Gera questões do tema que você escolher (múltipla escolha ou dissertativas)
 - Gabarito fica no servidor — correção automática aceitando respostas equivalentes (`0,5` = `1/2`)
-- Barra de pontuação, gabarito comentado nas erradas
+- **Histórico persistente:** resultados salvos automaticamente para o dashboard de progresso
+
+### 🃏 Flashcards com repetição espaçada
+- Geração automática de flashcards via LLM a partir de um tema
+- Algoritmo SM-2 (mesmo do Anki): intervalo cresce conforme você acerta, recomeça quando erra
+- Revisão interativa: revele a resposta e avalie (😵 de novo / 😓 difícil / 😊 bom / 🤩 fácil)
+- Stats por deck: total, pendentes, dominados (intervalo > 21 dias)
+
+### 📋 Planos de estudo
+- Geração automática de planos estruturados via LLM (5-12 subtópicos)
+- Checklist interativo com barra de progresso
+- Progresso salvo no SQLite — retome de onde parou
+
+### 📊 Dashboard de progresso
+- Grid de métricas: exercícios feitos, média geral, streak de dias, flashcards dominados, % planos
+- Listas de exercícios recentes e planos ativos
+- Alertas quando há cards pendentes de revisão
+
+### 👤 Perfil adaptativo do aluno
+- Cadastro: nome, série, escola, preferências
+- **Domínio por tema:** tracking automático de acertos/erros em exercícios e flashcards
+- **Detecção de pontos fracos:** temas com média < 55% são sinalizados
+- O agente recebe os pontos fracos no system prompt e prioriza esses temas
+
+### ⚡ Automação com confirmação
+- Quando o agente quer executar uma ação (gerar exercícios, criar plano, pesquisar), propõe formalmente
+- Barra flutuante com botões ✓ executar / ✕ recusar
+- Histórico de propostas aprovadas/rejeitadas
+
+### 🏆 Gamificação
+- 16 conquistas desbloqueáveis: primeiro exercício, streak 7 dias, domínio total, etc.
+- Progresso visual com barras para conquistas bloqueadas
+- Sequências por tema (streaks) — quantos dias seguidos estudou cada assunto
+- Verificação automática de conquistas ao interagir com exercícios, flashcards e planos
+
+### ⏱ Perfil avançado
+- Registro de sessões de estudo com duração (exercício, revisão, chat)
+- **Analytics temporal**: horários mais produtivos, média de tempo por sessão
+- **Dificuldade adaptativa**: o nível dos exercícios se ajusta automaticamente ao desempenho
+- **Recomendações por tempo**: "Tenho 30 minutos" → sugere o que estudar
+
+### 📤 Export/Import
+- **Flashcards**: exportar baralho em CSV (compatível com Anki) ou JSON
+- **Importar**: cole um CSV front/back ou importe um JSON exportado
+- **Planos de estudo**: exportar como JSON
+- **Perfil completo**: exportar/importar todos os dados (perfil, mastery, decks, planos)
 
 ### 🎭 Interface
-- Rosto animado do agente que reage: pensa, ouve, grava, fala — e **reage ao conteúdo** (fica feliz quando te elogia, preocupado quando te corrige, curioso quando pergunta)
+- Rosto animado do agente que reage: pensa, ouve, grava, fala — e **reage ao conteúdo** (felicidade, preocupação, curiosidade)
 - **Modo palco:** rosto em tela cheia (⤢, Esc para sair)
-- Sidebar de ferramentas sanfona (recolhe pra ícones) + painel de permissões recolhível
+- Sidebar de ferramentas sanfona com 10 botões
 - Tema escuro, tudo em português
 
 ## Arquitetura
 
 ```
 backend/app/
-├── main.py              API FastAPI (chat, tela, áudio, docs, exercícios, permissões)
-├── config.py            Caminhos, modelos Ollama
-├── core/                Núcleo V2 (desacoplado do agente)
-│   ├── model_manager.py    Papéis de modelos por env (text/vision/synthesis/stt/tts)
-│   ├── planner.py          Decide captura de tela, monitor e estratégia de documento
-│   ├── context_manager.py  System prompt, resumo rolante, montagem de contexto
-│   ├── vision_router.py    Notas de imagem, bloco híbrido de OCR, janela ativa
-│   ├── tool_registry.py    Registro decorado de ferramentas + schemas p/ tool-calling
-│   └── registered_tools.py web_search, open_url, calculate
+├── main.py                 API FastAPI (chat, tela, áudio, docs, exercícios, tutor, perfil, ações)
+├── config.py               Caminhos, modelos Ollama
+├── core/                   Núcleo V2 (desacoplado do agente)
+│   ├── model_manager.py      Papéis de modelos por env (text/vision/synthesis/embedding/stt/tts)
+│   ├── planner.py            Decide captura de tela, monitor e estratégia de documento
+│   ├── context_manager.py    System prompt + perfil adaptativo + prompt de propostas
+│   ├── vision_router.py      Notas de imagem, bloco híbrido de OCR, janela ativa
+│   ├── tool_registry.py      Registro decorado de ferramentas + schemas p/ tool-calling
+│   └── registered_tools.py   web_search, open_url, calculate
 ├── agent/
-│   ├── agent.py         Orquestrador: plano → ferramentas → resposta
-│   ├── llm.py           Cliente Ollama + síntese de pesquisas (qwen2.5vl)
-│   ├── memory.py        SQLite: sessões, mensagens, resumos, documentos
-│   └── exercises.py     Gerador de questões + corretor com equivalência
+│   ├── agent.py            Orquestrador: plano → ferramentas → resposta
+│   ├── llm.py              Cliente Ollama + síntese de pesquisas (qwen2.5vl)
+│   ├── memory.py           SQLite: sessões, mensagens, resumos, documentos, flashcards, planos, perfil, ações
+│   ├── exercises.py         Gerador + corretor + grade_and_track (atualiza mastery)
+│   └── memory.py           12 tabelas SQLite, criadas no init
+├── tutor/                  Módulos de tutoria (P5-P10)
+│   ├── flashcards.py         SM-2, geração LLM, review, stats por deck
+│   ├── study_plan.py         Planos LLM + checklist toggle + progresso
+│   ├── stats.py              Dashboard combinado (exercícios + flashcards + planos)
+│   ├── profile.py            Perfil do aluno, topic_mastery, weak/strong, sugestões
+│   ├── automation.py         Propostas de ação, approve/reject, prompt injetado
+│   ├── advanced_profile.py   Sessões, analytics temporal, dificuldade adaptativa, recomendações
+│   ├── gamification.py       16 conquistas, streaks por tema, verificação automática
+│   └── export_import.py      CSV/Anki flashcards, JSON planos, perfil completo
 ├── vision/
-│   ├── screen.py        Captura multi-monitor (mss + cosmic-screenshot p/ Wayland)
-│   ├── window.py        Janela ativa (xdotool/swaymsg; None em Wayland sem suporte)
-│   └── ocr.py           OCR Tesseract (híbrido com a visão do modelo)
+│   ├── screen.py           Captura multi-monitor (mss + cosmic-screenshot p/ Wayland)
+│   ├── window.py           Janela ativa (xdotool/swaymsg)
+│   └── ocr.py              OCR Tesseract (híbrido com a visão do modelo)
 ├── audio/
-│   ├── speech_to_text.py  faster-whisper
-│   └── text_to_speech.py  Piper
+│   ├── speech_to_text.py   faster-whisper com VAD silero + prompt PT-BR
+│   ├── text_to_speech.py   Piper TTS
+│   ├── vad.py              Segmentador por energia (puro numpy, testável)
+│   ├── wake_word.py        Gatilho "ei study" sobre a transcrição STT
+│   └── listener.py         Daemon viva-voz (arecord→VAD→STT→chat→TTS→aplay)
 ├── tools/
-│   ├── calculator.py    Avaliador AST seguro
-│   ├── documents.py     Extração PDF, digest map-reduce, RAG semântico, narração
-│   ├── rag.py           Busca semântica local (nomic-embed-text + numpy)
-│   └── web_search.py    DDG→Bing→Wikipédia, fetch de páginas, destilação
-└── security/permissions.py  Portão de permissões
+│   ├── calculator.py       Avaliador AST seguro
+│   ├── documents.py        Extração PDF, digest map-reduce, narração (audiobook)
+│   ├── rag.py              Busca semântica (nomic-embed-text + numpy cosine)
+│   └── web_search.py       DDG→Bing→Wikipédia, fetch, destilação
+└── security/permissions.py Portão de permissões
 
 frontend/src/
-├── App.tsx              Layout: painel de permissões sanfona + chat
+├── App.tsx                 Layout: sidebar permissões + chat
 ├── components/
-│   ├── Chat.tsx         Núcleo da UI (conversa, voz, telas, câmera)
-│   ├── AgentFace.tsx    Rosto SVG expressivo
-│   ├── Sidebar.tsx      Ferramentas sanfona
-│   ├── ExercisesPanel.tsx  Quiz com correção
-│   ├── PdfViewer.tsx    Leitor de documentos
+│   ├── Chat.tsx              Núcleo da UI (conversa, voz, telas, câmera, 10 botões sidebar)
+│   ├── AgentFace.tsx         Rosto SVG expressivo
+│   ├── Sidebar.tsx           Ferramentas sanfona
+│   ├── ExercisesPanel.tsx    Quiz com correção
+│   ├── FlashcardsPanel.tsx   Baralhos + revisão SM-2 interativa
+│   ├── StudyPlanPanel.tsx    Checklist de plano de estudo
+│   ├── StatsPanel.tsx        Dashboard de progresso + analytics temporal
+│   ├── ProfilePanel.tsx      Perfil + análise de aprendizado
+│   ├── AchievementsPanel.tsx Conquistas + streaks por tema
+│   ├── ActionConfirm.tsx     Barra de confirmação de ações
+│   ├── PdfViewer.tsx         Leitor de documentos + 🎧 audiobook
 │   └── PermissionsPanel.tsx
-└── api.ts               Cliente tipado da API
+└── api.ts                  Cliente tipado (40+ funções)
 ```
 
 ### Testes
 
-O backend tem suíte pytest (planner, registry, calculadora, documentos,
-exercícios, permissões) e lint ruff:
+139 testes pytest (planner, registry, calculadora, documentos, exercícios, permissões, context_manager, vision_router, wake_word, VAD, RAG, tutor SM-2, flashcards CRUD, study plans, stats, profile, automation, advanced_profile, gamification, export/import) e lint ruff:
 
 ```bash
 cd backend
-.venv/bin/python -m pytest -q      # testes
+.venv/bin/python -m pytest -q       # 139 testes
 .venv/bin/python -m ruff check app tests
 ```
 
+Frontend: `npx tsc -b` (zero erros).
+
 CI roda em cada push via GitHub Actions (`.github/workflows/backend.yml`).
 
-Modelos são configuráveis por variável de ambiente (`STUDY_TEXT_MODEL`,
-`STUDY_VISION_MODEL`, `STUDY_SYNTH_MODEL`, `STUDY_EMBEDDING_MODEL`,
-`STUDY_STT_MODEL`, `STUDY_TTS_MODEL`) — sem nomes fixos no código.
+## Variáveis de ambiente
+
+| Variável | Padrão | Descrição |
+|---|---|---|
+| `STUDY_TEXT_MODEL` | `llama3.1` | Modelo de texto principal |
+| `STUDY_VISION_MODEL` | `qwen2.5vl:7b` | Modelo de visão |
+| `STUDY_SYNTH_MODEL` | (herda texto) | Síntese de pesquisas |
+| `STUDY_EMBEDDING_MODEL` | `nomic-embed-text` | Embeddings para RAG |
+| `STUDY_NUM_PREDICT` | `2048` | Limite de tokens na resposta |
+| `STUDY_VAD_THRESHOLD` | `500` | Sensibilidade do microfone (listener) |
+| `OLLAMA_HOST` | `http://localhost:11434` | Host do Ollama |
 
 ## Requisitos
 
 - Linux (Pop!_OS testado, inclui Wayland/COSMIC)
 - Python 3.12+, Node 22+
-- Ollama com `llama3.1` e `qwen2.5vl:7b`
+- Ollama com `llama3.1`, `qwen2.5vl:7b` e `nomic-embed-text`
 - GPU recomendada (RTX 3060 12GB roda tudo)
 
 ## Instalação
@@ -145,12 +212,13 @@ Modelos:
 ```bash
 ollama pull llama3.1
 ollama pull qwen2.5vl:7b
+ollama pull nomic-embed-text
 ```
 
 Voz brasileira do Piper (não vai no repo por tamanho):
 
 ```bash
-mkdir -p backend/models/piper && cd backend/models/piper
+mkdir -p backend/models && cd backend/models
 curl -LO https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/pt/pt_BR/faber/medium/pt_BR-faber-medium.onnx
 curl -LO https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/pt/pt_BR/faber/medium/pt_BR-faber-medium.onnx.json
 ```
@@ -171,6 +239,13 @@ systemctl --user daemon-reload
 systemctl --user enable --now studyagent-ollama studyagent-api studyagent-web
 ```
 
+Modo viva-voz (opcional):
+
+```bash
+cp scripts/studyagent-listener.service ~/.config/systemd/user/
+systemctl --user daemon-reload && systemctl --user enable --now studyagent-listener
+```
+
 Ou manualmente:
 
 ```bash
@@ -183,18 +258,6 @@ cd frontend && npx vite --port 5173
 ```
 
 Abra **http://localhost:5173**
-
-CLI de controle: `studyagent start|stop|status|restart|logs`
-
-Chat pelo terminal:
-
-```bash
-cd backend && source .venv/bin/activate && python ../scripts/cli_chat.py
-```
-
-- mensagem normal → conversa com o tutor
-- `!tela me explica essa questão` → captura a tela e analisa
-- `sair` → encerra
 
 ## Endpoints principais
 
@@ -211,10 +274,46 @@ cd backend && source .venv/bin/activate && python ../scripts/cli_chat.py
 | POST | `/api/calculate` | Calculadora segura |
 | POST | `/api/documents/upload` | Upload pdf/txt/md |
 | GET | `/api/documents/{id}/file` | Arquivo original (leitor) |
-| GET | `/api/documents/{id}/audio/plan` | Plano do audiobook (total de partes) |
+| GET | `/api/documents/{id}/audio/plan` | Plano do audiobook |
 | GET | `/api/documents/{id}/audio?idx=N` | Áudio WAV da parte N (🎧 acessibilidade) |
-| POST | `/api/exercises/generate` | Gera questões (gabarito fica no servidor) |
-| POST | `/api/exercises/grade` | Corrige com equivalência de respostas |
+| POST | `/api/exercises/generate` | Gera questões |
+| POST | `/api/exercises/grade` | Corrige + atualiza mastery automaticamente |
+| GET | `/api/flashcards/decks` | Lista baralhos |
+| GET | `/api/flashcards/decks/{id}/due` | Cards pendentes de revisão |
+| GET | `/api/flashcards/decks/{id}/stats` | Stats do baralho |
+| POST | `/api/flashcards/generate` | Gera baralho via LLM |
+| POST | `/api/flashcards/review` | Registra review (again/hard/good/easy) |
+| GET | `/api/study-plans` | Lista planos de estudo |
+| POST | `/api/study-plans/generate` | Gera plano via LLM |
+| GET | `/api/study-plans/{id}` | Plano com itens |
+| POST | `/api/study-plans/items/{id}/toggle` | Marca/desmarca item |
+| GET | `/api/stats/dashboard` | Dashboard combinado |
+| GET | `/api/profile` | Perfil do aluno |
+| POST | `/api/profile` | Salva perfil |
+| GET | `/api/profile/insights` | Análise de pontos fracos/fortes |
+| GET | `/api/mastery` | Domínio por tema |
+| GET | `/api/mastery/{topic}` | Detalhe de um tema |
+| POST | `/api/actions/propose` | Cria proposta de ação |
+| POST | `/api/actions/{id}/approve` | Aprova proposta |
+| POST | `/api/actions/{id}/reject` | Rejeita proposta |
+| GET | `/api/actions/pending` | Propostas pendentes |
+| POST | `/api/sessions/start` | Inicia sessão de estudo (timer) |
+| POST | `/api/sessions/{id}/end` | Encerra sessão + calcula duração |
+| GET | `/api/stats/time-analytics` | Horários produtivos, tempo médio |
+| GET | `/api/recommendations/{minutes}` | O que estudar em X minutos |
+| GET | `/api/mastery/{topic}/difficulty` | Dificuldade adaptativa atual |
+| POST | `/api/mastery/{topic}/difficulty` | Recalcula dificuldade |
+| GET | `/api/achievements` | Lista todas as conquistas |
+| GET | `/api/achievements/progress` | Progresso das bloqueadas |
+| GET | `/api/achievements/check` | Verifica e desbloqueia novas |
+| GET | `/api/streaks` | Sequências por tema |
+| GET | `/api/flashcards/decks/{id}/export/csv` | Exportar deck em CSV |
+| GET | `/api/flashcards/decks/{id}/export/json` | Exportar deck em JSON |
+| POST | `/api/flashcards/import` | Importar deck de CSV |
+| POST | `/api/flashcards/import/json` | Importar deck de JSON |
+| GET | `/api/study-plans/{id}/export` | Exportar plano em JSON |
+| GET | `/api/profile/export` | Exportar perfil completo |
+| POST | `/api/profile/import` | Importar perfil completo |
 | GET | `/api/sessions` | Lista sessões |
 | GET/PUT | `/api/permissions[/{name}]` | Permissões |
 
@@ -224,10 +323,13 @@ Controladas pelo painel lateral (ou `config/permissions.json`). Nenhum módulo a
 
 ## Roadmap
 
-- [x] Fase 1: chat, memória rolante, captura de tela, permissões, OCR, voz (STT + TTS), calculadora
-- [x] Fase 2a: câmera, upload de documentos com consulta, telas ao vivo multi-monitor
-- [x] Fase 3: gerador de exercícios e quizzes com correção automática
-- [x] Extras: rosto expressivo com emoções, modo palco, leitura integral de PDFs, leitor integrado, pesquisa web com fontes, serviços systemd
-- [ ] Fase 2b: gráficos dedicados, documentos avançados (docx)
-- [ ] Fase 4: automação controlada (mouse/teclado com confirmação)
-- [ ] Fase 5: memória entre sessões, perfil de aprendiz, plano de estudos, dashboard
+- [x] P1 — Agent Core: model manager, planner, context manager, tool registry
+- [x] P2 — Visão computacional: vision router, OCR híbrido, multi-monitor, janela ativa
+- [x] P3 — Áudio: VAD por energia, wake word, daemon viva-voz, STT turbinado
+- [x] P4 — RAG: embeddings, chunking, busca semântica, índices persistentes
+- [x] P5 — Tutor escolar: flashcards SM-2, planos de estudo, dashboard de progresso
+- [x] P6 — Perfil adaptativo: student profile, topic mastery, weak/strong detection
+- [x] P7 — Automação com confirmação: action proposals, approve/reject
+- [x] P8 — Perfil avançado: sessões, analytics temporal, dificuldade adaptativa, recomendações
+- [x] P9 — Gamificação: 16 conquistas, streaks por tema, verificação automática
+- [x] P10 — Export/Import: CSV/Anki, JSON, perfil completo
