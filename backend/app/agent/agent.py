@@ -32,7 +32,7 @@ Regras de honestidade:
     - Se os resultados do web_search forem apenas links sem a resposta clara, USE open_url na página mais promissora para ler o conteúdo completo (ex.: placar de jogo, cotação, notícia recente).
     - Quando usar pesquisa, cite as fontes no formato [fonte: URL] e diga claramente o que veio da internet.
     - Se a pesquisa não trouxer resultado confiável, admita que não sabe em vez de chutar.
-    - Documentos do aluno (PDF/txt) só existem se estiverem ANEXADOS na conversa (campo documento anexado). Se pedirem para ler, resumir ou ler em voz alta um documento que NÃO está anexado, peça gentilmente para anexá-lo com o botão 📎. NUNCA peça URL nem pesquise na internet por arquivos locais do usuário."""
+    - IMPORTANTE sobre documentos: quando a mensagem do aluno começar com "DOCUMENTO ANEXADO E DISPONÍVEL PARA LEITURA", o conteúdo completo está NA PRÓPRIA MENSAGEM — use-o e NUNCA peça para anexar nada. Peça para anexar com o botão 📎 APENAS quando essa linha NÃO estiver presente e ele citar um arquivo próprio (pdf/documento). Nesse caso, também NUNCA peça URL nem pesquise na internet por arquivos dele."""
 
 SEARCH_TOOLS = [
     {
@@ -109,6 +109,7 @@ class StudyAgent:
     def __init__(self):
         self.memory = Memory()
         self._digest_cache: dict[str, str] = {}
+        self._session_docs: dict[str, str] = {}
 
     def process(
         self,
@@ -123,6 +124,14 @@ class StudyAgent:
         session_id = self.memory.get_or_create_session(session_id)
         tools_used = []
         images = []
+
+        # Sessão lembra o último documento usado: mensagens seguintes sobre
+        # "o pdf/documento" continuam funcionando mesmo sem reanexar.
+        if not doc_id and self._session_docs.get(session_id) and re.search(
+            r"\b(pdf|documento|apostila|arquivo|material|leia|ler|resum\w*|texto)\b",
+            message.lower(),
+        ):
+            doc_id = self._session_docs.get(session_id)
 
         # Documento anexado tem prioridade: não capturar a tela junto,
         # a menos que o usuário tenha falado explicitamente de "tela".
@@ -167,8 +176,15 @@ class StudyAgent:
                         r"|visão geral|lista\w*|todas as páginas|leia|ler)\b",
                         message.lower(),
                     )
-                ) or len(text) <= 15000
-                if wants_whole:
+                )
+                if len(text) <= 15000:
+                    # Cabe inteiro no contexto: manda o documento completo,
+                    # sem resumo que possa perder detalhes.
+                    body = (
+                        "Conteúdo COMPLETO do documento:\n\n"
+                        f"{text}\n\n[fim do documento]"
+                    )
+                elif wants_whole:
                     digest = self._digest_cache.get(doc_id)
                     if not digest:
                         digest = build_digest(
@@ -185,10 +201,14 @@ class StudyAgent:
                 else:
                     body = f"Trechos relevantes:\n{retrieve_relevant(message, text)}"
                 enriched_message = (
-                    f"Documento '{doc['name']}' ({doc['pages']} páginas) anexado.\n\n"
+                    f"DOCUMENTO ANEXADO E DISPONÍVEL PARA LEITURA: '{doc['name']}' "
+                    f"({doc['pages']} páginas). Conteúdo:\n\n"
                     f"{body}\n\nPergunta: {message}"
                 )
                 tools_used.append("document")
+                self._session_docs[session_id] = doc_id
+                if len(self._session_docs) > 50:
+                    self._session_docs.pop(next(iter(self._session_docs)))
 
         history = self.memory.history(session_id, limit=HISTORY_LIMIT)
         summary_entry = self._rolling_summary(session_id)

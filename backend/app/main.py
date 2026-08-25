@@ -248,4 +248,11 @@ def document_file(doc_id: str):
         raise HTTPException(status_code=404, detail="arquivo não encontrado no disco")
     from fastapi.responses import FileResponse
 
-    return FileResponse(path, media_type="application/pdf", filename=doc["name"])
+    return FileResponse(
+        path,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": f'inline; filename="{doc["name"]}"',
+            "Cache-Control": "private, max-age=3600",
+        },
+    )
