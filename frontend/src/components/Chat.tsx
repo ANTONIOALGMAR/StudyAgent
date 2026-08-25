@@ -312,7 +312,7 @@ export default function Chat() {
       const res: ChatResponse = await chat(
         text,
         sessionId,
-        useScreen,
+        useScreen || liveOpen,
         opts.imageB64 ?? null,
         monitorSelRef.current,
         activeDoc?.id ?? null,

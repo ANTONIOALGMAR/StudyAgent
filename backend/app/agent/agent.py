@@ -133,6 +133,13 @@ class StudyAgent:
         ):
             doc_id = self._session_docs.get(session_id)
 
+        # "na tela 2", "monitor 3": usa exatamente o monitor citado.
+        monitor_match = re.search(
+            r"\b(?:tela|monitor)\s*(?:n?[ºo°]?\s*)?([0-9]+)\b", message.lower()
+        )
+        if monitor_match:
+            monitor = min(int(monitor_match.group(1)), 8)
+
         # Documento anexado tem prioridade: não capturar a tela junto,
         # a menos que o usuário tenha falado explicitamente de "tela".
         explicit_screen = bool(re.search(r"\b(tela|monitor)\b", message.lower()))
@@ -150,11 +157,14 @@ class StudyAgent:
             images.append(image_b64)
             tools_used.append("image_input")
 
-        enriched_message = message
-        if effective_screen and not any(
-            kw in message.lower() for kw in ("tela", "questão", "questao", "imagem", "vê", "ve")
-        ):
-            enriched_message = f"{message}\n\n(A imagem anexada é uma captura da minha tela.)"
+        msg_parts = [message]
+        if images:
+            origem = "minha câmera" if image_b64 else "minha tela"
+            msg_parts.append(
+                f"(A imagem anexada é uma captura de {origem}. Se a pergunta "
+                "for sobre a tela ou o que está visível nela, responda com "
+                "base NA IMAGEM.)"
+            )
 
         if doc_id:
             self._require("file_access")
@@ -200,15 +210,16 @@ class StudyAgent:
                     )
                 else:
                     body = f"Trechos relevantes:\n{retrieve_relevant(message, text)}"
-                enriched_message = (
+                msg_parts.append(
                     f"DOCUMENTO ANEXADO E DISPONÍVEL PARA LEITURA: '{doc['name']}' "
-                    f"({doc['pages']} páginas). Conteúdo:\n\n"
-                    f"{body}\n\nPergunta: {message}"
+                    f"({doc['pages']} páginas). Conteúdo:\n\n{body}"
                 )
                 tools_used.append("document")
                 self._session_docs[session_id] = doc_id
                 if len(self._session_docs) > 50:
                     self._session_docs.pop(next(iter(self._session_docs)))
+
+        enriched_message = "\n\n".join(msg_parts)
 
         history = self.memory.history(session_id, limit=HISTORY_LIMIT)
         summary_entry = self._rolling_summary(session_id)
