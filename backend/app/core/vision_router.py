@@ -13,21 +13,28 @@ def build_image_note(camera: bool, monitor=None, size=None) -> str:
     """Nota explicando a origem da(s) imagem(ns) anexada(s)."""
     if camera:
         return (
-            "(A imagem anexada é uma foto tirada pela minha câmera. Se a "
-            "pergunta for sobre o conteúdo dela, responda com base NA IMAGEM.)"
+            "[IMAGEM ANEXADA — FOTO DA CÂMERA]\n"
+            "INSTRUÇÃO: Analise esta foto. O que você vê? Descreva o conteúdo.\n"
+            "Responda sobre o conteúdo da imagem, não dê saudação."
         )
-    origem = f"captura do meu monitor {monitor}" if monitor else "captura da minha tela"
-    dim = f" ({size[0]}x{size[1]} pixels)" if size else ""
+    origem = f"monitor {monitor}" if monitor else "tela"
+    dim = f" ({size[0]}x{size[1]})" if size else ""
     return (
-        f"[CONTEÚDO VISUAL — PRIORIDADE MÁXIMA]\n"
-        f"Imagem: {origem}{dim}.\n"
-        f"INSTRUÇÃO OBRIGATÓRIA: Analise esta imagem DETALHADAMENTE antes de responder.\n"
-        f"- Se houver EXERCÍCIO, QUESTÃO ou PROBLEMA: leia o enunciado completo, "
-        f"identifique a matéria, analise as alternativas/problema e resolva ou guie o aluno.\n"
-        f"- Se houver TEXTO, GRÁFICO, CÓDIGO: descreva, explique e responda sobre o conteúdo.\n"
-        f"- NUNCA ignore o conteúdo visual. O aluno está pedindo ajuda com o que vê na tela.\n"
-        f"- Responda EM PORTUGUÊS sobre o conteúdo da imagem.\n"
-        f"[FIM DO CONTEÚDO VISUAL]"
+        f"[CONTEÚDO VISUAL DA TELA — ANALISE ANTES DE RESPONDER]\n"
+        f"Tipo: Captura de {origem}{dim}\n"
+        f"\n"
+        f"INSTRUÇÕES OBRIGATÓRIAS:\n"
+        f"1. PRIMEIRO: olhe a imagem e descreva o que vê\n"
+        f"2. SEGUNDO: identifique aplicação, conteúdo, exercícios, erros, código, texto\n"
+        f"3. TERCEIRO: responda à pergunta do usuário sobre o conteúdo da tela\n"
+        f"\n"
+        f"Se houver EXERCÍCIO ou QUESTÃO: leia o enunciado e resolva ou guie o aluno\n"
+        f"Se houver ERRO: identifique e explique como resolver\n"
+        f"Se houver CÓDIGO: leia e analise\n"
+        f"Se houver TEXTO: descreva e responda sobre ele\n"
+        f"\n"
+        f"NÃO dê saudação. NÃO pergunte 'como posso ajudar'. APERTE O OLHAR NA IMAGEM.\n"
+        f"[FIM DAS INSTRUÇÕES VISUAIS]"
     )
 
 

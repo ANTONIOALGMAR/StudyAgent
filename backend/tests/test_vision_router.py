@@ -11,17 +11,17 @@ def test_nota_de_tela_com_monitor_e_tamanho():
     nota = build_image_note(camera=False, monitor=2, size=(1440, 900))
     assert "monitor 2" in nota
     assert "1440x900" in nota
-    assert "PRIORIDADE MÁXIMA" in nota
+    assert "CONTEÚDO VISUAL" in nota
 
 
 def test_nota_de_camera():
     nota = build_image_note(camera=True)
-    assert "câmera" in nota
+    assert "câmera" in nota or "CÂMERA" in nota
     assert "monitor" not in nota
 
 
 def test_nota_sem_monitor_menciona_tela():
-    assert "minha tela" in build_image_note(camera=False)
+    assert "tela" in build_image_note(camera=False)
 
 
 def test_ocr_curto_nao_vira_bloco():

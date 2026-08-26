@@ -59,3 +59,50 @@ def screen_analyze(req: AnalyzeScreenRequest):
     except PermissionDeniedError as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
     return result
+
+
+@router.get("/screen/diagnostics")
+def screen_diagnostics():
+    import os
+
+    from ..core.model_manager import resolve
+    from ..vision import ocr as _ocr
+
+    monitors = list_monitors()
+    ocr_avail = _ocr.available()
+    vision_model = resolve("vision")
+    ollama_ok = False
+    vision_test = False
+    try:
+        import ollama as _ollama
+        _ollama.list()
+        ollama_ok = True
+        # Test vision model with a tiny image
+        from PIL import Image
+        test_img = Image.new("RGB", (100, 100), color=(255, 255, 255))
+        from ..vision.screen import image_to_base64 as _i2b
+        test_b64 = base64.b64encode(_i2b(test_img)).decode()
+        resp = _ollama.chat(
+            model=vision_model,
+            messages=[{"role": "user", "content": "Describe this image in one word.", "images": [test_b64]}],
+            options={"num_predict": 10},
+        )
+        vision_test = bool(resp.get("message", {}).get("content"))
+    except Exception:
+        pass
+
+    perm = PermissionManager()
+    return {
+        "screen_capture": True,
+        "monitor_count": len(monitors),
+        "monitors": monitors,
+        "ocr_available": ocr_avail,
+        "tesseract_path": os.popen("which tesseract 2>/dev/null").read().strip() or None,
+        "vision_model": vision_model,
+        "ollama_available": ollama_ok,
+        "vision_test": vision_test,
+        "permissions": {
+            "screen": perm.all().get("screen_capture", False),
+            "camera": perm.all().get("camera", False),
+        },
+    }

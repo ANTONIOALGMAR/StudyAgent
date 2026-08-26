@@ -19,6 +19,8 @@ from ..vision import ocr, screen, window
 from .llm import chat, chat_with_tools
 from .memory import Memory
 
+log = logging.getLogger("studyagent.vision")
+
 
 class StudyAgent:
     def __init__(self):
@@ -58,10 +60,16 @@ class StudyAgent:
         ocr_text = None
         if plan.capture_screen:
             self._require("screen_capture")
+            log.info("[VISION] intent=SCREEN_MONITOR monitor=%s", monitor)
             shot = screen.capture(monitor=monitor, region=region)
+            log.info("[VISION] capture=success resolution=%dx%d", shot.width, shot.height)
             images.append(screen.image_to_base64(shot))
             tools_used.append("screen_capture")
             ocr_text = self._safe_ocr(shot)
+            if ocr_text:
+                log.info("[VISION] ocr=success length=%d", len(ocr_text))
+            else:
+                log.info("[VISION] ocr=no_text")
 
         camera_image = image_b64 is not None
         if image_b64:
@@ -70,6 +78,7 @@ class StudyAgent:
             images.append(image_b64)
             tools_used.append("image_input")
             ocr_text = ocr_text or self._safe_ocr_bytes(image_b64)
+            log.info("[VISION] camera_image=attached bytes=%d", len(image_b64))
 
         msg_parts = [message]
         if images:
@@ -159,7 +168,10 @@ class StudyAgent:
 
     def _run_tool_loop(self, messages, images, tools_used, allow_tools=True):
         if images:
-            return chat(messages, images=images)
+            log.info("[VISION] vision_model=sending images=%d message_count=%d", len(images), len(messages))
+            response = chat(messages, images=images)
+            log.info("[VISION] vision_response=length=%d", len(response) if response else 0)
+            return response
         if not allow_tools:
             return chat(messages)
         from .llm import synthesize
