@@ -368,6 +368,35 @@ export async function getDashboard(): Promise<Dashboard> {
   return res.json()
 }
 
+export interface EnhancedDashboard extends Dashboard {
+  mastery_by_subject: {
+    subject: string
+    avg_score: number
+    topic_count: number
+    topics: { topic: string; weighted_score: number; attempts: number; last_practiced: string | null }[]
+    status: 'weak' | 'neutral' | 'strong'
+  }[]
+  weekly_summary: {
+    period: string
+    exercises: { count: number; avg_percent: number; correct: number; total_questions: number }
+    flashcard_reviews: number
+    study_minutes: number
+    topics_practiced: number
+    new_errors: number
+  }
+  error_summary: {
+    total_errors: number
+    pending_review: number
+    top_error_topics: { topic: string; count: number }[]
+  }
+}
+
+export async function getEnhancedDashboard(): Promise<EnhancedDashboard> {
+  const res = await fetch(`${API}/api/stats/dashboard/enhanced`)
+  if (!res.ok) throw new Error('Falha ao carregar dashboard avançado')
+  return res.json()
+}
+
 // ── P6: Profile ────────────────────────────────────────────────────────────────
 
 export interface Profile {

@@ -1,42 +1,7 @@
 """Testes P6 (perfil + mastery) e P7 (automação com confirmação)."""
 
-import sqlite3
-from unittest.mock import patch
 
 import pytest
-
-
-@pytest.fixture
-def tmp_db(tmp_path):
-    db_path = tmp_path / "test.db"
-    conn = sqlite3.connect(str(db_path))
-    conn.executescript(
-        """
-        CREATE TABLE IF NOT EXISTS student_profile (
-            id TEXT PRIMARY KEY, name TEXT, grade TEXT, school TEXT,
-            preferences TEXT, created_at TEXT, updated_at TEXT
-        );
-        CREATE TABLE IF NOT EXISTS topic_mastery (
-            topic TEXT PRIMARY KEY, attempts INTEGER DEFAULT 0,
-            correct INTEGER DEFAULT 0, total_questions INTEGER DEFAULT 0,
-            avg_percent INTEGER DEFAULT 0, last_practiced TEXT,
-            created_at TEXT, updated_at TEXT
-        );
-        CREATE TABLE IF NOT EXISTS action_proposals (
-            id TEXT PRIMARY KEY, action_type TEXT NOT NULL,
-            params TEXT DEFAULT '{}', description TEXT DEFAULT '',
-            status TEXT DEFAULT 'pending', rejection_reason TEXT DEFAULT '',
-            created_at TEXT NOT NULL, resolved_at TEXT
-        );
-        """
-    )
-    conn.commit()
-    conn.close()
-
-    with patch("app.tutor.profile.MEMORY_DB_PATH", db_path), \
-         patch("app.tutor.automation.MEMORY_DB_PATH", db_path):
-        yield db_path
-
 
 # ── P6: Profile ────────────────────────────────────────────────────────────────
 
@@ -106,8 +71,8 @@ class TestTopicMastery:
 
     def test_classify_topics_strong(self, tmp_db):
         from app.tutor.profile import classify_topics, update_from_exercise
-        update_from_exercise("geometria", 4, 4, 100)
-        update_from_exercise("geometria", 4, 4, 100)
+        for _ in range(4):
+            update_from_exercise("geometria", 4, 4, 100, difficulty_level="muito difícil")
         classification = classify_topics()
         strong = [s["topic"] for s in classification["strong"]]
         assert "geometria" in strong
@@ -189,3 +154,199 @@ class TestAutomation:
         prompt = inject_proposal_prompt()
         assert "generate_exercises" in prompt
         assert "action" in prompt
+
+
+# ── P3: Weighted Scoring ───────────────────────────────────────────────────────
+
+
+class TestWeightedScoring:
+    def test_weighted_score_populated_after_exercise(self, tmp_db):
+        from app.tutor.profile import topic_details, update_from_exercise
+        update_from_exercise("frações", 3, 4, 75)
+        details = topic_details("frações")
+        assert details is not None
+        assert isinstance(details["weighted_score"], float)
+        assert details["weighted_score"] > 0
+
+    def test_weighted_score_populated_after_flashcard(self, tmp_db):
+        from app.tutor.profile import topic_details, update_from_flashcard_review
+        update_from_flashcard_review("história", 4)
+        details = topic_details("história")
+        assert details is not None
+        assert details["weighted_score"] > 0
+
+    def test_high_difficulty_raises_weighted_score(self, tmp_db):
+        from app.tutor.profile import topic_details, update_from_exercise
+        # Two exercises at same percent but different difficulty
+        update_from_exercise("easy_topic", 3, 4, 75, difficulty_level="fácil")
+        update_from_exercise("easy_topic", 3, 4, 75, difficulty_level="fácil")
+        update_from_exercise("hard_topic", 3, 4, 75, difficulty_level="muito difícil")
+        update_from_exercise("hard_topic", 3, 4, 75, difficulty_level="muito difícil")
+        easy = topic_details("easy_topic")
+        hard = topic_details("hard_topic")
+        assert hard["weighted_score"] > easy["weighted_score"]
+
+    def test_consistent_scores_beat_volatile(self, tmp_db):
+        from app.tutor.profile import topic_details, update_from_exercise
+        # Consistent: always 70%
+        for _ in range(4):
+            update_from_exercise("consistent", 3, 4, 75)
+        # Volatile: alternates 0% and 100%
+        update_from_exercise("volatile", 0, 4, 0)
+        update_from_exercise("volatile", 4, 4, 100)
+        update_from_exercise("volatile", 0, 4, 0)
+        update_from_exercise("volatile", 4, 4, 100)
+        cons = topic_details("consistent")
+        vol = topic_details("volatile")
+        assert cons["weighted_score"] > vol["weighted_score"]
+
+    def test_calculate_weighted_score_direct(self, tmp_db):
+        from app.tutor.profile import calculate_weighted_score
+        score = calculate_weighted_score("nonexistent")
+        assert score == 0.0
+
+    def test_classify_entries_include_weighted_score(self, tmp_db):
+        from app.tutor.profile import classify_topics, update_from_exercise
+        update_from_exercise("álgebra", 1, 4, 25)
+        update_from_exercise("álgebra", 1, 4, 25)
+        classification = classify_topics()
+        all_entries = classification["weak"] + classification["strong"] + classification["neutral"]
+        for entry in all_entries:
+            assert "weighted_score" in entry
+            assert "avg_percent" in entry
+
+    def test_all_mastery_includes_weighted_score(self, tmp_db):
+        from app.tutor.profile import all_mastery, update_from_exercise
+        update_from_exercise("A", 3, 4, 75)
+        mastery = all_mastery()
+        assert len(mastery) == 1
+        assert "weighted_score" in mastery[0]
+
+    def test_profile_insights_uses_weighted_score(self, tmp_db):
+        from app.tutor.profile import profile_insights, update_from_exercise
+        update_from_exercise("frações", 1, 4, 25)
+        update_from_exercise("frações", 1, 4, 25)
+        insights = profile_insights()
+        assert len(insights["weak_topics"]) >= 1
+        assert "weighted_score" in insights["weak_topics"][0]
+
+    def test_volume_increases_weighted_score(self, tmp_db):
+        from app.tutor.profile import topic_details, update_from_exercise
+        # Same percent, but more attempts = more volume = higher score
+        for _ in range(2):
+            update_from_exercise("low_vol", 3, 4, 75)
+        for _ in range(8):
+            update_from_exercise("high_vol", 3, 4, 75)
+        low = topic_details("low_vol")
+        high = topic_details("high_vol")
+        assert high["weighted_score"] > low["weighted_score"]
+
+
+# ── P3: Rolling Window ────────────────────────────────────────────────────────
+
+
+class TestRollingWindow:
+    def test_rolling_window_real_eviction(self, tmp_db):
+        from app.tutor.advanced_profile import update_difficulty
+        for _ in range(5):
+            update_difficulty("math", 20)
+        result = update_difficulty("math", 95)
+        assert result["window_avg"] > 20
+
+    def test_rolling_window_limits_to_window_size(self, tmp_db):
+        from app.tutor.advanced_profile import WINDOW_SIZE, get_adaptive_difficulty, update_difficulty
+        for i in range(10):
+            update_difficulty("topic", i * 10)
+        update_difficulty("topic", 50)
+        diff = get_adaptive_difficulty("topic")
+        assert diff["window_count"] <= WINDOW_SIZE
+
+    def test_difficulty_level_adapts(self, tmp_db):
+        from app.tutor.advanced_profile import update_difficulty
+        # All low scores → easy
+        for _ in range(3):
+            update_difficulty("easy", 20)
+        result = update_difficulty("easy", 20)
+        assert result["current_level"] == "muito fácil"
+
+        # All high scores → hard
+        for _ in range(3):
+            update_difficulty("hard", 95)
+        result = update_difficulty("hard", 95)
+        assert result["current_level"] == "muito difícil"
+
+    def test_topic_results_stored(self, tmp_db):
+        from app.tutor.profile import topic_details, update_from_exercise
+        update_from_exercise("stored_topic", 3, 4, 75, difficulty_level="difícil")
+        details = topic_details("stored_topic")
+        assert details is not None
+        assert details["weighted_score"] > 0
+
+    def test_recommend_uses_weighted_score(self, tmp_db):
+        from app.tutor.advanced_profile import recommend_for_time
+        from app.tutor.profile import update_from_exercise
+
+        # Create a clearly weak topic
+        for _ in range(3):
+            update_from_exercise("fraco", 1, 4, 25)
+        result = recommend_for_time(30)
+        types = [s["type"] for s in result["suggestions"]]
+        assert "exercise" in types
+
+
+# ── Phase 4: Student Dashboard ────────────────────────────────────────────────
+
+
+class TestStudentDashboard:
+    def test_empty_dashboard(self, tmp_db):
+        from app.tutor.profile import student_dashboard
+        result = student_dashboard()
+        assert result == ""
+
+    def test_dashboard_with_weak_topics(self, tmp_db):
+        from app.tutor.profile import student_dashboard, update_from_exercise
+        for _ in range(3):
+            update_from_exercise("frações", 1, 4, 25)
+        dashboard = student_dashboard()
+        assert "Dashboard do aluno" in dashboard
+        assert "Pontos fracos" in dashboard
+        assert "frações" in dashboard
+
+    def test_dashboard_with_strong_topics(self, tmp_db):
+        from app.tutor.profile import student_dashboard, update_from_exercise
+        for _ in range(4):
+            update_from_exercise("geometria", 4, 4, 100, difficulty_level="muito difícil")
+        dashboard = student_dashboard()
+        assert "Fortes" in dashboard
+        assert "geometria" in dashboard
+
+    def test_dashboard_with_recent_exercises(self, tmp_db):
+        from app.tutor.profile import student_dashboard, update_from_exercise
+        update_from_exercise("história", 3, 4, 75)
+        dashboard = student_dashboard()
+        assert "Últimos exercícios" in dashboard
+        assert "história" in dashboard
+
+    def test_dashboard_shows_streak(self, tmp_db):
+        from app.tutor.profile import student_dashboard, update_from_exercise
+        update_from_exercise("mat", 3, 4, 75)
+        dashboard = student_dashboard()
+        assert "Streak:" in dashboard
+        assert "Temas estudados:" in dashboard
+
+    def test_dashboard_limits_weak_to_3(self, tmp_db):
+        from app.tutor.profile import student_dashboard, update_from_exercise
+        for topic in ["A", "B", "C", "D"]:
+            for _ in range(3):
+                update_from_exercise(topic, 1, 4, 25)
+        dashboard = student_dashboard()
+        # Should only show 3 weak topics max
+        assert dashboard.count("Pontos fracos:") == 1
+
+    def test_dashboard_is_concise(self, tmp_db):
+        from app.tutor.profile import student_dashboard, update_from_exercise
+        for _ in range(3):
+            update_from_exercise("tema", 3, 4, 75)
+        dashboard = student_dashboard()
+        lines = dashboard.strip().split("\n")
+        assert len(lines) <= 6

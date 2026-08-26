@@ -25,6 +25,7 @@ EMBED_TIMEOUT = 60
 
 _lock = threading.Lock()
 _cache: dict[str, tuple[np.ndarray, list[dict]]] = {}
+_cache_lock = threading.Lock()
 
 
 def chunk_document(text: str) -> list[dict]:
@@ -119,7 +120,7 @@ def build_index(doc_id: str, doc_text: str, embed_fn=None, force=False) -> bool:
 
 
 def load_index(doc_id: str):
-    with _lock:
+    with _cache_lock:
         if doc_id in _cache:
             return _cache[doc_id]
     path = _index_path(doc_id)
@@ -128,7 +129,7 @@ def load_index(doc_id: str):
     dados = np.load(path, allow_pickle=False)
     vectors = dados["vectors"].astype(np.float32)
     chunks = json.loads(str(dados["chunks"]))
-    with _lock:
+    with _cache_lock:
         if len(_cache) > 6:
             _cache.pop(next(iter(_cache)))
         _cache[doc_id] = (vectors, chunks)

@@ -4,9 +4,10 @@ Fluxo:
 1. O LLM gera questões em JSON estrito (enunciado, alternativas opcionais,
    gabarito e explicação).
 2. O gabarito fica guardado no servidor — o frontend nunca recebe a resposta.
-3. Na correção, comparação normalizada; se divergir, o LLM decide equivalência
-   (ex.: "3/4" == "0,75" ou "três quartos").
+3. Na correção, comparação normalizada; se divergir, o LLM decide equivalência.
 """
+
+from __future__ import annotations
 
 import json
 import re
@@ -14,12 +15,11 @@ import time
 import unicodedata
 import uuid
 
-from .llm import chat
+from ..agent.llm import chat
+from ..db import get_connection
 
-MAX_STORED = 20
 QUESTION_LIMIT = 8
-
-_store: dict[str, dict] = {}
+MAX_STORED = 20
 
 _GEN_PROMPT = (
     "Você é um criador de exercícios escolares brasileiros.\n"
@@ -41,6 +41,19 @@ _EQUIV_PROMPT = (
 )
 
 
+def _init_exercises_table():
+    conn = get_connection()
+    conn.execute(
+        """CREATE TABLE IF NOT EXISTS exercise_store (
+            exercise_id TEXT PRIMARY KEY,
+            topic TEXT NOT NULL,
+            items_json TEXT NOT NULL,
+            created_at REAL NOT NULL
+        )"""
+    )
+    conn.commit()
+
+
 def _strip_fences(text: str) -> str:
     text = text.strip()
     if text.startswith("```"):
@@ -53,7 +66,6 @@ def _normalize(value: str) -> str:
     value = unicodedata.normalize("NFKD", value)
     value = "".join(ch for ch in value if not unicodedata.combining(ch))
     value = value.lower().strip()
-    # remove prefixos de alternativa tipo "b) " ANTES de limpar pontuação
     value = re.sub(r"^[a-d]\)\s*", "", value)
     value = re.sub(r"[^\w\s/.,]", "", value)
     value = value.replace(",", ".")
@@ -62,12 +74,19 @@ def _normalize(value: str) -> str:
 
 
 def _prune() -> None:
-    while len(_store) > MAX_STORED:
-        oldest = min(_store, key=lambda k: _store[k]["created"])
-        del _store[oldest]
+    conn = get_connection()
+    count = conn.execute("SELECT COUNT(*) FROM exercise_store").fetchone()[0]
+    if count > MAX_STORED:
+        conn.execute(
+            "DELETE FROM exercise_store WHERE exercise_id IN "
+            "(SELECT exercise_id FROM exercise_store ORDER BY created_at ASC LIMIT ?)",
+            (count - MAX_STORED,),
+        )
+        conn.commit()
 
 
 def generate(topic: str, n: int = 4, level: str = "ensino fundamental") -> dict:
+    _init_exercises_table()
     n = max(1, min(n, QUESTION_LIMIT))
     style_hint = (
         "Use múltipla escolha com 4 alternativas."
@@ -83,46 +102,49 @@ def generate(topic: str, n: int = 4, level: str = "ensino fundamental") -> dict:
         if not isinstance(q, dict) or not q.get("q") or not q.get("answer"):
             continue
         opts = q.get("options")
-        cleaned.append(
-            {
-                "id": uuid.uuid4().hex[:8],
-                "q": str(q["q"]),
-                "options": [str(o) for o in opts] if isinstance(opts, list) and opts else None,
-                "answer": str(q["answer"]),
-                "explanation": str(q.get("explanation") or ""),
-            }
-        )
+        cleaned.append({
+            "id": uuid.uuid4().hex[:8],
+            "q": str(q["q"]),
+            "options": [str(o) for o in opts] if isinstance(opts, list) and opts else None,
+            "answer": str(q["answer"]),
+            "explanation": str(q.get("explanation") or ""),
+        })
     if not cleaned:
         raise ValueError("O modelo não conseguiu gerar questões válidas. Tente outro tema.")
 
     exercise_id = uuid.uuid4().hex[:10]
-    _store[exercise_id] = {"created": time.time(), "topic": topic, "items": cleaned}
+    conn = get_connection()
+    conn.execute(
+        "INSERT INTO exercise_store (exercise_id, topic, items_json, created_at) VALUES (?, ?, ?, ?)",
+        (exercise_id, topic, json.dumps(cleaned, ensure_ascii=False), time.time()),
+    )
+    conn.commit()
     _prune()
 
-    public = [
-        {"id": q["id"], "q": q["q"], "options": q["options"]} for q in cleaned
-    ]
+    public = [{"id": q["id"], "q": q["q"], "options": q["options"]} for q in cleaned]
     return {"exercise_id": exercise_id, "topic": topic, "questions": public}
 
 
 def _equivalent(user: str, expected: str) -> bool:
     try:
-        out = chat(
-            [{"role": "user", "content": _EQUIV_PROMPT.format(a=user, b=expected)}],
-        )
+        out = chat([{"role": "user", "content": _EQUIV_PROMPT.format(a=user, b=expected)}])
         return out.strip().lower().startswith("sim")
     except Exception:
         return False
 
 
 def grade(exercise_id: str, answers: dict[str, str]) -> dict:
-    entry = _store.get(exercise_id)
-    if not entry:
+    conn = get_connection()
+    row = conn.execute(
+        "SELECT items_json FROM exercise_store WHERE exercise_id = ?", (exercise_id,)
+    ).fetchone()
+    if not row:
         raise KeyError("Exercício expirado ou inexistente. Gere um novo.")
+    items = json.loads(row["items_json"])
 
     results = []
     score = 0
-    for q in entry["items"]:
+    for q in items:
         user_raw = (answers.get(q["id"]) or "").strip()
         expected = q["answer"]
         correct = bool(user_raw)
@@ -134,16 +156,14 @@ def grade(exercise_id: str, answers: dict[str, str]) -> dict:
             else:
                 correct = False
         score += correct
-        results.append(
-            {
-                "id": q["id"],
-                "q": q["q"],
-                "user_answer": user_raw,
-                "expected": expected,
-                "correct": correct,
-                "explanation": q["explanation"],
-            }
-        )
+        results.append({
+            "id": q["id"],
+            "q": q["q"],
+            "user_answer": user_raw,
+            "expected": expected,
+            "correct": correct,
+            "explanation": q["explanation"],
+        })
 
     total = len(results)
     pct = round(100 * score / max(total, 1))
@@ -165,14 +185,21 @@ def grade(exercise_id: str, answers: dict[str, str]) -> dict:
 
 
 def grade_and_track(exercise_id: str, answers: dict[str, str]) -> dict:
-    """Grade and update topic mastery. Used by main.py endpoints."""
+    from ..tutor.error_notebook import log_errors_from_exercise
     from ..tutor.profile import update_from_exercise
+    from ..tutor.stats import save_exercise_result
 
-    entry = _store.get(exercise_id)
+    conn = get_connection()
+    row = conn.execute(
+        "SELECT topic FROM exercise_store WHERE exercise_id = ?", (exercise_id,)
+    ).fetchone()
     result = grade(exercise_id, answers)
-    if entry:
+    if row:
+        topic = row["topic"]
         try:
-            update_from_exercise(entry["topic"], result["score"], result["total"], result["percent"])
+            update_from_exercise(topic, result["score"], result["total"], result["percent"])
+            save_exercise_result(exercise_id, topic, result["score"], result["total"], result["percent"])
+            log_errors_from_exercise(exercise_id, topic, result.get("results", []))
         except Exception:
             pass
     return result

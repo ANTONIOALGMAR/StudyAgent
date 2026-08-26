@@ -1,21 +1,21 @@
 import { useEffect, useState } from 'react'
 import {
-  getDashboard,
+  getEnhancedDashboard,
   getTimeAnalytics,
   getRecommendations,
-  type Dashboard,
+  type EnhancedDashboard,
   type TimeAnalytics,
 } from '../api'
 
 export default function StatsPanel() {
-  const [data, setData] = useState<Dashboard | null>(null)
+  const [data, setData] = useState<EnhancedDashboard | null>(null)
   const [timeData, setTimeData] = useState<TimeAnalytics | null>(null)
   const [recs, setRecs] = useState<{ available_minutes: number; suggestions: { type: string; description: string; priority: string }[] } | null>(null)
   const [minutes, setMinutes] = useState(30)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    void Promise.all([getDashboard(), getTimeAnalytics()])
+    void Promise.all([getEnhancedDashboard(), getTimeAnalytics()])
       .then(([d, t]) => { setData(d); setTimeData(t) })
       .catch(() => {})
       .finally(() => setLoading(false))
@@ -34,6 +34,8 @@ export default function StatsPanel() {
   const ex = data.exercises
   const fc = data.flashcards
   const sp = data.study_plans
+  const ws = data.weekly_summary
+  const err = data.error_summary
 
   return (
     <div className="stats">
@@ -65,6 +67,72 @@ export default function StatsPanel() {
           <div className="stat-label">Planos concluídos</div>
         </div>
       </div>
+
+      {ws && ws.exercises.count > 0 && (
+        <div className="stats-section">
+          <h4>📅 Resumo da semana</h4>
+          <div className="stats-grid">
+            <div className="stat-card">
+              <div className="stat-num">{ws.exercises.count}</div>
+              <div className="stat-label">Exercícios (7d)</div>
+            </div>
+            <div className="stat-card">
+              <div className="stat-num">{ws.exercises.avg_percent}%</div>
+              <div className="stat-label">Média (7d)</div>
+            </div>
+            <div className="stat-card">
+              <div className="stat-num">{ws.study_minutes}min</div>
+              <div className="stat-label">Tempo estudado</div>
+            </div>
+            <div className="stat-card">
+              <div className="stat-num">{ws.topics_practiced}</div>
+              <div className="stat-label">Temas (7d)</div>
+            </div>
+            <div className="stat-card">
+              <div className="stat-num">{ws.flashcard_reviews}</div>
+              <div className="stat-label">Reviews (7d)</div>
+            </div>
+            {ws.new_errors > 0 && (
+              <div className="stat-card stat-warn-card">
+                <div className="stat-num">{ws.new_errors}</div>
+                <div className="stat-label">Novos erros</div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {data.mastery_by_subject.length > 0 && (
+        <div className="stats-section">
+          <h4>🎯 Mastery por tema</h4>
+          {data.mastery_by_subject.map((s) => (
+            <div key={s.subject} className={`mastery-row mastery-${s.status}`}>
+              <span className="mastery-subject">{s.subject}</span>
+              <div className="mastery-bar-container">
+                <div className="mastery-bar" style={{ width: `${Math.min(100, s.avg_score)}%` }} />
+              </div>
+              <span className="mastery-score">{Math.round(s.avg_score)}%</span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {err && err.pending_review > 0 && (
+        <div className="stats-section">
+          <h4>📝 Caderno de erros</h4>
+          <div className="stats-grid">
+            <div className="stat-card stat-warn-card">
+              <div className="stat-num">{err.pending_review}</div>
+              <div className="stat-label">Erros pendentes</div>
+            </div>
+          </div>
+          {err.top_error_topics.length > 0 && (
+            <div className="stat-hint">
+              Temas com mais erros: {err.top_error_topics.map((t) => `${t.topic} (${t.count})`).join(', ')}
+            </div>
+          )}
+        </div>
+      )}
 
       {timeData && timeData.total_sessions > 0 && (
         <div className="stats-section">

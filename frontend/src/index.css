@@ -1062,3 +1062,28 @@ body {
   color: #8b93a7; padding: 5px 8px; cursor: pointer; font-size: 0.85rem;
 }
 .sp-export-btn:hover { border-color: #34d27b; color: #34d27b; }
+
+/* ── Phase 7: Enhanced Dashboard ─────────────────────────────────── */
+.stats-section { margin-top: 14px; }
+.stats-section h4 { font-size: 0.95rem; color: #c9cfdb; margin-bottom: 10px; font-weight: 600; }
+.mastery-row {
+  display: flex; align-items: center; gap: 10px; padding: 7px 10px;
+  background: #161a23; border-radius: 8px; margin-bottom: 6px;
+  border: 1px solid #262b38;
+}
+.mastery-subject { font-size: 0.88rem; color: #c9cfdb; min-width: 120px; font-weight: 500; }
+.mastery-bar-container { flex: 1; height: 10px; background: #1d2230; border-radius: 5px; overflow: hidden; }
+.mastery-bar { height: 100%; border-radius: 5px; transition: width 0.3s ease; }
+.mastery-weak .mastery-bar { background: #ef4444; }
+.mastery-neutral .mastery-bar { background: #eab308; }
+.mastery-strong .mastery-bar { background: #22c55e; }
+.mastery-weak .mastery-subject { color: #f87171; }
+.mastery-neutral .mastery-subject { color: #facc15; }
+.mastery-strong .mastery-subject { color: #4ade80; }
+.mastery-score { font-size: 0.82rem; font-weight: 600; min-width: 40px; text-align: right; }
+.mastery-weak .mastery-score { color: #f87171; }
+.mastery-neutral .mastery-score { color: #facc15; }
+.mastery-strong .mastery-score { color: #4ade80; }
+.stat-warn-card { border-color: #7f1d2d !important; }
+.stat-warn-card .stat-num { color: #f87171; }
+.stat-warn-card .stat-label { color: #fca5a5; }

@@ -6,13 +6,10 @@ Mantém streaks por tema e rankings de desempenho.
 
 from __future__ import annotations
 
-import sqlite3
 import uuid
 from datetime import datetime, timedelta
 
-from ..config import MEMORY_DB_PATH
-
-# ── Achievement Definitions ─────────────────────────────────────────────────────
+from ..db import get_connection
 
 ACHIEVEMENT_DEFS = [
     {"id": "first_exercise", "title": "Primeiro passo", "description": "Completou o primeiro exercício", "icon": "🎯", "category": "exercise", "threshold": 1},
@@ -34,39 +31,26 @@ ACHIEVEMENT_DEFS = [
 ]
 
 
-def _conn():
-    conn = sqlite3.connect(str(MEMORY_DB_PATH))
-    conn.row_factory = sqlite3.Row
-    return conn
-
-
 def check_achievements() -> list[dict]:
-    """Check and award any newly earned achievements. Returns list of newly earned."""
-    conn = _conn()
-    try:
-        already = {r["achievement_id"] for r in conn.execute(
-            "SELECT achievement_id FROM achievements"
-        ).fetchall()}
+    conn = get_connection()
+    already = {r["achievement_id"] for r in conn.execute(
+        "SELECT achievement_id FROM achievements"
+    ).fetchall()}
 
-        newly_earned = []
+    newly_earned = []
+    for defn in ACHIEVEMENT_DEFS:
+        if defn["id"] in already:
+            continue
+        if _check_condition(conn, defn):
+            _award(conn, defn["id"])
+            newly_earned.append(defn)
 
-        for defn in ACHIEVEMENT_DEFS:
-            if defn["id"] in already:
-                continue
-            if _check_condition(conn, defn):
-                _award(conn, defn["id"])
-                newly_earned.append(defn)
-
-        conn.commit()
-    finally:
-        conn.close()
+    conn.commit()
     return newly_earned
 
 
 def _check_condition(conn, defn: dict) -> bool:
-    """Check if an achievement condition is met."""
     aid = defn["id"]
-
     if aid == "first_exercise":
         return conn.execute("SELECT COUNT(*) FROM exercise_history").fetchone()[0] >= 1
     if aid == "exercises_10":
@@ -103,31 +87,26 @@ def _check_condition(conn, defn: dict) -> bool:
         return conn.execute("SELECT COUNT(*) FROM topic_mastery").fetchone()[0] >= 10
     if aid == "weak_to_strong":
         return conn.execute(
-            "SELECT COUNT(*) FROM topic_mastery WHERE avg_percent >= 80 AND attempts >= 2"
+            "SELECT COUNT(*) FROM topic_mastery WHERE weighted_score >= 80 AND attempts >= 2"
         ).fetchone()[0] >= 1
     return False
 
 
 def _current_streak(conn) -> int:
-    """Count consecutive study days ending today."""
     streak = 0
     today = datetime.now().date()
     for offset in range(60):
         day = (today - timedelta(days=offset)).isoformat()
         has = conn.execute(
-            "SELECT 1 FROM session_log WHERE date(started_at) = ? LIMIT 1",
-            (day,),
+            "SELECT 1 FROM session_log WHERE date(started_at) = ? LIMIT 1", (day,)
         ).fetchone()
         if not has:
-            # Also check exercise_history and flashcard_reviews
             has = conn.execute(
-                "SELECT 1 FROM exercise_history WHERE date(created_at) = ? LIMIT 1",
-                (day,),
+                "SELECT 1 FROM exercise_history WHERE date(created_at) = ? LIMIT 1", (day,)
             ).fetchone()
         if not has:
             has = conn.execute(
-                "SELECT 1 FROM flashcard_reviews WHERE date(reviewed_at) = ? LIMIT 1",
-                (day,),
+                "SELECT 1 FROM flashcard_reviews WHERE date(reviewed_at) = ? LIMIT 1", (day,)
             ).fetchone()
         if has:
             streak += 1
@@ -137,25 +116,18 @@ def _current_streak(conn) -> int:
 
 
 def _award(conn, achievement_id: str) -> None:
-    """Record an earned achievement."""
-    now = datetime.now().isoformat()
     conn.execute(
         "INSERT INTO achievements (id, achievement_id, earned_at) VALUES (?, ?, ?)",
-        (uuid.uuid4().hex[:10], achievement_id, now),
+        (uuid.uuid4().hex[:10], achievement_id, datetime.now().isoformat()),
     )
 
 
 def list_achievements() -> list[dict]:
-    """List all achievements with earned status."""
-    conn = _conn()
-    try:
-        earned = {
-            r["achievement_id"]: r["earned_at"]
-            for r in conn.execute("SELECT achievement_id, earned_at FROM achievements").fetchall()
-        }
-    finally:
-        conn.close()
-
+    conn = get_connection()
+    earned = {
+        r["achievement_id"]: r["earned_at"]
+        for r in conn.execute("SELECT achievement_id, earned_at FROM achievements").fetchall()
+    }
     result = []
     for defn in ACHIEVEMENT_DEFS:
         entry = dict(defn)
@@ -166,28 +138,24 @@ def list_achievements() -> list[dict]:
 
 
 def achievement_progress() -> dict:
-    """Progress toward locked achievements."""
-    conn = _conn()
-    try:
-        exercise_count = conn.execute("SELECT COUNT(*) FROM exercise_history").fetchone()[0]
-        perfect_count = conn.execute("SELECT COUNT(*) FROM exercise_history WHERE percent = 100").fetchone()[0]
-        streak = _current_streak(conn)
-        deck_count = conn.execute("SELECT COUNT(*) FROM flashcard_decks").fetchone()[0]
-        review_count = conn.execute("SELECT COUNT(*) FROM flashcard_reviews").fetchone()[0]
-        mastered_count = conn.execute("SELECT COUNT(*) FROM flashcards WHERE interval_days >= 21").fetchone()[0]
-        plan_count = conn.execute("SELECT COUNT(*) FROM study_plans").fetchone()[0]
-        completed_plans = conn.execute(
-            "SELECT COUNT(*) FROM study_plans WHERE total_items > 0 AND done_items = total_items"
-        ).fetchone()[0]
-        topic_count = conn.execute("SELECT COUNT(*) FROM topic_mastery").fetchone()[0]
-        strong_count = conn.execute(
-            "SELECT COUNT(*) FROM topic_mastery WHERE avg_percent >= 80 AND attempts >= 2"
-        ).fetchone()[0]
-        earned = {r["achievement_id"] for r in conn.execute(
-            "SELECT achievement_id FROM achievements"
-        ).fetchall()}
-    finally:
-        conn.close()
+    conn = get_connection()
+    exercise_count = conn.execute("SELECT COUNT(*) FROM exercise_history").fetchone()[0]
+    perfect_count = conn.execute("SELECT COUNT(*) FROM exercise_history WHERE percent = 100").fetchone()[0]
+    streak = _current_streak(conn)
+    deck_count = conn.execute("SELECT COUNT(*) FROM flashcard_decks").fetchone()[0]
+    review_count = conn.execute("SELECT COUNT(*) FROM flashcard_reviews").fetchone()[0]
+    mastered_count = conn.execute("SELECT COUNT(*) FROM flashcards WHERE interval_days >= 21").fetchone()[0]
+    plan_count = conn.execute("SELECT COUNT(*) FROM study_plans").fetchone()[0]
+    completed_plans = conn.execute(
+        "SELECT COUNT(*) FROM study_plans WHERE total_items > 0 AND done_items = total_items"
+    ).fetchone()[0]
+    topic_count = conn.execute("SELECT COUNT(*) FROM topic_mastery").fetchone()[0]
+    strong_count = conn.execute(
+        "SELECT COUNT(*) FROM topic_mastery WHERE weighted_score >= 80 AND attempts >= 2"
+    ).fetchone()[0]
+    earned = {r["achievement_id"] for r in conn.execute(
+        "SELECT achievement_id FROM achievements"
+    ).fetchall()}
 
     progress_map = {
         "first_exercise": {"current": exercise_count, "target": 1},
@@ -225,37 +193,32 @@ def achievement_progress() -> dict:
 
 
 def topic_streaks() -> list[dict]:
-    """Per-topic streak data from exercise_history."""
-    conn = _conn()
-    try:
-        rows = conn.execute(
-            "SELECT topic, COUNT(DISTINCT date(created_at)) as days_practiced, "
-            "MAX(created_at) as last_practiced FROM exercise_history "
-            "GROUP BY topic ORDER BY days_practiced DESC"
-        ).fetchall()
+    conn = get_connection()
+    rows = conn.execute(
+        "SELECT topic, COUNT(DISTINCT date(created_at)) as days_practiced, "
+        "MAX(created_at) as last_practiced FROM exercise_history "
+        "GROUP BY topic ORDER BY days_practiced DESC"
+    ).fetchall()
 
-        result = []
-        for r in rows:
-            r = dict(r)
-            # Calculate current streak for this topic
-            topic_streak = 0
-            today = datetime.now().date()
-            for offset in range(30):
-                day = (today - timedelta(days=offset)).isoformat()
-                has = conn.execute(
-                    "SELECT 1 FROM exercise_history WHERE topic = ? AND date(created_at) = ? LIMIT 1",
-                    (r["topic"], day),
-                ).fetchone()
-                if has:
-                    topic_streak += 1
-                elif offset > 0:
-                    break
-            result.append({
-                "topic": r["topic"],
-                "days_practiced": r["days_practiced"],
-                "current_streak": topic_streak,
-                "last_practiced": r["last_practiced"],
-            })
-    finally:
-        conn.close()
+    result = []
+    for r in rows:
+        r = dict(r)
+        topic_streak = 0
+        today = datetime.now().date()
+        for offset in range(30):
+            day = (today - timedelta(days=offset)).isoformat()
+            has = conn.execute(
+                "SELECT 1 FROM exercise_history WHERE topic = ? AND date(created_at) = ? LIMIT 1",
+                (r["topic"], day),
+            ).fetchone()
+            if has:
+                topic_streak += 1
+            elif offset > 0:
+                break
+        result.append({
+            "topic": r["topic"],
+            "days_practiced": r["days_practiced"],
+            "current_streak": topic_streak,
+            "last_practiced": r["last_practiced"],
+        })
     return result

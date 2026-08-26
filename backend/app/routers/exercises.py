@@ -1,0 +1,48 @@
+"""Router: Exercícios."""
+
+from __future__ import annotations
+
+from fastapi import APIRouter, HTTPException
+from pydantic import BaseModel
+
+from ..agent import exercises
+
+router = APIRouter(prefix="/api")
+
+
+class ExerciseGenerateRequest(BaseModel):
+    topic: str
+    n: int = 4
+    level: str = "ensino fundamental"
+
+
+class ExerciseGradeRequest(BaseModel):
+    exercise_id: str
+    answers: dict[str, str]
+
+
+@router.post("/exercises/generate")
+def exercises_generate(req: ExerciseGenerateRequest):
+    try:
+        return exercises.generate(topic=req.topic, n=req.n, level=req.level)
+    except ValueError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Falha ao gerar exercícios: {exc}") from exc
+
+
+@router.post("/exercises/grade")
+def exercises_grade(req: ExerciseGradeRequest):
+    try:
+        return exercises.grade_and_track(exercise_id=req.exercise_id, answers=req.answers)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.post("/calculate")
+def calculate(expression: str):
+    try:
+        from ..tools.calculator import safe_calc
+        return {"result": safe_calc(expression)}
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc

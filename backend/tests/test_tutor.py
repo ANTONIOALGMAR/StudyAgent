@@ -2,7 +2,6 @@
 
 import sqlite3
 from datetime import datetime, timedelta
-from unittest.mock import patch
 
 import pytest
 
@@ -80,64 +79,6 @@ class TestSM2:
 
 
 # ─── Flashcard CRUD (with temp DB) ────────────────────────────────────────────
-
-
-@pytest.fixture
-def tmp_db(tmp_path):
-    """Create a fresh temp DB and patch MEMORY_DB_PATH in all tutor modules."""
-    db_path = tmp_path / "test.db"
-    db_path.parent.mkdir(parents=True, exist_ok=True)
-
-    # create all tables in the temp DB
-    conn = sqlite3.connect(str(db_path))
-    conn.executescript(
-        """
-        CREATE TABLE IF NOT EXISTS flashcard_decks (
-            id TEXT PRIMARY KEY, title TEXT NOT NULL, topic TEXT,
-            source_doc TEXT, card_count INTEGER NOT NULL DEFAULT 0,
-            created_at TEXT NOT NULL
-        );
-        CREATE TABLE IF NOT EXISTS flashcards (
-            id TEXT PRIMARY KEY, deck_id TEXT NOT NULL,
-            front TEXT NOT NULL, back TEXT NOT NULL,
-            easiness REAL NOT NULL DEFAULT 2.5,
-            interval_days INTEGER NOT NULL DEFAULT 1,
-            repetitions INTEGER NOT NULL DEFAULT 0,
-            next_review TEXT NOT NULL, created_at TEXT NOT NULL
-        );
-        CREATE TABLE IF NOT EXISTS flashcard_reviews (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            card_id TEXT NOT NULL, quality INTEGER NOT NULL,
-            reviewed_at TEXT NOT NULL
-        );
-        CREATE TABLE IF NOT EXISTS study_plans (
-            id TEXT PRIMARY KEY, title TEXT NOT NULL, topic TEXT NOT NULL,
-            total_items INTEGER NOT NULL DEFAULT 0,
-            done_items INTEGER NOT NULL DEFAULT 0,
-            created_at TEXT NOT NULL
-        );
-        CREATE TABLE IF NOT EXISTS study_items (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            plan_id TEXT NOT NULL, title TEXT NOT NULL,
-            detail TEXT, done INTEGER NOT NULL DEFAULT 0,
-            sort_order INTEGER NOT NULL DEFAULT 0
-        );
-        CREATE TABLE IF NOT EXISTS exercise_history (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            exercise_id TEXT NOT NULL, topic TEXT NOT NULL,
-            score INTEGER NOT NULL, total INTEGER NOT NULL,
-            percent INTEGER NOT NULL, level TEXT,
-            created_at TEXT NOT NULL
-        );
-        """
-    )
-    conn.commit()
-    conn.close()
-
-    with patch("app.tutor.flashcards.MEMORY_DB_PATH", db_path), \
-         patch("app.tutor.study_plan.MEMORY_DB_PATH", db_path), \
-         patch("app.tutor.stats.MEMORY_DB_PATH", db_path):
-        yield db_path
 
 
 class TestFlashcardCRUD:
@@ -322,3 +263,98 @@ class TestStats:
         save_exercise_result("ex1", "tema", 2, 4, 50, "")
         stats = exercise_stats()
         assert stats["streak_days"] >= 1
+
+
+# ── Phase 7: Enhanced Dashboard ────────────────────────────────────────────────
+
+
+class TestEnhancedDashboard:
+    def test_mastery_by_subject_empty(self, tmp_db):
+        from app.tutor.stats import mastery_by_subject
+
+        result = mastery_by_subject()
+        assert result == []
+
+    def test_mastery_by_subject_with_data(self, tmp_db):
+        from app.tutor.profile import update_from_exercise
+        from app.tutor.stats import mastery_by_subject
+
+        update_from_exercise("frações", 3, 4, 75)
+        update_from_exercise("álgebra", 1, 4, 25)
+        result = mastery_by_subject()
+        assert len(result) == 2
+        assert all("subject" in s for s in result)
+        assert all("avg_score" in s for s in result)
+        assert all("status" in s for s in result)
+
+    def test_mastery_by_subject_status(self, tmp_db):
+        from app.tutor.profile import update_from_exercise
+        from app.tutor.stats import mastery_by_subject
+
+        for _ in range(3):
+            update_from_exercise("fraco", 1, 4, 25)
+        result = mastery_by_subject()
+        assert len(result) == 1
+        assert result[0]["status"] == "weak"
+
+    def test_weekly_summary_empty(self, tmp_db):
+        from app.tutor.stats import weekly_summary
+
+        result = weekly_summary()
+        assert result["period"] == "7 dias"
+        assert result["exercises"]["count"] == 0
+        assert result["flashcard_reviews"] == 0
+        assert result["study_minutes"] == 0
+        assert result["topics_practiced"] == 0
+
+    def test_weekly_summary_with_data(self, tmp_db):
+        from app.tutor.profile import update_from_exercise
+        from app.tutor.stats import save_exercise_result, weekly_summary
+
+        update_from_exercise("frações", 3, 4, 75)
+        update_from_exercise("álgebra", 2, 4, 50)
+        save_exercise_result("ex1", "frações", 3, 4, 75)
+        save_exercise_result("ex2", "álgebra", 2, 4, 50)
+        result = weekly_summary()
+        assert result["exercises"]["count"] == 2
+        assert result["topics_practiced"] >= 1
+
+    def test_error_summary_empty(self, tmp_db):
+        from app.tutor.stats import error_summary
+
+        result = error_summary()
+        assert result["total_errors"] == 0
+        assert result["pending_review"] == 0
+        assert result["top_error_topics"] == []
+
+    def test_error_summary_with_data(self, tmp_db):
+        from app.tutor.error_notebook import log_error
+        from app.tutor.stats import error_summary
+
+        log_error(topic="frações", question="Q1", user_answer="a", correct_answer="b")
+        log_error(topic="frações", question="Q2", user_answer="c", correct_answer="d")
+        log_error(topic="álgebra", question="Q3", user_answer="e", correct_answer="f")
+        result = error_summary()
+        assert result["total_errors"] == 3
+        assert result["pending_review"] == 3
+        assert len(result["top_error_topics"]) == 2
+        assert result["top_error_topics"][0]["topic"] == "frações"
+
+    def test_enhanced_dashboard(self, tmp_db):
+        from app.tutor.stats import enhanced_dashboard
+
+        result = enhanced_dashboard()
+        assert "exercises" in result
+        assert "flashcards" in result
+        assert "study_plans" in result
+        assert "mastery_by_subject" in result
+        assert "weekly_summary" in result
+        assert "error_summary" in result
+
+    def test_enhanced_dashboard_structure(self, tmp_db):
+        from app.tutor.stats import enhanced_dashboard
+
+        result = enhanced_dashboard()
+        assert isinstance(result["mastery_by_subject"], list)
+        assert isinstance(result["weekly_summary"], dict)
+        assert isinstance(result["error_summary"], dict)

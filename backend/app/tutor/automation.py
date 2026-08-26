@@ -8,11 +8,10 @@ confirmação. O usuário aprova → ação executada; rejeita → agente explic
 from __future__ import annotations
 
 import json
-import sqlite3
 import uuid
 from datetime import datetime
 
-from ..config import MEMORY_DB_PATH
+from ..db import get_connection
 
 ACTION_TYPES = (
     "generate_exercises",
@@ -31,28 +30,18 @@ ACTION_LABELS = {
 }
 
 
-def _conn():
-    conn = sqlite3.connect(str(MEMORY_DB_PATH))
-    conn.row_factory = sqlite3.Row
-    return conn
-
-
 def create_proposal(action_type: str, params: dict, description: str = "") -> dict:
-    """Create a pending action proposal."""
     if action_type not in ACTION_TYPES:
         raise ValueError(f"Tipo de ação desconhecido: {action_type}")
     proposal_id = uuid.uuid4().hex[:10]
     now = datetime.now().isoformat()
-    conn = _conn()
-    try:
-        conn.execute(
-            "INSERT INTO action_proposals (id, action_type, params, description, status, created_at) "
-            "VALUES (?, ?, ?, ?, 'pending', ?)",
-            (proposal_id, action_type, json.dumps(params, ensure_ascii=False), description, now),
-        )
-        conn.commit()
-    finally:
-        conn.close()
+    conn = get_connection()
+    conn.execute(
+        "INSERT INTO action_proposals (id, action_type, params, description, status, created_at) "
+        "VALUES (?, ?, ?, ?, 'pending', ?)",
+        (proposal_id, action_type, json.dumps(params, ensure_ascii=False), description, now),
+    )
+    conn.commit()
     return {
         "proposal_id": proposal_id,
         "action_type": action_type,
@@ -64,25 +53,18 @@ def create_proposal(action_type: str, params: dict, description: str = "") -> di
 
 
 def approve(proposal_id: str) -> dict:
-    """Approve and return the proposal details for execution."""
-    conn = _conn()
-    conn.row_factory = sqlite3.Row
-    try:
-        row = conn.execute(
-            "SELECT * FROM action_proposals WHERE id = ?", (proposal_id,)
-        ).fetchone()
-        if not row:
-            raise KeyError(f"Proposta {proposal_id} não encontrada")
-        proposal = dict(row)
-        if proposal["status"] != "pending":
-            return {"status": proposal["status"], "message": "Proposta já processada"}
-        conn.execute(
-            "UPDATE action_proposals SET status = 'approved', resolved_at = ? WHERE id = ?",
-            (datetime.now().isoformat(), proposal_id),
-        )
-        conn.commit()
-    finally:
-        conn.close()
+    conn = get_connection()
+    row = conn.execute("SELECT * FROM action_proposals WHERE id = ?", (proposal_id,)).fetchone()
+    if not row:
+        raise KeyError(f"Proposta {proposal_id} não encontrada")
+    proposal = dict(row)
+    if proposal["status"] != "pending":
+        return {"status": proposal["status"], "message": "Proposta já processada"}
+    conn.execute(
+        "UPDATE action_proposals SET status = 'approved', resolved_at = ? WHERE id = ?",
+        (datetime.now().isoformat(), proposal_id),
+    )
+    conn.commit()
     return {
         "status": "approved",
         "proposal_id": proposal_id,
@@ -92,27 +74,20 @@ def approve(proposal_id: str) -> dict:
 
 
 def reject(proposal_id: str, reason: str = "") -> dict:
-    """Reject a proposal."""
-    conn = _conn()
-    try:
-        conn.execute(
-            "UPDATE action_proposals SET status = 'rejected', resolved_at = ?, rejection_reason = ? WHERE id = ?",
-            (datetime.now().isoformat(), reason, proposal_id),
-        )
-        conn.commit()
-    finally:
-        conn.close()
+    conn = get_connection()
+    conn.execute(
+        "UPDATE action_proposals SET status = 'rejected', resolved_at = ?, rejection_reason = ? WHERE id = ?",
+        (datetime.now().isoformat(), reason, proposal_id),
+    )
+    conn.commit()
     return {"status": "rejected", "proposal_id": proposal_id, "reason": reason}
 
 
 def get_pending() -> list[dict]:
-    conn = _conn()
-    try:
-        rows = conn.execute(
-            "SELECT * FROM action_proposals WHERE status = 'pending' ORDER BY created_at DESC"
-        ).fetchall()
-    finally:
-        conn.close()
+    conn = get_connection()
+    rows = conn.execute(
+        "SELECT * FROM action_proposals WHERE status = 'pending' ORDER BY created_at DESC"
+    ).fetchall()
     result = []
     for r in rows:
         r = dict(r)
@@ -123,14 +98,10 @@ def get_pending() -> list[dict]:
 
 
 def list_recent(limit: int = 10) -> list[dict]:
-    conn = _conn()
-    try:
-        rows = conn.execute(
-            "SELECT * FROM action_proposals ORDER BY created_at DESC LIMIT ?",
-            (limit,),
-        ).fetchall()
-    finally:
-        conn.close()
+    conn = get_connection()
+    rows = conn.execute(
+        "SELECT * FROM action_proposals ORDER BY created_at DESC LIMIT ?", (limit,)
+    ).fetchall()
     result = []
     for r in rows:
         r = dict(r)
@@ -141,7 +112,6 @@ def list_recent(limit: int = 10) -> list[dict]:
 
 
 def inject_proposal_prompt() -> str:
-    """System prompt addition that teaches the agent to emit proposals."""
     return (
         "\n\nQuando quiser executar uma ação (gerar exercícios, criar plano de estudo, "
         "gerar flashcards ou pesquisar), emita UMA ÚNICA vez um bloco JSON no início "

@@ -6,8 +6,11 @@ Tutor de estudos multimodal que roda **100% local** no seu computador (Linux): c
 
 ### 💬 Conversa com tutor de IA
 - Modelos locais via Ollama (`llama3.1` texto, `qwen2.5vl:7b` visão) — nada sai do computador
-- Persona de tutor configurável: professor, tutor (dá pistas sem entregar a resposta), exercícios, revisão, resumo, simples
-- Memória rolante: últimas mensagens + resumo automático da sessão (fatos importantes, conteúdo estudado, dificuldades)
+- **Metodologia socrática**: modo tutor (padrão) guia com perguntas antes de dar respostas
+- Persona configurável: professor, tutor (socrático), exercícios, revisão, resumo, simples
+- **Dashboard do aluno**: agente tem acesso a pontos fracos, fortes, atividade recente e streak
+- **Consciência contextual**: referências a exercícios anteriores, temas fracos, tela mostrada
+- Memória rolante: últimas mensagens + resumo automático da sessão
 - Calculadora segura embutida
 
 ### 🗣 Voz completa
@@ -46,17 +49,28 @@ Tutor de estudos multimodal que roda **100% local** no seu computador (Linux): c
 - Gera questões do tema que você escolher (múltipla escolha ou dissertativas)
 - Gabarito fica no servidor — correção automática aceitando respostas equivalentes (`0,5` = `1/2`)
 - **Histórico persistente:** resultados salvos automaticamente para o dashboard de progresso
+- **Scoring ponderado**: dificuldade, consistência, recência e volume alimentam o mastery score
+- **Caderno de erros automático**: questões erradas são salvas para revisão futura
 
 ### 🃏 Flashcards com repetição espaçada
 - Geração automática de flashcards via LLM a partir de um tema
 - Algoritmo SM-2 (mesmo do Anki): intervalo cresce conforme você acerta, recomeça quando erra
 - Revisão interativa: revele a resposta e avalie (😵 de novo / 😓 difícil / 😊 bom / 🤩 fácil)
 - Stats por deck: total, pendentes, dominados (intervalo > 21 dias)
+- **Pipeline exercício→flashcard**: gere flashcards automaticamente a partir do caderno de erros
 
 ### 📋 Planos de estudo
 - Geração automática de planos estruturados via LLM (5-12 subtópicos)
 - Checklist interativo com barra de progresso
 - Progresso salvo no SQLite — retome de onde parou
+- **Mastery-aware**: planos usam dados de mastery e erros recentes para focar nos pontos fracos
+
+### 📝 Caderno de erros
+- Erros de exercícios são salvos automaticamente (pergunta, resposta errada, resposta correta, explicação)
+- Filtrar por tema, marcar como revisado, ver estatísticas
+- **Pipeline exercício→flashcard**: gere flashcards diretamente dos erros pendentes
+- API: `GET /api/errors`, `GET /api/errors/stats`, `POST /api/errors/{id}/review`
+- API: `POST /api/flashcards/generate-from-errors`
 
 ### 📊 Dashboard de progresso
 - Grid de métricas: exercícios feitos, média geral, streak de dias, flashcards dominados, % planos
@@ -65,8 +79,9 @@ Tutor de estudos multimodal que roda **100% local** no seu computador (Linux): c
 
 ### 👤 Perfil adaptativo do aluno
 - Cadastro: nome, série, escola, preferências
-- **Domínio por tema:** tracking automático de acertos/erros em exercícios e flashcards
-- **Detecção de pontos fracos:** temas com média < 55% são sinalizados
+- **Domínio por tema:** tracking automático com **weighted scoring** (30% dificuldade, 25% consistência, 25% recência, 20% volume)
+- **Rolling window real:** janela de 5 resultados recentes com evict de dados antigos
+- **Detecção de pontos fracos:** temas com weighted score < 55% são sinalizados
 - O agente recebe os pontos fracos no system prompt e prioriza esses temas
 
 ### ⚡ Automação com confirmação
@@ -83,8 +98,8 @@ Tutor de estudos multimodal que roda **100% local** no seu computador (Linux): c
 ### ⏱ Perfil avançado
 - Registro de sessões de estudo com duração (exercício, revisão, chat)
 - **Analytics temporal**: horários mais produtivos, média de tempo por sessão
-- **Dificuldade adaptativa**: o nível dos exercícios se ajusta automaticamente ao desempenho
-- **Recomendações por tempo**: "Tenho 30 minutos" → sugere o que estudar
+- **Dificuldade adaptativa**: rolling window real de 5 resultados ajusta nível automaticamente
+- **Recomendações por tempo**: "Tenho 30 minutos" → sugere o que estudar (usa weighted score)
 
 ### 📤 Export/Import
 - **Flashcards**: exportar baralho em CSV (compatível com Anki) ou JSON
@@ -102,29 +117,34 @@ Tutor de estudos multimodal que roda **100% local** no seu computador (Linux): c
 
 ```
 backend/app/
-├── main.py                 API FastAPI (chat, tela, áudio, docs, exercícios, tutor, perfil, ações)
+├── main.py                 FastAPI (6 routers: chat, screen, exercises, documents, audio, tutor)
+├── db.py                   Conexão SQLite centralizada (WAL mode, thread-local, pool)
 ├── config.py               Caminhos, modelos Ollama
 ├── core/                   Núcleo V2 (desacoplado do agente)
 │   ├── model_manager.py      Papéis de modelos por env (text/vision/synthesis/embedding/stt/tts)
 │   ├── planner.py            Decide captura de tela, monitor e estratégia de documento
-│   ├── context_manager.py    System prompt + perfil adaptativo + prompt de propostas
+│   ├── context_manager.py    System prompt socrático + dashboard do aluno + propostas
 │   ├── vision_router.py      Notas de imagem, bloco híbrido de OCR, janela ativa
 │   ├── tool_registry.py      Registro decorado de ferramentas + schemas p/ tool-calling
 │   └── registered_tools.py   web_search, open_url, calculate
+├── routers/                Endpoints FastAPI (chat, screen, exercises, documents, audio, tutor)
 ├── agent/
 │   ├── agent.py            Orquestrador: plano → ferramentas → resposta
 │   ├── llm.py              Cliente Ollama + síntese de pesquisas (qwen2.5vl)
-│   ├── memory.py           SQLite: sessões, mensagens, resumos, documentos, flashcards, planos, perfil, ações
-│   ├── exercises.py         Gerador + corretor + grade_and_track (atualiza mastery)
-│   └── memory.py           12 tabelas SQLite, criadas no init
-├── tutor/                  Módulos de tutoria (P5-P10)
+│   ├── memory.py           SQLite: 18 tabelas (sessions, messages, summaries, documents, exercise_history,
+│   │                         exercise_store, flashcard_decks, flashcards, flashcard_reviews, study_plans,
+│   │                         study_items, student_profile, topic_mastery, topic_results, action_proposals,
+│   │                         session_log, adaptive_difficulty, achievements, error_notebook)
+│   └── exercises.py         Gerador + corretor + grade_and_track (atualiza mastery)
+├── tutor/                  Módulos de tutoria (P5-P10 + Phase 3 adaptive)
 │   ├── flashcards.py         SM-2, geração LLM, review, stats por deck
-│   ├── study_plan.py         Planos LLM + checklist toggle + progresso
+│   ├── study_plan.py         Planos LLM mastery-aware + checklist toggle + progresso
 │   ├── stats.py              Dashboard combinado (exercícios + flashcards + planos)
-│   ├── profile.py            Perfil do aluno, topic_mastery, weak/strong, sugestões
+│   ├── profile.py            Perfil + weighted scoring + student_dashboard() para system prompt
 │   ├── automation.py         Propostas de ação, approve/reject, prompt injetado
-│   ├── advanced_profile.py   Sessões, analytics temporal, dificuldade adaptativa, recomendações
+│   ├── advanced_profile.py   Sessões, analytics, rolling window real, recomendações ponderadas
 │   ├── gamification.py       16 conquistas, streaks por tema, verificação automática
+│   ├── error_notebook.py     Caderno de erros + pipeline exercício→flashcard
 │   └── export_import.py      CSV/Anki flashcards, JSON planos, perfil completo
 ├── vision/
 │   ├── screen.py           Captura multi-monitor (mss + cosmic-screenshot p/ Wayland)
@@ -163,11 +183,11 @@ frontend/src/
 
 ### Testes
 
-139 testes pytest (planner, registry, calculadora, documentos, exercícios, permissões, context_manager, vision_router, wake_word, VAD, RAG, tutor SM-2, flashcards CRUD, study plans, stats, profile, automation, advanced_profile, gamification, export/import) e lint ruff:
+178 testes pytest (planner, registry, calculadora, documentos, exercícios, permissões, context_manager, vision_router, wake_word, VAD, RAG, tutor SM-2, flashcards CRUD, study plans, stats, profile, automation, advanced_profile, gamification, export/import, weighted scoring, rolling window, student dashboard, prompt socrático, error notebook, pipeline exercício→flashcard, planos mastery-aware) e lint ruff:
 
 ```bash
 cd backend
-.venv/bin/python -m pytest -q       # 139 testes
+.venv/bin/python -m pytest -q       # 178 testes
 .venv/bin/python -m ruff check app tests
 ```
 
@@ -323,6 +343,7 @@ Controladas pelo painel lateral (ou `config/permissions.json`). Nenhum módulo a
 
 ## Roadmap
 
+### Funcionalidades (P1-P10)
 - [x] P1 — Agent Core: model manager, planner, context manager, tool registry
 - [x] P2 — Visão computacional: vision router, OCR híbrido, multi-monitor, janela ativa
 - [x] P3 — Áudio: VAD por energia, wake word, daemon viva-voz, STT turbinado
@@ -333,3 +354,15 @@ Controladas pelo painel lateral (ou `config/permissions.json`). Nenhum módulo a
 - [x] P8 — Perfil avançado: sessões, analytics temporal, dificuldade adaptativa, recomendações
 - [x] P9 — Gamificação: 16 conquistas, streaks por tema, verificação automática
 - [x] P10 — Export/Import: CSV/Anki, JSON, perfil completo
+
+### Evolution Phases (Master Prompt)
+- [x] Phase 1 — Audit: full codebase analysis, bug inventory, architecture review
+- [x] Phase 2 — Stability: centralized SQLite DB, CORS hardening, safe defaults, router split (main.py → 6 routers), thread-safe permissions, exercises persisted in SQLite
+- [x] Phase 3 — Adaptive Motor: weighted scoring (difficulty/consistency/recency/volume), real rolling window (5 results), topic_results table, weighted mastery classification
+- [x] Phase 4 — Smart Tutor: Socratic methodology, student_dashboard(), dynamic state injection, contextual awareness
+- [x] Phase 5 — Integrated Learning: error_notebook, exercise→flashcard pipeline, mastery-aware study plans
+- [ ] Phase 6 — Multimodal: (already partially done — vision + audio)
+- [ ] Phase 7 — Dashboard: mastery-by-subject visualization, weekly summary
+- [ ] Phase 8 — Gamification expansion: levels, more achievements
+- [ ] Phase 9 — Security: rate limiting, additional hardening
+- [ ] Phase 10 — Product: install.sh, doctor.sh, backup system
