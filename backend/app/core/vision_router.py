@@ -19,8 +19,15 @@ def build_image_note(camera: bool, monitor=None, size=None) -> str:
     origem = f"captura do meu monitor {monitor}" if monitor else "captura da minha tela"
     dim = f" ({size[0]}x{size[1]} pixels)" if size else ""
     return (
-        f"(A imagem anexada é uma {origem}{dim}. Se a pergunta for sobre a "
-        "tela ou o que está visível nela, responda com base NA IMAGEM.)"
+        f"[CONTEÚDO VISUAL — PRIORIDADE MÁXIMA]\n"
+        f"Imagem: {origem}{dim}.\n"
+        f"INSTRUÇÃO OBRIGATÓRIA: Analise esta imagem DETALHADAMENTE antes de responder.\n"
+        f"- Se houver EXERCÍCIO, QUESTÃO ou PROBLEMA: leia o enunciado completo, "
+        f"identifique a matéria, analise as alternativas/problema e resolva ou guie o aluno.\n"
+        f"- Se houver TEXTO, GRÁFICO, CÓDIGO: descreva, explique e responda sobre o conteúdo.\n"
+        f"- NUNCA ignore o conteúdo visual. O aluno está pedindo ajuda com o que vê na tela.\n"
+        f"- Responda EM PORTUGUÊS sobre o conteúdo da imagem.\n"
+        f"[FIM DO CONTEÚDO VISUAL]"
     )
 
 

@@ -11,7 +11,7 @@ def test_nota_de_tela_com_monitor_e_tamanho():
     nota = build_image_note(camera=False, monitor=2, size=(1440, 900))
     assert "monitor 2" in nota
     assert "1440x900" in nota
-    assert "NA IMAGEM" in nota
+    assert "PRIORIDADE MÁXIMA" in nota
 
 
 def test_nota_de_camera():

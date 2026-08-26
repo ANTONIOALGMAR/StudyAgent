@@ -81,10 +81,17 @@ def falar(wav_bytes: bytes) -> None:
 
 
 def enviar_comando(comando: str) -> str | None:
+    import re as _re
+
+    use_screen = bool(_re.search(r"\b(tela|monitor|screen|ler|exercício|questão|problema|resolva|resolve|calculate|math|matemática|física|química|biologia|história|geografia|português|inglês)\b", comando, _re.UNICODE))
     try:
         resp = requests.post(
             f"{API_URL}/api/chat",
-            json={"message": comando, "session_id": "voz-livre"},
+            json={
+                "message": comando,
+                "session_id": "voz-livre",
+                "use_screen": use_screen,
+            },
             timeout=180,
         )
         resp.raise_for_status()
