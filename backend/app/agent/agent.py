@@ -14,13 +14,15 @@ from ..core.registered_tools import calculate_tool, open_url_tool, web_search_to
 from ..core.tool_registry import all_schemas, get
 from ..core.vision_router import (
     VisionContext,
+    VisionIntent,
     build_image_note,
     decide_ocr_block,
     format_window_note,
 )
 from ..security.permissions import PermissionDeniedError
-from ..tools import calculator
 from ..vision import ocr, screen, window
+from ..vision.engine import process_capture
+from ..vision.screen import ScreenManager
 from .llm import chat, chat_with_tools
 from .memory import Memory
 
@@ -64,13 +66,13 @@ class StudyAgent:
 
         ocr_text = None
         vision_ctx = None
+
         if plan.capture_screen:
             vision_ctx = self._vision_pipeline(
                 message=message,
                 monitor=monitor,
                 region=region,
-                session_id=session_id,
-                plan=plan,
+                intent=plan.vision_intent,
             )
             if not vision_ctx.is_valid:
                 log.error("[VISION] pipeline_failed errors=%s", vision_ctx.errors)
@@ -83,7 +85,7 @@ class StudyAgent:
                     "tools_used": [],
                 }
             tools_used.append("screen_capture")
-            images.append(screen.image_to_base64(vision_ctx.image))
+            images.append(vision_ctx.image_bytes)
             ocr_text = vision_ctx.ocr_text
 
         camera_image = image_b64 is not None
@@ -127,8 +129,6 @@ class StudyAgent:
 
                 _, text = load_document_text(Path(doc["path"]))
                 if len(text) <= WHOLE_DOC_MAX_CHARS:
-                    # Cabe inteiro no contexto: manda o documento completo,
-                    # sem resumo que possa perder detalhes.
                     body = whole_doc_body(text)
                 elif plan.whole_doc:
                     digest = self._digest_cache.get(plan.doc_id)
@@ -169,8 +169,7 @@ class StudyAgent:
         else:
             messages = self.ctx.assemble(session_id, enriched_message)
 
-        # Com documento anexado não há necessidade de ferramentas: evita que
-        # o modelo distraia-se com chamadas em vez de ler o texto fornecido.
+        # Com documento anexado não há necessidade de ferramentas
         response_text = self._run_tool_loop(
             messages, images, tools_used, allow_tools=not plan.wants_document
         )
@@ -186,12 +185,11 @@ class StudyAgent:
 
     def _run_tool_loop(self, messages, images, tools_used, allow_tools=True):
         if images:
-            log.info("[VISION] vision_model=sending images=%d message_count=%d system_role=%s",
-                     len(images), len(messages), messages[0].get("role", "unknown"))
+            log.info("[VISION] vision_model=sending images=%d message_count=%d",
+                     len(images), len(messages))
             response = chat(messages, images=images)
-            log.info("[VISION] vision_response=length=%d preview=%s",
-                     len(response) if response else 0,
-                     (response[:120] + "...") if response and len(response) > 120 else response)
+            log.info("[VISION] vision_response=length=%d",
+                     len(response) if response else 0)
             return response
         if not allow_tools:
             return chat(messages)
@@ -232,7 +230,6 @@ class StudyAgent:
                     except Exception as exc:
                         result = f"Falha ao executar {name}: {exc}"
                     tools_used.append(name)
-                    # Busca bem-sucedida → síntese dedicada com citações
                     if name == "web_search" and "---" in result:
                         try:
                             return synthesize(last_user, result)
@@ -247,13 +244,12 @@ class StudyAgent:
         self,
         message: str,
         monitor: int,
-        region: dict | None,
-        session_id: str,
-        plan,
+        region,
+        intent: VisionIntent,
     ) -> VisionContext:
-        """Pipeline dedicado de visão: captura → valida → OCR → VisionContext.
+        """Pipeline dedicado de visão: captura → processa → contexto.
 
-        Fluxo explícito com estados registrados. NUNCA confunde CAPTURE com UNDERSTOOD.
+        Fluxo explícito com estados registrados.
         """
         stages = []
         errors = []
@@ -264,72 +260,34 @@ class StudyAgent:
         stages.append("CAPTURE_REQUESTED")
 
         try:
-            shot = screen.capture(monitor=monitor, region=region)
+            shot = ScreenManager.capture_monitor(monitor_id=monitor, region=region)
         except Exception as exc:
             errors.append(f"Falha na captura: {exc}")
             log.error("[VISION] stage=CAPTURE_FAILED error=%s", exc)
-            stages.append("CAPTURE_FAILED")
-            return VisionContext(
-                source="screen",
-                monitor_id=monitor,
-                pipeline_stages=stages,
-                errors=errors,
-            )
+            return VisionContext(source="screen", monitor_id=monitor, errors=errors)
 
-        capture_result = screen.validate_capture(shot, monitor)
-        if not capture_result.is_valid:
-            errors.append(capture_result.error or "Captura inválida")
-            log.error("[VISION] stage=CAPTURE_INVALID error=%s", capture_result.error)
-            stages.append("CAPTURE_INVALID")
-            return VisionContext(
-                source="screen",
-                monitor_id=monitor,
-                pipeline_stages=stages,
-                errors=errors,
-            )
+        capture_res = screen.validate_capture(shot, monitor)
+        if not capture_res.is_valid:
+            errors.append(capture_res.error or "Captura inválida")
+            log.error("[VISION] stage=CAPTURE_INVALID error=%s", capture_res.error)
+            return VisionContext(source="screen", monitor_id=monitor, errors=errors)
 
         stages.append("CAPTURED")
         log.info("[VISION] stage=CAPTURED resolution=%dx%d monitor=%s",
-                 capture_result.width, capture_result.height, monitor)
+                 capture_res.width, capture_res.height, monitor)
 
-        # ── Stage 2: OCR ────────────────────────────────────────────
-        ocr_result = ocr.read_text_structured(shot)
-        if ocr_result.error:
-            log.warning("[VISION] stage=OCR_WARNING error=%s", ocr_result.error)
-            stages.append("OCR_WARNING")
-        elif ocr_result.is_useful:
-            stages.append("OCR_COMPLETED")
-            log.info("[VISION] stage=OCR_COMPLETED chars=%d", ocr_result.char_count)
-        else:
-            stages.append("OCR_NO_TEXT")
-            log.info("[VISION] stage=OCR_NO_TEXT chars=%d", ocr_result.char_count)
-
-        # ── Stage 3: WINDOW INFO ────────────────────────────────────
+        # ── Stage 2: WINDOW INFO ────────────────────────────────────
         window_info = None
         try:
             window_info = window.active_window()
         except Exception:
             pass
-        stages.append("WINDOW_CHECKED")
 
-        # ── Stage 4: BUILD CONTEXT ──────────────────────────────────
-        image_bytes = screen.image_to_base64(shot)
-        vision_ctx = VisionContext(
-            source="screen",
-            monitor_id=monitor,
-            resolution=(capture_result.width, capture_result.height),
-            ocr_text=ocr_result.text if ocr_result.is_useful else None,
-            window_app=window_info.get("app") if window_info else None,
-            window_title=window_info.get("title") if window_info else None,
-            image_bytes=image_bytes,
-            pipeline_stages=stages,
-            errors=errors,
-        )
-        stages.append("CONTEXT_BUILT")
-        log.info("[VISION] stage=CONTEXT_BUILT has_ocr=%s window=%s",
-                 vision_ctx.has_ocr, window_info.get("app") if window_info else None)
-
-        return vision_ctx
+        # ── Stage 3: PROCESS (OCR + context) ────────────────────────
+        # process_capture é puro — sem LLM. Só OCR + janela.
+        ctx = process_capture(shot, monitor, window_info)
+        ctx.errors = errors
+        return ctx
 
     @staticmethod
     def _safe_ocr(pil_image):
@@ -346,7 +304,6 @@ class StudyAgent:
         from io import BytesIO
 
         from PIL import Image
-
         try:
             return StudyAgent._safe_ocr(Image.open(BytesIO(data)))
         except Exception:
@@ -354,7 +311,7 @@ class StudyAgent:
 
     def capture_and_read_screen(self, region=None, monitor=1):
         self._require("screen_capture")
-        shot = screen.capture(monitor=monitor, region=region)
+        shot = ScreenManager.capture_monitor(monitor_id=monitor, region=region)
         result = {"ocr_available": ocr.available()}
         if ocr.available():
             try:
@@ -376,9 +333,6 @@ class StudyAgent:
         )
         return self.process(prompt, session_id=session_id, image_b64=image_bytes)
 
-    def calculate(self, expression):
-        return calculator.calculate(expression)
-
     def status(self):
         return {
             "models": available_models(),
@@ -388,7 +342,6 @@ class StudyAgent:
     @staticmethod
     def _require(name):
         from ..security.permissions import PermissionManager
-
         PermissionManager().require(name)
 
 

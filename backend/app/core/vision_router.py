@@ -1,7 +1,7 @@
 """Roteamento visual puro: objetos estruturados e prompt de visão.
 
 Pipeline de visão dedicado (NÃO genérico):
-  VisionRequest → ScreenManager → ScreenCaptureResult → OCRResult → VisionEngine → VisualContext
+  VisionRequest → ScreenManager → ScreenCaptureResult → OCRResult → VisionContext
 
 O ``context_manager`` usa ``build_vision_system_prompt`` para SUBSTITUIR
 o system prompt genérico quando há imagem — o motivo raiz de "olá" em
@@ -25,14 +25,13 @@ MAX_OCR_CHARS = 2500
 class VisionIntent(Enum):
     """Intenção do usuário ao pedir visão de tela."""
 
-    SCREEN_QUESTION = "screen_question"
-    SCREEN_READ = "screen_read"
-    SCREEN_DESCRIBE = "screen_describe"
-    SCREEN_ERROR = "screen_error"
-    SCREEN_CODE = "screen_code"
-    SCREEN_EXERCISE = "screen_exercise"
-    SCREEN_EXPLICIT = "screen_explicit"
-    CAMERA = "camera"
+    SCREEN_QUESTION = "SCREEN_QUESTION"
+    SCREEN_READ = "SCREEN_READ"
+    SCREEN_DESCRIBE = "SCREEN_DESCRIBE"
+    SCREEN_ERROR = "SCREEN_ERROR"
+    SCREEN_CODE = "SCREEN_CODE"
+    SCREEN_EXERCISE = "SCREEN_EXERCISE"
+    CAMERA = "CAMERA"
 
 
 @dataclass
@@ -40,7 +39,7 @@ class VisionRequest:
     """Entrada estruturada para o pipeline de visão."""
 
     message: str
-    monitor: int = 1
+    monitor_id: int = 1
     region: dict | None = None
     camera_image_b64: str | None = None
     intent: VisionIntent = VisionIntent.SCREEN_QUESTION
@@ -59,28 +58,27 @@ class VisionRequest:
 class ScreenCaptureResult:
     """Resultado de uma captura de tela validada."""
 
-    image: Any  # PIL.Image.Image
-    monitor: int
-    width: int
-    height: int
+    monitor_id: int
+    image: Any = None  # PIL.Image.Image
+    width: int = 0
+    height: int = 0
     is_valid: bool = True
     error: str | None = None
 
     @classmethod
-    def from_image(cls, image, monitor: int) -> ScreenCaptureResult:
+    def from_image(cls, image, monitor_id: int) -> ScreenCaptureResult:
         return cls(
+            monitor_id=monitor_id,
             image=image,
-            monitor=monitor,
             width=image.width,
             height=image.height,
             is_valid=image.width > 0 and image.height > 0,
         )
 
     @classmethod
-    def failed(cls, monitor: int, error: str) -> ScreenCaptureResult:
+    def failed(cls, monitor_id: int, error: str) -> ScreenCaptureResult:
         return cls(
-            image=None,
-            monitor=monitor,
+            monitor_id=monitor_id,
             width=0,
             height=0,
             is_valid=False,
@@ -117,8 +115,8 @@ class OCRResult:
 class VisionContext:
     """Contexto visual estruturado que vai para o tutor.
 
-    Substitui o fluxo genérico de image_note + ocr + window por um
-    objeto que o tutor捧e e usa diretamente.
+    Concentra todas as informações extraídas da imagem para que o tutor
+    tenha uma base sólida de fatos antes de chamar o modelo de linguagem.
     """
 
     source: str  # "screen" | "camera"
@@ -150,13 +148,14 @@ Você é um analista visual. Sua ÚNICA tarefa é analisar a imagem anexada.
 REGRA ABSOLUTA: Descreva o que vê na imagem. NUNCA dê saudação.
 Se houver texto, leia. Se houver exercício, resolva. Se houver erro, identifique.
 
- FORMATO DA RESPOSTA:
+FORMATO DA RESPOSTA:
 1. O QUE VEJO: descreva o conteúdo visual (aplicativo, janela, layout)
 2. CONTEÚDO: texto, código, exercício, erro, gráfico — o que estiver visível
 3. ANÁLISE: responda à pergunta do usuário sobre o conteúdo visual
 
- Seu papel é OLHAR a imagem e REPORTAR o que vê, não conversar.
+Seu papel é OLHAR a imagem e REPORTAR o que vê, não conversar.
 Se não conseguir ver a imagem, diga: "Não consegui analisar a imagem." """
+
 
 # ── Notas auxiliares (compatibilidade com fluxo legado) ────────────
 
@@ -249,12 +248,15 @@ _SCREEN_EXERCISE_RE = re.compile(
 
 def detect_vision_intent(message: str) -> VisionIntent:
     """Detecta a intenção visual a partir da mensagem do usuário."""
-    if _SCREEN_ERROR_RE.search(message):
+    lower = message.lower()
+    if _SCREEN_ERROR_RE.search(lower):
         return VisionIntent.SCREEN_ERROR
-    if _SCREEN_CODE_RE.search(message):
+    if _SCREEN_CODE_RE.search(lower):
         return VisionIntent.SCREEN_CODE
-    if _SCREEN_EXERCISE_RE.search(message):
+    if _SCREEN_EXERCISE_RE.search(lower):
         return VisionIntent.SCREEN_EXERCISE
-    if _SCREEN_VERBS_RE.search(message):
+    if _SCREEN_VERBS_RE.search(lower):
         return VisionIntent.SCREEN_READ
-    return VisionIntent.SCREEN_QUESTION
+    if "o que" in lower and ("tela" in lower or "monitor" in lower):
+        return VisionIntent.SCREEN_QUESTION
+    return VisionIntent.SCREEN_DESCRIBE

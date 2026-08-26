@@ -3,9 +3,71 @@ import subprocess
 import tempfile
 import time
 from pathlib import Path
+from typing import Optional
 
 import mss
 from PIL import Image
+
+
+class ScreenManager:
+    """Gerenciador de monitores e captura de tela."""
+
+    @staticmethod
+    def list_monitors() -> list[dict]:
+        """Lista todos os monitores detectados."""
+        with mss.MSS() as sct:
+            return [
+                {
+                    "index": i,
+                    "width": m["width"],
+                    "height": m["height"],
+                    "left": m["left"],
+                    "top": m["top"],
+                }
+                for i, m in enumerate(sct.monitors)
+            ]
+
+    @staticmethod
+    def get_monitor(monitor_id: int) -> Optional[dict]:
+        """Busca dados de um monitor específico."""
+        monitors = ScreenManager.list_monitors()
+        if 0 <= monitor_id < len(monitors):
+            return monitors[monitor_id]
+        return None
+
+    @staticmethod
+    def validate_monitor(monitor_id: int) -> bool:
+        """Verifica se o ID do monitor é válido."""
+        return ScreenManager.get_monitor(monitor_id) is not None
+
+    @staticmethod
+    def capture_monitor(monitor_id: int, region: Optional[dict] = None) -> Image.Image:
+        """Captura o monitor solicitado."""
+        return _capture(monitor=monitor_id, region=region)
+
+
+def list_monitors() -> list[dict]:
+    """Wrapper legado — usa ScreenManager."""
+    return ScreenManager.list_monitors()
+
+
+def validate_capture(image, monitor: int):
+    """Valida imagem capturada e retorna ScreenCaptureResult."""
+    from ..core.vision_router import ScreenCaptureResult
+
+    if image is None:
+        return ScreenCaptureResult.failed(monitor, "Captura retornou None")
+    try:
+        result = ScreenCaptureResult.from_image(image, monitor)
+        if _looks_black(image):
+            result.error = "Imagem preta (falha de captura Wayland)"
+            result.is_valid = False
+        return result
+    except Exception as exc:
+        return ScreenCaptureResult.failed(monitor, f"Erro na validação: {exc}")
+
+
+# ── Internos ──────────────────────────────────────────────────────
 
 
 def _is_wayland():
@@ -47,38 +109,6 @@ def _capture_cosmic() -> Image.Image | None:
         latest.unlink(missing_ok=True)
 
 
-def validate_capture(image, monitor: int):
-    """Valida imagem capturada e retorna ScreenCaptureResult."""
-    from ..core.vision_router import ScreenCaptureResult
-
-    if image is None:
-        return ScreenCaptureResult.failed(monitor, "Captura retornou None")
-    try:
-        result = ScreenCaptureResult.from_image(image, monitor)
-        if _looks_black(image):
-            result.errors = ["Imagem capturada está preta (provavelmente falha de captura Wayland)"]
-            result.is_valid = False
-        return result
-    except Exception as exc:
-        return ScreenCaptureResult.failed(monitor, f"Erro na validação: {exc}")
-
-
-def list_monitors():
-    with mss.MSS() as sct:
-        result = []
-        for i, m in enumerate(sct.monitors):
-            result.append(
-                {
-                    "index": i,
-                    "width": m["width"],
-                    "height": m["height"],
-                    "left": m["left"],
-                    "top": m["top"],
-                }
-            )
-    return result
-
-
 def _crop_virtual(full: Image.Image, monitor: int, region=None) -> Image.Image:
     monitors = list_monitors()
     index = min(max(int(monitor), 0), len(monitors) - 1)
@@ -109,7 +139,7 @@ def _crop_virtual(full: Image.Image, monitor: int, region=None) -> Image.Image:
     return full.crop(box)
 
 
-def capture(monitor=1, region=None) -> Image.Image:
+def _capture(monitor=1, region=None) -> Image.Image:
     if _is_wayland():
         full = _capture_cosmic()
         if full is not None and not _looks_black(full):
@@ -150,7 +180,7 @@ def image_to_base64(image: Image.Image, max_width=1600, quality=85) -> bytes:
     return buffer.getvalue()
 
 
-def image_to_jpeg_base64(image: Image.Image, max_width=1100, quality=60) -> bytes:
+def image_to_jpeg_base64(image: Image.Image, max_width=1280, quality=75) -> bytes:
     from io import BytesIO
 
     buffer = BytesIO()

@@ -79,11 +79,38 @@ if command -v ollama &>/dev/null; then
         fi
     done
     # Verificar qwen2.5vl (pode ter variações)
-    if ollama list 2>/dev/null | grep -q "qwen"; then
-        check_pass "Modelo qwen disponível"
+    if ollama list 2>/dev/null | grep -q "qwen2.5vl"; then
+        check_pass "Modelo Vision (qwen2.5vl) disponível"
     else
-        check_warn "Modelo qwen2.5vl não encontrado"
+        check_warn "Modelo Vision (qwen2.5vl) não encontrado"
     fi
+fi
+
+echo ""
+
+# ── Vision Engine ──
+echo "── Vision Engine ──"
+
+# Verificar dependências de visão
+command -v tesseract &>/dev/null && check_pass "Tesseract OCR instalado" || check_warn "Tesseract OCR não encontrado"
+
+if python3.12 -c "import mss" &>/dev/null; then
+    check_pass "Biblioteca mss (captura) disponível"
+else
+    check_warn "Biblioteca mss não encontrada"
+fi
+
+# Diagnóstico via API (se ativa)
+if curl -sf http://localhost:8000/api/screen/diagnostics | grep -q '"screen_capture":true'; then
+    check_pass "Pipeline de captura validado via API"
+else
+    check_warn "Falha na validação do pipeline de captura via API"
+fi
+
+if curl -sf http://localhost:8000/api/screen/diagnostics | grep -q '"vision_test":true'; then
+    check_pass "Vision Engine validada (Ollama + Imagem + Qwen)"
+else
+    check_warn "Vision Engine offline ou qwen falhou no teste"
 fi
 
 echo ""

@@ -19,7 +19,7 @@ from app.vision.window import active_window
 
 
 def test_vision_request_is_screen():
-    req = VisionRequest(message="leia a tela", monitor=2)
+    req = VisionRequest(message="leia a tela", monitor_id=2)
     assert req.is_screen
     assert not req.is_camera
 
@@ -37,14 +37,14 @@ def test_screen_capture_result_from_valid_image():
     img = MagicMock()
     img.width = 1920
     img.height = 1080
-    result = ScreenCaptureResult.from_image(img, monitor=1)
+    result = ScreenCaptureResult.from_image(img, monitor_id=1)
     assert result.is_valid
     assert result.width == 1920
     assert result.error is None
 
 
 def test_screen_capture_result_failed():
-    result = ScreenCaptureResult.failed(monitor=2, error="Wayland falhou")
+    result = ScreenCaptureResult.failed(monitor_id=2, error="Wayland falhou")
     assert not result.is_valid
     assert result.error == "Wayland falhou"
     assert result.width == 0
@@ -128,8 +128,8 @@ def test_intent_screen_exercise():
     assert detect_vision_intent("qual exercício aparece na tela") == VisionIntent.SCREEN_EXERCISE
 
 
-def test_intent_screen_question_default():
-    assert detect_vision_intent("me mostre a tela") == VisionIntent.SCREEN_QUESTION
+def test_intent_screen_describe_default():
+    assert detect_vision_intent("me mostre a tela") == VisionIntent.SCREEN_DESCRIBE
 
 
 # ── Vision system prompt ───────────────────────────────────────────
