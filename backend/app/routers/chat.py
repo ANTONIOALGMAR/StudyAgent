@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
+from slowapi import Limiter
+from slowapi.util import get_remote_address
 
 from ..agent.agent import PermissionDeniedError, StudyAgent
 
 router = APIRouter(prefix="/api")
+limiter = Limiter(key_func=get_remote_address)
 
 agent = StudyAgent()
 
@@ -28,7 +31,8 @@ def health():
 
 
 @router.post("/chat")
-def chat(req: ChatRequest):
+@limiter.limit("15/minute")
+def chat(request: Request, req: ChatRequest):
     try:
         if req.image_b64:
             from ..security.permissions import PermissionManager

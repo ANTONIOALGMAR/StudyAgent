@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
+from slowapi import Limiter
+from slowapi.util import get_remote_address
 
 from ..agent import exercises
 
 router = APIRouter(prefix="/api")
+limiter = Limiter(key_func=get_remote_address)
 
 
 class ExerciseGenerateRequest(BaseModel):
@@ -22,7 +25,8 @@ class ExerciseGradeRequest(BaseModel):
 
 
 @router.post("/exercises/generate")
-def exercises_generate(req: ExerciseGenerateRequest):
+@limiter.limit("5/minute")
+def exercises_generate(request: Request, req: ExerciseGenerateRequest):
     try:
         return exercises.generate(topic=req.topic, n=req.n, level=req.level)
     except ValueError as exc:
@@ -32,7 +36,8 @@ def exercises_generate(req: ExerciseGenerateRequest):
 
 
 @router.post("/exercises/grade")
-def exercises_grade(req: ExerciseGradeRequest):
+@limiter.limit("30/minute")
+def exercises_grade(request: Request, req: ExerciseGradeRequest):
     try:
         return exercises.grade_and_track(exercise_id=req.exercise_id, answers=req.answers)
     except KeyError as exc:
