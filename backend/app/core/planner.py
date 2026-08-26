@@ -1,4 +1,4 @@
-"""Planner V1 — roteamento de intenções antes do LLM.
+"""Planner V2 — roteamento de intenções antes do LLM.
 
 Centraliza as decisões que hoje vivem espalhadas por regex no agente:
 - a mensagem pede leitura de tela? de qual monitor?
@@ -38,10 +38,11 @@ class Plan:
     message: str
     explicit_screen: bool = False
     capture_screen: bool = False
-    monitor: int = 0
+    monitor: int | None = None
+    vision_required: bool = False
+    vision_intent: VisionIntent = VisionIntent.SCREEN_QUESTION
     doc_id: str | None = None
     whole_doc: bool = False
-    vision_intent: VisionIntent = VisionIntent.SCREEN_QUESTION
 
     @property
     def wants_document(self) -> bool:
@@ -63,8 +64,8 @@ def build_plan(
     Regras:
     - Documento tem prioridade sobre captura de tela, exceto se a pessoa
       falar explicitamente de tela/monitor.
-    - Painel ao vivo aberto habilita captura quando não há documento/câmera.
-    - "tela N"/"monitor N" fixa o monitor exato.
+    - Painel ao vivo habilita captura quando não há documento/câmera.
+    - "tela N"/"monitor N" fixa o monitor exato (None = não especificado).
     """
     plan = Plan(message=message)
     lower = message.lower()
@@ -72,15 +73,9 @@ def build_plan(
     plan.explicit_screen = bool(SCREEN_EXPLICIT_RE.search(lower))
     num = MONITOR_NUM_RE.search(lower)
     if num:
-        plan.monitor = min(int(num.group(1)), 8)
+        plan.monitor = int(num.group(1))
 
-    # detecção de intenção visual
-    if plan.capture_screen or plan.explicit_screen or use_screen_requested:
-        plan.vision_intent = detect_vision_intent(message)
-    elif camera_image:
-        plan.vision_intent = VisionIntent.CAMERA
-
-    # resolução do documento
+    # resolução do documento (ANTES das decisões de captura)
     if requested_doc_id:
         plan.doc_id = requested_doc_id
     elif session_doc_id and DOC_INTENT_RE.search(lower):
@@ -95,6 +90,14 @@ def build_plan(
         plan.capture_screen = True
     else:
         plan.capture_screen = False
+
+    # intenção visual
+    if plan.capture_screen:
+        plan.vision_required = True
+        plan.vision_intent = detect_vision_intent(message)
+    elif camera_image:
+        plan.vision_required = True
+        plan.vision_intent = VisionIntent.CAMERA
 
     # leitura integral?
     if plan.wants_document:

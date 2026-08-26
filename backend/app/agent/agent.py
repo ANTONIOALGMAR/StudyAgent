@@ -45,32 +45,50 @@ class StudyAgent:
         session_id=None,
         use_screen=False,
         region=None,
-        monitor=1,
-        image_b64=None,
+        monitor=None,
+        camera_image=None,
         doc_id=None,
     ):
         session_id = self.memory.get_or_create_session(session_id)
         tools_used = []
         images = []
 
-        # ── Planner V2: decisões centralizadas ──────────────────────────
+        # ── Planner: decisões centralizadas ─────────────────────────
         plan = build_plan(
             message,
             use_screen_requested=bool(use_screen),
-            camera_image=image_b64 is not None,
+            camera_image=camera_image is not None,
             requested_doc_id=doc_id,
             session_doc_id=self._session_docs.get(session_id),
         )
-        if plan.monitor:
-            monitor = plan.monitor
+
+        # ── Resolução de monitor: plano > parâmetro > default ───────
+        effective_monitor = monitor or 1
+        if plan.monitor is not None:
+            effective_monitor = plan.monitor
+
+        # ── Validação do monitor ────────────────────────────────────
+        if plan.capture_screen:
+            monitors = ScreenManager.list_monitors()
+            if effective_monitor < 0 or effective_monitor >= len(monitors):
+                return {
+                    "session_id": session_id,
+                    "response": (
+                        f"Monitor {effective_monitor} não existe. "
+                        f"Existem {len(monitors)} monitores (0 a {len(monitors) - 1})."
+                    ),
+                    "tools_used": [],
+                }
 
         ocr_text = None
         vision_ctx = None
+        vision_source = "none"
 
+        # ── Captura de tela via planner ─────────────────────────────
         if plan.capture_screen:
             vision_ctx = self._vision_pipeline(
                 message=message,
-                monitor=monitor,
+                monitor=effective_monitor,
                 region=region,
                 intent=plan.vision_intent,
             )
@@ -84,29 +102,32 @@ class StudyAgent:
                     ),
                     "tools_used": [],
                 }
+            vision_source = "screen"
             tools_used.append("screen_capture")
             images.append(vision_ctx.image_bytes)
             ocr_text = vision_ctx.ocr_text
 
-        camera_image = image_b64 is not None
-        if image_b64:
-            if isinstance(image_b64, str):
-                image_b64 = base64.b64decode(image_b64)
-            images.append(image_b64)
+        # ── Imagem da câmera (camera_image explícito) ───────────────
+        if camera_image is not None:
+            vision_source = "camera"
+            if isinstance(camera_image, str):
+                camera_image = base64.b64decode(camera_image)
+            images.append(camera_image)
             tools_used.append("image_input")
-            ocr_text = ocr_text or self._safe_ocr_bytes(image_b64)
-            log.info("[VISION] camera_image=attached bytes=%d", len(image_b64))
+            ocr_text = ocr_text or self._safe_ocr_bytes(camera_image)
+            log.info("[VISION] camera_image=attached bytes=%d", len(camera_image))
 
+        # ── Montagem da mensagem ────────────────────────────────────
         msg_parts = [message]
         if images and not vision_ctx:
             msg_parts.append(
                 build_image_note(
-                    camera=camera_image,
-                    monitor=None if camera_image else monitor,
+                    camera=(vision_source == "camera"),
+                    monitor=effective_monitor if vision_source == "screen" else None,
                     size=None,
                 )
             )
-            if not camera_image:
+            if vision_source == "screen":
                 janela = format_window_note(window.active_window())
                 if janela:
                     msg_parts.append(janela)
@@ -114,7 +135,7 @@ class StudyAgent:
             if bloco_ocr:
                 msg_parts.append(bloco_ocr)
 
-        # ── Documento anexado / lembrado pela sessão ─────────────────────
+        # ── Documento anexado / lembrado pela sessão ─────────────────
         if plan.wants_document:
             self._require("file_access")
             doc = self.memory.get_document(plan.doc_id)
@@ -163,13 +184,13 @@ class StudyAgent:
 
         enriched_message = "\n\n".join(msg_parts)
 
-        # Pipeline de visão: system prompt DIRECIONADO para análise visual
+        # ── System prompt: visão ou tutor ───────────────────────────
         if vision_ctx and vision_ctx.is_valid:
             messages = self.ctx.assemble_vision(session_id, enriched_message, vision_ctx)
         else:
             messages = self.ctx.assemble(session_id, enriched_message)
 
-        # Com documento anexado não há necessidade de ferramentas
+        # ── Resposta ────────────────────────────────────────────────
         response_text = self._run_tool_loop(
             messages, images, tools_used, allow_tools=not plan.wants_document
         )
@@ -185,11 +206,15 @@ class StudyAgent:
 
     def _run_tool_loop(self, messages, images, tools_used, allow_tools=True):
         if images:
-            log.info("[VISION] vision_model=sending images=%d message_count=%d",
-                     len(images), len(messages))
+            total_bytes = sum(len(img) for img in images if isinstance(img, bytes))
+            log.info("[VISION] sending_images=%d total_bytes=%d message_count=%d",
+                     len(images), total_bytes, len(messages))
+            if total_bytes <= 0:
+                raise RuntimeError("Nenhuma imagem válida para análise visual.")
             response = chat(messages, images=images)
-            log.info("[VISION] vision_response=length=%d",
-                     len(response) if response else 0)
+            if not response or not response.strip():
+                raise RuntimeError("O modelo de visão não retornou resposta.")
+            log.info("[VISION] vision_response=length=%d", len(response))
             return response
         if not allow_tools:
             return chat(messages)
@@ -247,14 +272,11 @@ class StudyAgent:
         region,
         intent: VisionIntent,
     ) -> VisionContext:
-        """Pipeline dedicado de visão: captura → processa → contexto.
-
-        Fluxo explícito com estados registrados.
-        """
+        """Pipeline dedicado de visão: captura → processa → contexto."""
         stages = []
         errors = []
 
-        # ── Stage 1: CAPTURE ────────────────────────────────────────
+        # ── CAPTURE ─────────────────────────────────────────────────
         self._require("screen_capture")
         log.info("[VISION] stage=CAPTURE_REQUESTED monitor=%s", monitor)
         stages.append("CAPTURE_REQUESTED")
@@ -276,17 +298,20 @@ class StudyAgent:
         log.info("[VISION] stage=CAPTURED resolution=%dx%d monitor=%s",
                  capture_res.width, capture_res.height, monitor)
 
-        # ── Stage 2: WINDOW INFO ────────────────────────────────────
+        # ── WINDOW ──────────────────────────────────────────────────
         window_info = None
         try:
             window_info = window.active_window()
         except Exception:
             pass
 
-        # ── Stage 3: PROCESS (OCR + context) ────────────────────────
-        # process_capture é puro — sem LLM. Só OCR + janela.
-        ctx = process_capture(shot, monitor, window_info)
-        ctx.errors = errors
+        # ── PROCESS (OCR + context) ─────────────────────────────────
+        ctx = process_capture(
+            shot, monitor, window_info,
+            user_question=message,
+            intent=intent,
+        )
+        ctx.errors.extend(errors)
         return ctx
 
     @staticmethod
@@ -304,6 +329,7 @@ class StudyAgent:
         from io import BytesIO
 
         from PIL import Image
+
         try:
             return StudyAgent._safe_ocr(Image.open(BytesIO(data)))
         except Exception:
@@ -324,14 +350,18 @@ class StudyAgent:
         return shot, result
 
     def analyze_screen(self, question, session_id=None, region=None, monitor=1):
-        self._require("screen_capture")
-        shot, _ = self.capture_and_read_screen(region=region, monitor=monitor)
-        image_bytes = screen.image_to_base64(shot)
+        """Captura tela via fluxo visual completo (use_screen=True → planner → vision pipeline)."""
         prompt = question or (
-            "Analise esta captura de tela. Identifique a matéria e o conteúdo "
-            "(exercício, texto, gráfico, código...) e explique de forma didática."
+            "Analise esta captura de tela. Identifique o conteúdo visível e responda "
+            "com base exclusivamente no que estiver na tela."
         )
-        return self.process(prompt, session_id=session_id, image_b64=image_bytes)
+        return self.process(
+            prompt,
+            session_id=session_id,
+            use_screen=True,
+            region=region,
+            monitor=monitor,
+        )
 
     def status(self):
         return {
@@ -342,6 +372,7 @@ class StudyAgent:
     @staticmethod
     def _require(name):
         from ..security.permissions import PermissionManager
+
         PermissionManager().require(name)
 
 

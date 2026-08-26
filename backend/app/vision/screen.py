@@ -111,8 +111,14 @@ def _capture_cosmic() -> Image.Image | None:
 
 def _crop_virtual(full: Image.Image, monitor: int, region=None) -> Image.Image:
     monitors = list_monitors()
-    index = min(max(int(monitor), 0), len(monitors) - 1)
-    m = monitors[index]
+    if not monitors:
+        raise RuntimeError("Nenhum monitor detectado.")
+    monitor = int(monitor)
+    if monitor < 0 or monitor >= len(monitors):
+        raise ValueError(
+            f"Monitor {monitor} inválido. Disponíveis: 0..{len(monitors) - 1}"
+        )
+    m = monitors[monitor]
     virtual_w, virtual_h = monitors[0]["width"], monitors[0]["height"]
     sx = full.width / max(virtual_w, 1)
     sy = full.height / max(virtual_h, 1)
@@ -140,11 +146,19 @@ def _crop_virtual(full: Image.Image, monitor: int, region=None) -> Image.Image:
 
 
 def _capture(monitor=1, region=None) -> Image.Image:
+    monitor = int(monitor)
+
     if _is_wayland():
         full = _capture_cosmic()
         if full is not None and not _looks_black(full):
             return _crop_virtual(full, monitor, region)
+
     with mss.mss() as sct:
+        monitors = sct.monitors
+        if monitor < 0 or monitor >= len(monitors):
+            raise ValueError(
+                f"Monitor {monitor} inválido. Disponíveis: 0..{len(monitors) - 1}"
+            )
         if region:
             area = {
                 "left": int(region.get("left", 0)),
@@ -153,15 +167,16 @@ def _capture(monitor=1, region=None) -> Image.Image:
                 "height": int(region.get("height", 600)),
             }
         else:
-            monitors = sct.monitors
-            index = min(max(int(monitor), 0), len(monitors) - 1)
-            area = monitors[index]
+            area = monitors[monitor]
         shot = sct.grab(area)
+
     img = Image.frombytes("RGB", shot.size, shot.bgra, "raw", "BGRX")
+
     if _looks_black(img) and _is_wayland():
         full = _capture_cosmic()
         if full is not None and not _looks_black(full):
             return _crop_virtual(full, monitor, region)
+
     return img
 
 

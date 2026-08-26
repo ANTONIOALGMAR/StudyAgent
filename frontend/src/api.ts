@@ -10,7 +10,7 @@ export async function chat(
   message: string,
   sessionId: string | null,
   useScreen: boolean,
-  imageB64?: string | null,
+  cameraImage?: string | null,
   monitor: number = 1,
   docId?: string | null,
 ): Promise<ChatResponse> {
@@ -21,7 +21,7 @@ export async function chat(
       message,
       session_id: sessionId,
       use_screen: useScreen,
-      image_b64: imageB64 ?? null,
+      camera_image: cameraImage ?? null,
       monitor,
       doc_id: docId ?? null,
     }),

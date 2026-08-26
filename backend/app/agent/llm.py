@@ -1,4 +1,5 @@
 import base64
+import logging
 
 import ollama
 
@@ -6,6 +7,7 @@ from ..config import OLLAMA_HOST
 from ..core.model_manager import context_tokens, num_predict, resolve
 
 _client = ollama.Client(host=OLLAMA_HOST)
+log = logging.getLogger("studyagent.vision")
 
 
 def available_models():
@@ -18,13 +20,18 @@ def chat(messages, images=None):
         role = "vision"
     else:
         role = "text"
+    model = resolve(role)
+    log.info("[VISION] model=%s images=%d", model, len(images or []))
     try:
         response = _client.chat(
-            model=resolve(role),
+            model=model,
             messages=messages,
             options={"num_ctx": context_tokens(role), "num_predict": num_predict()},
         )
-        return response["message"]["content"]
+        content = response["message"]["content"]
+        if images and not content.strip():
+            raise RuntimeError("O modelo multimodal retornou resposta vazia.")
+        return content
     except Exception as exc:
         msg = str(exc)
         if "context size" in msg or "exceed" in msg.lower():
@@ -87,9 +94,16 @@ def _attach_images(messages, images):
     encoded = []
     for img in images:
         if isinstance(img, bytes):
+            if not img:
+                continue
             encoded.append(base64.b64encode(img).decode("utf-8"))
         elif isinstance(img, str):
-            encoded.append(img)
+            if img.strip():
+                encoded.append(img)
+    if not encoded:
+        raise ValueError("Nenhuma imagem válida foi preparada para o Ollama.")
+    if not messages:
+        raise ValueError("Lista de mensagens vazia.")
     messages = [dict(m) for m in messages]
     messages[-1] = {**messages[-1], "images": encoded}
     return messages

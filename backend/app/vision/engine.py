@@ -1,7 +1,9 @@
-"""Vision Engine — Processador puro de dados visuais.
+"""Motor de percepção visual.
 
-Coordena OCR e detecção de janela. NÃO faz chamadas LLM —
-isso fica a cargo do agente via _run_tool_loop.
+Responsabilidade:
+captura processada → OCR → contexto visual.
+
+Não chama o LLM.
 """
 
 from __future__ import annotations
@@ -11,7 +13,7 @@ from typing import Optional
 
 from PIL import Image
 
-from ..core.vision_router import VisionContext
+from ..core.vision_router import VisionContext, VisionIntent
 from ..vision import ocr
 
 log = logging.getLogger("studyagent.vision")
@@ -21,6 +23,9 @@ def process_capture(
     shot: Image.Image,
     monitor_id: int,
     window_info: Optional[dict] = None,
+    *,
+    user_question: str = "",
+    intent: VisionIntent = VisionIntent.SCREEN_QUESTION,
 ) -> VisionContext:
     """Processa captura de tela: OCR + contexto de janela → VisionContext.
 
@@ -29,40 +34,72 @@ def process_capture(
     """
     from ..vision.screen import image_to_base64
 
-    # OCR
-    ocr_result = ocr.read_text_structured(shot)
     stages = ["CAPTURED"]
-    errors = []
+    errors: list[str] = []
 
-    if ocr_result.error:
-        log.warning("[VISION] ocr_warning=%s", ocr_result.error)
-        stages.append("OCR_WARNING")
-    elif ocr_result.is_useful:
-        stages.append("OCR_COMPLETED")
-        log.info("[VISION] ocr_completed chars=%d", ocr_result.char_count)
-    else:
-        stages.append("OCR_NO_TEXT")
-        log.info("[VISION] ocr_no_text chars=%d", ocr_result.char_count)
+    # ── OCR ─────────────────────────────────────────────────────────
+    try:
+        ocr_result = ocr.read_text_structured(shot)
+    except Exception as exc:
+        log.exception("Falha no OCR")
+        ocr_result = None
+        errors.append(f"OCR falhou: {exc}")
 
-    # Contexto de janela
+    if ocr_result:
+        if ocr_result.error:
+            stages.append("OCR_WARNING")
+            log.warning("[VISION] OCR warning=%s", ocr_result.error)
+        elif ocr_result.is_useful:
+            stages.append("OCR_COMPLETED")
+            log.info("[VISION] OCR completed chars=%d", ocr_result.char_count)
+        else:
+            stages.append("OCR_NO_TEXT")
+
+    # ── JANELA ──────────────────────────────────────────────────────
     if window_info:
         stages.append("WINDOW_CHECKED")
 
-    # Construir VisionContext
-    image_bytes = image_to_base64(shot)
+    # ── SERIALIZAÇÃO DA IMAGEM ──────────────────────────────────────
+    try:
+        image_bytes = image_to_base64(shot)
+    except Exception as exc:
+        errors.append(f"Falha ao serializar imagem: {exc}")
+        return VisionContext(
+            source="screen",
+            monitor_id=monitor_id,
+            resolution=(shot.width, shot.height),
+            user_question=user_question,
+            intent=intent,
+            pipeline_stages=stages,
+            errors=errors,
+        )
+
+    if not image_bytes:
+        errors.append("Imagem serializada ficou vazia")
+
+    # ── CONTEXTO FINAL ──────────────────────────────────────────────
     ctx = VisionContext(
         source="screen",
         monitor_id=monitor_id,
         resolution=(shot.width, shot.height),
-        ocr_text=ocr_result.text if ocr_result.is_useful else None,
+        ocr_text=(
+            ocr_result.text
+            if ocr_result and ocr_result.text
+            else ""
+        ),
         window_app=window_info.get("app") if window_info else None,
         window_title=window_info.get("title") if window_info else None,
         image_bytes=image_bytes,
+        user_question=user_question,
+        intent=intent,
         pipeline_stages=stages,
         errors=errors,
+        vision_confidence=1.0 if image_bytes else 0.0,
     )
 
-    log.info("[VISION] context_built has_ocr=%s window=%s",
-             ctx.has_ocr, window_info.get("app") if window_info else None)
+    if ctx.is_valid:
+        stages.append("CONTEXT_BUILT")
+        log.info("[VISION] context_built monitor=%s image_bytes=%d ocr=%s",
+                 monitor_id, len(image_bytes), ctx.has_ocr)
 
     return ctx

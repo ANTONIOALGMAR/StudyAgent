@@ -20,8 +20,8 @@ class ChatRequest(BaseModel):
     session_id: str | None = None
     use_screen: bool = False
     region: dict | None = None
-    monitor: int = 1
-    image_b64: str | None = None
+    monitor: int | None = None
+    camera_image: str | None = None
     doc_id: str | None = None
 
 
@@ -34,16 +34,18 @@ def health():
 @limiter.limit("15/minute")
 def chat(request: Request, req: ChatRequest):
     try:
-        if req.image_b64:
-            from ..security.permissions import PermissionManager
+        from ..security.permissions import PermissionManager
+        if req.camera_image:
             PermissionManager().require("camera")
+        if req.use_screen:
+            PermissionManager().require("screen_capture")
         return agent.process(
             req.message,
             session_id=req.session_id,
             use_screen=req.use_screen,
             region=req.region,
             monitor=req.monitor,
-            image_b64=req.image_b64,
+            camera_image=req.camera_image,
             doc_id=req.doc_id,
         )
     except PermissionDeniedError as exc:

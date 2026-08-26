@@ -126,6 +126,8 @@ class VisionContext:
     window_app: str | None = None
     window_title: str | None = None
     image_bytes: bytes = b""
+    user_question: str = ""
+    intent: VisionIntent = VisionIntent.SCREEN_QUESTION
     vision_confidence: float = 0.0
     pipeline_stages: list[str] = field(default_factory=list)
     errors: list[str] = field(default_factory=list)
@@ -135,8 +137,45 @@ class VisionContext:
         return bool(self.ocr_text and len(self.ocr_text.strip()) >= MIN_OCR_CHARS)
 
     @property
+    def has_image(self) -> bool:
+        return bool(self.image_bytes)
+
+    @property
     def is_valid(self) -> bool:
         return bool(self.image_bytes) and not self.errors
+
+    def prompt_context(self) -> str:
+        resolution = "desconhecida"
+        if self.resolution:
+            resolution = f"{self.resolution[0]}x{self.resolution[1]}"
+        return f"""CONTEXTO VISUAL REAL DO STUDYAGENT
+
+Fonte: {self.source}
+Monitor: {self.monitor_id}
+Resolução: {resolution}
+Intenção visual: {self.intent.value}
+
+Aplicativo detectado: {self.window_app or "não identificado"}
+Janela: {self.window_title or "não identificada"}
+
+Texto detectado por OCR:
+{self.ocr_text or "(nenhum texto detectado)"}
+
+PERGUNTA ORIGINAL DO USUÁRIO:
+{self.user_question}
+
+A imagem anexada corresponde à captura REAL do monitor solicitado.
+
+REGRAS:
+- Analise a imagem antes de responder.
+- Não invente conteúdo.
+- Não dê saudação.
+- Responda diretamente à pergunta.
+- Se houver código, leia o código.
+- Se houver erro, identifique o erro.
+- Se houver exercício, leia o enunciado e resolva ou explique.
+- Se houver texto, utilize o texto visível.
+- Se a imagem não permitir concluir algo, diga isso claramente."""
 
 
 # ── System prompt de visão (SUBSTITUI o genérico) ─────────────────
