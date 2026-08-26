@@ -327,6 +327,16 @@ def topic_streaks():
     return gamification.topic_streaks()
 
 
+@router.get("/level")
+def level_info():
+    return gamification.get_level_info()
+
+
+@router.get("/leaderboard")
+def leaderboard(limit: int = 20):
+    return gamification.leaderboard(limit=limit)
+
+
 # ── Sessions (advanced) ────────────────────────────────────────────────────────
 
 

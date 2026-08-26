@@ -1,22 +1,25 @@
 import { useEffect, useState } from 'react'
 import {
   getEnhancedDashboard,
+  getLeaderboard,
   getTimeAnalytics,
   getRecommendations,
   type EnhancedDashboard,
+  type Leaderboard,
   type TimeAnalytics,
 } from '../api'
 
 export default function StatsPanel() {
   const [data, setData] = useState<EnhancedDashboard | null>(null)
   const [timeData, setTimeData] = useState<TimeAnalytics | null>(null)
+  const [lb, setLb] = useState<Leaderboard | null>(null)
   const [recs, setRecs] = useState<{ available_minutes: number; suggestions: { type: string; description: string; priority: string }[] } | null>(null)
   const [minutes, setMinutes] = useState(30)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    void Promise.all([getEnhancedDashboard(), getTimeAnalytics()])
-      .then(([d, t]) => { setData(d); setTimeData(t) })
+    void Promise.all([getEnhancedDashboard(), getTimeAnalytics(), getLeaderboard()])
+      .then(([d, t, l]) => { setData(d); setTimeData(t); setLb(l) })
       .catch(() => {})
       .finally(() => setLoading(false))
   }, [])
@@ -40,6 +43,23 @@ export default function StatsPanel() {
   return (
     <div className="stats">
       <h3>📊 Progresso</h3>
+
+      {lb && (
+        <div className="level-bar">
+          <div className="level-icon">{lb.icon}</div>
+          <div className="level-info">
+            <div className="level-name">{lb.level}</div>
+            <div className="level-xp">{lb.total_xp} XP</div>
+            {lb.next_level && (
+              <div className="level-progress-container">
+                <div className="level-progress-bar" style={{ width: `${lb.progress_percent}%` }} />
+                <span className="level-progress-text">{lb.xp_to_next} XP para {lb.next_level}</span>
+              </div>
+            )}
+            {!lb.next_level && <div className="level-max">Nível máximo!</div>}
+          </div>
+        </div>
+      )}
 
       <div className="stats-grid">
         <div className="stat-card">

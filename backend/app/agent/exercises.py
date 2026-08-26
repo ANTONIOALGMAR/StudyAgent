@@ -200,6 +200,9 @@ def grade_and_track(exercise_id: str, answers: dict[str, str]) -> dict:
             update_from_exercise(topic, result["score"], result["total"], result["percent"])
             save_exercise_result(exercise_id, topic, result["score"], result["total"], result["percent"])
             log_errors_from_exercise(exercise_id, topic, result.get("results", []))
+            from ..tutor.gamification import award_exercise_xp
+            xp_result = award_exercise_xp(result["score"], result["total"], "médio")
+            result["xp"] = xp_result
         except Exception:
             pass
     return result

@@ -201,6 +201,21 @@ class Memory:
             );
             CREATE INDEX IF NOT EXISTS idx_error_notebook_topic
                 ON error_notebook(topic, reviewed, created_at DESC);
+
+            CREATE TABLE IF NOT EXISTS student_xp (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                amount      INTEGER NOT NULL,
+                source      TEXT NOT NULL,
+                description TEXT NOT NULL DEFAULT '',
+                created_at  TEXT NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS student_level (
+                id         INTEGER PRIMARY KEY CHECK (id = 1),
+                level      TEXT NOT NULL DEFAULT 'Iniciante',
+                total_xp   INTEGER NOT NULL DEFAULT 0,
+                updated_at TEXT NOT NULL
+            );
             """
         )
         conn.commit()

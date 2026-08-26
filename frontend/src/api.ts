@@ -397,6 +397,40 @@ export async function getEnhancedDashboard(): Promise<EnhancedDashboard> {
   return res.json()
 }
 
+// ── Tutor: Gamification ────────────────────────────────────────────────────────
+
+export interface LevelInfo {
+  level: string
+  total_xp: number
+  xp_to_next: number
+  next_level: string | null
+  progress_percent: number
+  icon: string
+}
+
+export interface Leaderboard extends LevelInfo {
+  achievements_earned: number
+  total_achievements: number
+  current_streak: number
+  total_exercises: number
+  total_flashcard_reviews: number
+  topics_mastered: number
+  weekly_xp: number
+  recent_activity: { amount: number; source: string; description: string; created_at: string }[]
+}
+
+export async function getLevelInfo(): Promise<LevelInfo> {
+  const res = await fetch(`${API}/api/level`)
+  if (!res.ok) throw new Error('Falha ao carregar nível')
+  return res.json()
+}
+
+export async function getLeaderboard(limit = 20): Promise<Leaderboard> {
+  const res = await fetch(`${API}/api/leaderboard?limit=${limit}`)
+  if (!res.ok) throw new Error('Falha ao carregar leaderboard')
+  return res.json()
+}
+
 // ── P6: Profile ────────────────────────────────────────────────────────────────
 
 export interface Profile {

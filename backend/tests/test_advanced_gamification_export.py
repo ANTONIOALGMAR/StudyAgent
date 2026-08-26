@@ -386,3 +386,107 @@ class TestFullExportImport:
         assert result["profile"] is True
         profile = get_profile()
         assert profile["name"] == "Carlos"
+
+
+# ── Phase 8: XP System & Levels ─────────────────────────────────────────────────
+
+
+class TestXPSystem:
+    def test_award_xp(self, tmp_db):
+        from app.tutor.gamification import award_xp
+        result = award_xp(10, "test", "test xp")
+        assert result["xp_gained"] == 10
+        assert result["source"] == "test"
+        assert "level" in result
+
+    def test_award_xp_accumulates(self, tmp_db):
+        from app.tutor.gamification import award_xp, get_level_info
+        award_xp(50, "test")
+        award_xp(30, "test")
+        info = get_level_info()
+        assert info["total_xp"] == 80
+        assert info["level"] == "Iniciante"
+
+    def test_award_exercise_xp(self, tmp_db):
+        from app.tutor.gamification import award_exercise_xp
+        result = award_exercise_xp(3, 4, "médio")
+        assert result["xp_gained"] > 0
+        assert result["source"] == "exercise"
+
+    def test_award_exercise_xp_perfect(self, tmp_db):
+        from app.tutor.gamification import award_exercise_xp, get_level_info
+        award_exercise_xp(4, 4, "médio")
+        info = get_level_info()
+        assert info["total_xp"] > 0
+
+    def test_award_flashcard_xp(self, tmp_db):
+        from app.tutor.gamification import award_flashcard_xp
+        result = award_flashcard_xp(True)
+        assert result["xp_gained"] == 5
+        result = award_flashcard_xp(False)
+        assert result["xp_gained"] == 2
+
+    def test_award_streak_xp(self, tmp_db):
+        from app.tutor.gamification import award_streak_xp
+        result = award_streak_xp(2)
+        assert result["xp_gained"] == 0
+        result = award_streak_xp(5)
+        assert result["xp_gained"] > 0
+
+    def test_award_plan_xp(self, tmp_db):
+        from app.tutor.gamification import award_plan_xp
+        result = award_plan_xp(False)
+        assert result["xp_gained"] == 0
+        result = award_plan_xp(True)
+        assert result["xp_gained"] == 50
+
+    def test_level_progression(self, tmp_db):
+        from app.tutor.gamification import award_xp, get_level_info
+        award_xp(100, "test")
+        info = get_level_info()
+        assert info["level"] == "Estudante"
+        assert info["next_level"] == "Graduado"
+        assert info["xp_to_next"] == 200
+
+    def test_level_graduado(self, tmp_db):
+        from app.tutor.gamification import award_xp, get_level_info
+        award_xp(300, "test")
+        info = get_level_info()
+        assert info["level"] == "Graduado"
+
+    def test_level_mestre(self, tmp_db):
+        from app.tutor.gamification import award_xp, get_level_info
+        award_xp(1000, "test")
+        info = get_level_info()
+        assert info["level"] == "Mestre"
+        assert info["next_level"] is None
+
+    def test_level_progress_percent(self, tmp_db):
+        from app.tutor.gamification import award_xp, get_level_info
+        award_xp(150, "test")
+        info = get_level_info()
+        assert info["level"] == "Estudante"
+        assert 0 < info["progress_percent"] < 100
+
+
+class TestLeaderboard:
+    def test_leaderboard_empty(self, tmp_db):
+        from app.tutor.gamification import leaderboard
+        result = leaderboard()
+        assert result["level"] == "Iniciante"
+        assert result["total_xp"] == 0
+        assert result["recent_activity"] == []
+
+    def test_leaderboard_with_data(self, tmp_db):
+        from app.tutor.gamification import award_xp, leaderboard
+        award_xp(100, "exercise")
+        award_xp(50, "flashcard")
+        result = leaderboard()
+        assert result["total_xp"] == 150
+        assert len(result["recent_activity"]) == 2
+
+    def test_leaderboard_weekly_xp(self, tmp_db):
+        from app.tutor.gamification import award_xp, leaderboard
+        award_xp(100, "exercise")
+        result = leaderboard()
+        assert result["weekly_xp"] == 100

@@ -142,6 +142,8 @@ def review_card(card_id: str, difficulty: str) -> dict:
     )
     conn.commit()
     _track_flashcard_topic(card["deck_id"], quality)
+    from .gamification import award_flashcard_xp
+    award_flashcard_xp(quality >= 3)
 
     return {
         "card_id": card_id,
