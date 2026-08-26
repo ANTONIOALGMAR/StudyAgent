@@ -12,7 +12,12 @@ from ..core.model_manager import available_models
 from ..core.planner import WHOLE_DOC_MAX_CHARS, build_plan
 from ..core.registered_tools import calculate_tool, open_url_tool, web_search_tool  # noqa: F401
 from ..core.tool_registry import all_schemas, get
-from ..core.vision_router import build_image_note, decide_ocr_block, format_window_note
+from ..core.vision_router import (
+    VisionContext,
+    build_image_note,
+    decide_ocr_block,
+    format_window_note,
+)
 from ..security.permissions import PermissionDeniedError
 from ..tools import calculator
 from ..vision import ocr, screen, window
@@ -58,18 +63,28 @@ class StudyAgent:
             monitor = plan.monitor
 
         ocr_text = None
+        vision_ctx = None
         if plan.capture_screen:
-            self._require("screen_capture")
-            log.info("[VISION] intent=SCREEN_MONITOR monitor=%s", monitor)
-            shot = screen.capture(monitor=monitor, region=region)
-            log.info("[VISION] capture=success resolution=%dx%d", shot.width, shot.height)
-            images.append(screen.image_to_base64(shot))
+            vision_ctx = self._vision_pipeline(
+                message=message,
+                monitor=monitor,
+                region=region,
+                session_id=session_id,
+                plan=plan,
+            )
+            if not vision_ctx.is_valid:
+                log.error("[VISION] pipeline_failed errors=%s", vision_ctx.errors)
+                return {
+                    "session_id": session_id,
+                    "response": (
+                        "Não consegui capturar ou analisar a tela. "
+                        + "; ".join(vision_ctx.errors)
+                    ),
+                    "tools_used": [],
+                }
             tools_used.append("screen_capture")
-            ocr_text = self._safe_ocr(shot)
-            if ocr_text:
-                log.info("[VISION] ocr=success length=%d", len(ocr_text))
-            else:
-                log.info("[VISION] ocr=no_text")
+            images.append(screen.image_to_base64(vision_ctx.image))
+            ocr_text = vision_ctx.ocr_text
 
         camera_image = image_b64 is not None
         if image_b64:
@@ -81,13 +96,12 @@ class StudyAgent:
             log.info("[VISION] camera_image=attached bytes=%d", len(image_b64))
 
         msg_parts = [message]
-        if images:
-            size = shot.size if plan.capture_screen else None
+        if images and not vision_ctx:
             msg_parts.append(
                 build_image_note(
                     camera=camera_image,
                     monitor=None if camera_image else monitor,
-                    size=size,
+                    size=None,
                 )
             )
             if not camera_image:
@@ -149,7 +163,11 @@ class StudyAgent:
 
         enriched_message = "\n\n".join(msg_parts)
 
-        messages = self.ctx.assemble(session_id, enriched_message)
+        # Pipeline de visão: system prompt DIRECIONADO para análise visual
+        if vision_ctx and vision_ctx.is_valid:
+            messages = self.ctx.assemble_vision(session_id, enriched_message, vision_ctx)
+        else:
+            messages = self.ctx.assemble(session_id, enriched_message)
 
         # Com documento anexado não há necessidade de ferramentas: evita que
         # o modelo distraia-se com chamadas em vez de ler o texto fornecido.
@@ -168,9 +186,12 @@ class StudyAgent:
 
     def _run_tool_loop(self, messages, images, tools_used, allow_tools=True):
         if images:
-            log.info("[VISION] vision_model=sending images=%d message_count=%d", len(images), len(messages))
+            log.info("[VISION] vision_model=sending images=%d message_count=%d system_role=%s",
+                     len(images), len(messages), messages[0].get("role", "unknown"))
             response = chat(messages, images=images)
-            log.info("[VISION] vision_response=length=%d", len(response) if response else 0)
+            log.info("[VISION] vision_response=length=%d preview=%s",
+                     len(response) if response else 0,
+                     (response[:120] + "...") if response and len(response) > 120 else response)
             return response
         if not allow_tools:
             return chat(messages)
@@ -221,6 +242,94 @@ class StudyAgent:
                             )
                 current.append({"role": "tool", "name": name, "content": result})
         return reply.get("content") or ""
+
+    def _vision_pipeline(
+        self,
+        message: str,
+        monitor: int,
+        region: dict | None,
+        session_id: str,
+        plan,
+    ) -> VisionContext:
+        """Pipeline dedicado de visão: captura → valida → OCR → VisionContext.
+
+        Fluxo explícito com estados registrados. NUNCA confunde CAPTURE com UNDERSTOOD.
+        """
+        stages = []
+        errors = []
+
+        # ── Stage 1: CAPTURE ────────────────────────────────────────
+        self._require("screen_capture")
+        log.info("[VISION] stage=CAPTURE_REQUESTED monitor=%s", monitor)
+        stages.append("CAPTURE_REQUESTED")
+
+        try:
+            shot = screen.capture(monitor=monitor, region=region)
+        except Exception as exc:
+            errors.append(f"Falha na captura: {exc}")
+            log.error("[VISION] stage=CAPTURE_FAILED error=%s", exc)
+            stages.append("CAPTURE_FAILED")
+            return VisionContext(
+                source="screen",
+                monitor_id=monitor,
+                pipeline_stages=stages,
+                errors=errors,
+            )
+
+        capture_result = screen.validate_capture(shot, monitor)
+        if not capture_result.is_valid:
+            errors.append(capture_result.error or "Captura inválida")
+            log.error("[VISION] stage=CAPTURE_INVALID error=%s", capture_result.error)
+            stages.append("CAPTURE_INVALID")
+            return VisionContext(
+                source="screen",
+                monitor_id=monitor,
+                pipeline_stages=stages,
+                errors=errors,
+            )
+
+        stages.append("CAPTURED")
+        log.info("[VISION] stage=CAPTURED resolution=%dx%d monitor=%s",
+                 capture_result.width, capture_result.height, monitor)
+
+        # ── Stage 2: OCR ────────────────────────────────────────────
+        ocr_result = ocr.read_text_structured(shot)
+        if ocr_result.error:
+            log.warning("[VISION] stage=OCR_WARNING error=%s", ocr_result.error)
+            stages.append("OCR_WARNING")
+        elif ocr_result.is_useful:
+            stages.append("OCR_COMPLETED")
+            log.info("[VISION] stage=OCR_COMPLETED chars=%d", ocr_result.char_count)
+        else:
+            stages.append("OCR_NO_TEXT")
+            log.info("[VISION] stage=OCR_NO_TEXT chars=%d", ocr_result.char_count)
+
+        # ── Stage 3: WINDOW INFO ────────────────────────────────────
+        window_info = None
+        try:
+            window_info = window.active_window()
+        except Exception:
+            pass
+        stages.append("WINDOW_CHECKED")
+
+        # ── Stage 4: BUILD CONTEXT ──────────────────────────────────
+        image_bytes = screen.image_to_base64(shot)
+        vision_ctx = VisionContext(
+            source="screen",
+            monitor_id=monitor,
+            resolution=(capture_result.width, capture_result.height),
+            ocr_text=ocr_result.text if ocr_result.is_useful else None,
+            window_app=window_info.get("app") if window_info else None,
+            window_title=window_info.get("title") if window_info else None,
+            image_bytes=image_bytes,
+            pipeline_stages=stages,
+            errors=errors,
+        )
+        stages.append("CONTEXT_BUILT")
+        log.info("[VISION] stage=CONTEXT_BUILT has_ocr=%s window=%s",
+                 vision_ctx.has_ocr, window_info.get("app") if window_info else None)
+
+        return vision_ctx
 
     @staticmethod
     def _safe_ocr(pil_image):

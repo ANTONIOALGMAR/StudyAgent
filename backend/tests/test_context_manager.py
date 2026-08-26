@@ -7,6 +7,7 @@ from app.core.context_manager import (
     build_document_block,
     whole_doc_body,
 )
+from app.core.vision_router import VISION_SYSTEM_PROMPT, VisionContext
 
 
 def make_ctx(tmp_path, calls=None):
@@ -109,3 +110,57 @@ def test_builders_de_mensagem():
     assert bloco.startswith("DOCUMENTO ANEXADO E DISPONÍVEL PARA LEITURA: 'livro.pdf' (12 páginas)")
     corpo = whole_doc_body("abc")
     assert corpo.startswith("Conteúdo COMPLETO") and corpo.endswith("[fim do documento]")
+
+
+# ── assemble_vision: usa VISION_SYSTEM_PROMPT ──────────────────────
+
+
+def test_assemble_vision_usa_prompt_de_vision(tmp_path):
+    mem, ctx, _ = make_ctx(tmp_path)
+    sid = mem.get_or_create_session(None)
+    vctx = VisionContext(source="screen", monitor_id=2, image_bytes=b"\x89PNG")
+    msgs = ctx.assemble_vision(sid, "leia a tela", vctx)
+    assert msgs[0]["role"] == "system"
+    assert msgs[0]["content"].startswith(VISION_SYSTEM_PROMPT)
+    # NÃO contém o system prompt genérico de tutor
+    assert "METODOLOGIA SOCRÁTICA" not in msgs[0]["content"]
+
+
+def test_assemble_vision_inclui_contexto_visual(tmp_path):
+    mem, ctx, _ = make_ctx(tmp_path)
+    sid = mem.get_or_create_session(None)
+    vctx = VisionContext(
+        source="screen",
+        monitor_id=1,
+        resolution=(1920, 1080),
+        ocr_text="x" * 100,
+        window_app="firefox",
+        image_bytes=b"\x89PNG",
+    )
+    msgs = ctx.assemble_vision(sid, "leia o monitor 1", vctx)
+    system = msgs[0]["content"]
+    assert "monitor 1" in system
+    assert "1920x1080" in system
+    assert "firefox" in system
+    assert "TEXTO DETECTADO POR OCR" in system
+
+
+def test_assemble_vision_user_message_preserved(tmp_path):
+    mem, ctx, _ = make_ctx(tmp_path)
+    sid = mem.get_or_create_session(None)
+    vctx = VisionContext(source="screen", image_bytes=b"\x89PNG")
+    msgs = ctx.assemble_vision(sid, "leia a tela 2", vctx)
+    assert msgs[-1] == {"role": "user", "content": "leia a tela 2"}
+
+
+def test_assemble_vision_histórico_preservado(tmp_path):
+    mem, ctx, _ = make_ctx(tmp_path)
+    sid = mem.get_or_create_session(None)
+    mem.add_message(sid, "user", "pergunta anterior")
+    mem.add_message(sid, "assistant", "resposta anterior")
+    vctx = VisionContext(source="screen", image_bytes=b"\x89PNG")
+    msgs = ctx.assemble_vision(sid, "nova pergunta", vctx)
+    # system + 2历史 + user
+    assert len(msgs) == 4
+    assert msgs[1]["content"] == "pergunta anterior"
+    assert msgs[2]["content"] == "resposta anterior"

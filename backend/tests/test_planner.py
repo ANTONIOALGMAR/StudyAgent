@@ -1,4 +1,5 @@
 from app.core.planner import build_plan
+from app.core.vision_router import VisionIntent
 
 
 def test_pergunta_sobre_tela_captura():
@@ -76,3 +77,41 @@ def test_documento_grande_sem_pedido_de_resumo_usa_trechos():
         doc_text_len=99999,
     )
     assert not p.whole_doc
+
+
+# ── Vision intent detection ────────────────────────────────────────
+
+
+def test_vision_intent_read_on_screen_keyword():
+    p = build_plan("leia o monitor 1", use_screen_requested=False)
+    assert p.vision_intent == VisionIntent.SCREEN_READ
+
+
+def test_vision_intent_error_on_screen():
+    p = build_plan("tem um erro na tela", use_screen_requested=False)
+    assert p.vision_intent == VisionIntent.SCREEN_ERROR
+
+
+def test_vision_intent_code_on_screen():
+    p = build_plan("o que tem de código na tela 2", use_screen_requested=False)
+    assert p.vision_intent == VisionIntent.SCREEN_CODE
+
+
+def test_vision_intent_exercise_on_screen():
+    p = build_plan("qual exercício aparece na tela", use_screen_requested=False)
+    assert p.vision_intent == VisionIntent.SCREEN_EXERCISE
+
+
+def test_vision_intent_default_when_no_screen():
+    p = build_plan("quanto é 2+2?", use_screen_requested=False)
+    assert p.vision_intent == VisionIntent.SCREEN_QUESTION
+
+
+def test_vision_intent_camera():
+    p = build_plan("o que vê na foto?", use_screen_requested=False, camera_image=True)
+    assert p.vision_intent == VisionIntent.CAMERA
+
+
+def test_vision_intent_on_use_screen_requested():
+    p = build_plan("o que tem na tela?", use_screen_requested=True)
+    assert p.vision_intent == VisionIntent.SCREEN_READ

@@ -8,6 +8,7 @@ injetada via ``summarize_fn`` (texto -> texto).
 import re
 
 from ..tutor import automation, profile
+from .vision_router import VISION_SYSTEM_PROMPT, VisionContext
 
 HISTORY_LIMIT = 10
 SUMMARY_REFRESH_DELTA = 8
@@ -122,6 +123,42 @@ def excerpts_body(excerpts: str) -> str:
     return f"Trechos relevantes:\n{excerpts}"
 
 
+def _build_visual_context_block(ctx: VisionContext) -> str:
+    """Monta bloco de contexto visual para o system prompt de visão."""
+    parts = []
+
+    if ctx.source == "screen":
+        origem = f"Captura de tela do monitor {ctx.monitor_id}" if ctx.monitor_id else "Captura de tela"
+        if ctx.resolution:
+            origem += f" ({ctx.resolution[0]}x{ctx.resolution[1]})"
+        parts.append(origem)
+    else:
+        parts.append("Foto da câmera")
+
+    if ctx.window_app or ctx.window_title:
+        janela_parts = []
+        if ctx.window_app:
+            janela_parts.append(f"aplicativo: {ctx.window_app}")
+        if ctx.window_title:
+            janela_parts.append(f"janela: {ctx.window_title}")
+        parts.append("Janela ativa: " + "; ".join(janela_parts))
+
+    if ctx.ocr_text and len(ctx.ocr_text.strip()) >= 60:
+        texto = ctx.ocr_text.strip()
+        if len(texto) > 2500:
+            texto = texto[:2500] + "\n[…]"
+        parts.append(
+            "TEXTO DETECTADO POR OCR (confiável para nomes, números "
+            "e símbolos; ignore erros óbvios de leitura):\n\n"
+            f"{texto}"
+        )
+
+    if ctx.errors:
+        parts.append("AVISOS: " + "; ".join(ctx.errors))
+
+    return "\n\n".join(parts) if parts else ""
+
+
 class ContextManager:
     def __init__(self, memory, summarize_fn):
         self.memory = memory
@@ -164,6 +201,30 @@ class ContextManager:
             system_content += (
                 f"\n\nResumo do que já foi conversado nesta sessão:\n{summary}"
             )
+        messages = [{"role": "system", "content": system_content}, *history]
+        messages.append({"role": "user", "content": user_message})
+        return messages
+
+    def assemble_vision(
+        self,
+        session_id: str,
+        user_message: str,
+        vision_ctx: VisionContext,
+    ) -> list[dict]:
+        """Monta mensagens com system prompt de visão (substitui o genérico).
+
+        Quando há imagem, o modelo NÃO deve receber o prompt de tutor/socrático.
+        Em vez disso, recebe um prompt curto e direto que OBRIGA a descrever
+        o conteúdo visual — a causa raiz de "olá" em vez de descrição.
+        """
+        history = self.memory.history(session_id, limit=HISTORY_LIMIT)
+        system_content = VISION_SYSTEM_PROMPT
+
+        # Adiciona contexto visual ao system prompt para o modelo saber o que tem
+        visual_block = _build_visual_context_block(vision_ctx)
+        if visual_block:
+            system_content += f"\n\n{visual_block}"
+
         messages = [{"role": "system", "content": system_content}, *history]
         messages.append({"role": "user", "content": user_message})
         return messages

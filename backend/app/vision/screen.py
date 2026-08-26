@@ -47,6 +47,22 @@ def _capture_cosmic() -> Image.Image | None:
         latest.unlink(missing_ok=True)
 
 
+def validate_capture(image, monitor: int):
+    """Valida imagem capturada e retorna ScreenCaptureResult."""
+    from ..core.vision_router import ScreenCaptureResult
+
+    if image is None:
+        return ScreenCaptureResult.failed(monitor, "Captura retornou None")
+    try:
+        result = ScreenCaptureResult.from_image(image, monitor)
+        if _looks_black(image):
+            result.errors = ["Imagem capturada está preta (provavelmente falha de captura Wayland)"]
+            result.is_valid = False
+        return result
+    except Exception as exc:
+        return ScreenCaptureResult.failed(monitor, f"Erro na validação: {exc}")
+
+
 def list_monitors():
     with mss.MSS() as sct:
         result = []

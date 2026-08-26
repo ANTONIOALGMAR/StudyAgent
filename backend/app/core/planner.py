@@ -9,6 +9,8 @@ Mantido puro (sem I/O) para ser trivialmente testável.
 import re
 from dataclasses import dataclass
 
+from .vision_router import VisionIntent, detect_vision_intent
+
 SCREEN_EXPLICIT_RE = re.compile(r"\b(tela|monitor|screen)\b", re.UNICODE)
 MONITOR_NUM_RE = re.compile(
     r"\b(?:tela|monitor)\s*(?:n?[ºo°]?\s*)?([0-9]+)\b", re.UNICODE
@@ -39,6 +41,7 @@ class Plan:
     monitor: int = 0
     doc_id: str | None = None
     whole_doc: bool = False
+    vision_intent: VisionIntent = VisionIntent.SCREEN_QUESTION
 
     @property
     def wants_document(self) -> bool:
@@ -70,6 +73,12 @@ def build_plan(
     num = MONITOR_NUM_RE.search(lower)
     if num:
         plan.monitor = min(int(num.group(1)), 8)
+
+    # detecção de intenção visual
+    if plan.capture_screen or plan.explicit_screen or use_screen_requested:
+        plan.vision_intent = detect_vision_intent(message)
+    elif camera_image:
+        plan.vision_intent = VisionIntent.CAMERA
 
     # resolução do documento
     if requested_doc_id:
