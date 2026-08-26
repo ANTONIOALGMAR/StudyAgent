@@ -1,6 +1,6 @@
 # StudyAgent
 
-Tutor de estudos multimodal que roda **100% local** no seu computador (Linux): chat com IA local via Ollama, voz nos dois sentidos, visão computacional para ler telas e câmera, leitura completa de PDFs, pesquisa na internet com fontes citadas, exercícios com correção automática, flashcards com repetição espaçada, planos de estudo, perfil adaptativo, gamificação com conquistas, recomendações por tempo, export/import em CSV e JSON — tudo sob um sistema de permissões explícitas.
+Tutor de estudos multimodal que roda **100% local** no seu computador (Linux): chat com IA local via Ollama, voz nos dois sentidos, visão computacional para ler telas e câmera, leitura completa de PDFs, pesquisa na internet com fontes citadas, exercícios com correção automática, flashcards com repetição espaçada, planos de estudo, perfil adaptativo, gamificação com XP e níveis, recomendações por tempo, export/import em CSV e JSON — tudo sob um sistema de permissões explícitas.
 
 ## Funcionalidades
 
@@ -14,13 +14,7 @@ Tutor de estudos multimodal que roda **100% local** no seu computador (Linux): c
 - Calculadora segura embutida
 
 ### 🗣 Voz completa
-- **Modo viva-voz opcional**: diga **"ei Study, sua pergunta"** em qualquer aba/janela — o agente ouve pela palavra de acordar, responde no chat e fala a resposta pelos alto-falantes:
-  ```bash
-  cp scripts/studyagent-listener.service ~/.config/systemd/user/
-  systemctl --user daemon-reload && systemctl --user enable --now studyagent-listener
-  journalctl --user -u studyagent-listener -f
-  ```
-  Ajuste `STUDY_VAD_THRESHOLD=500` (diminua se não acordar, aumente se acordar sozinho).
+- **Modo viva-voz opcional**: diga **"ei Study, sua pergunta"** em qualquer aba/janela — o agente ouve pela palavra de acordar, responde no chat e fala a resposta pelos alto-falantes
 - **🎧 Audiobook de documentos**: no leitor de PDF, toque em 🎧 para ouvir o arquivo página por página (acessibilidade)
 - **Fala → texto:** faster-whisper `small` com VAD silero, beam=5, prompt PT-BR
 - **Modo conversa automática 🔄:** o agente ouve continuamente (VAD no navegador), transcreve, responde e fala — mão livre
@@ -51,6 +45,7 @@ Tutor de estudos multimodal que roda **100% local** no seu computador (Linux): c
 - **Histórico persistente:** resultados salvos automaticamente para o dashboard de progresso
 - **Scoring ponderado**: dificuldade, consistência, recência e volume alimentam o mastery score
 - **Caderno de erros automático**: questões erradas são salvas para revisão futura
+- **XP automático**: cada exercício completo dá XP baseado em dificuldade e desempenho
 
 ### 🃏 Flashcards com repetição espaçada
 - Geração automática de flashcards via LLM a partir de um tema
@@ -58,24 +53,41 @@ Tutor de estudos multimodal que roda **100% local** no seu computador (Linux): c
 - Revisão interativa: revele a resposta e avalie (😵 de novo / 😓 difícil / 😊 bom / 🤩 fácil)
 - Stats por deck: total, pendentes, dominados (intervalo > 21 dias)
 - **Pipeline exercício→flashcard**: gere flashcards automaticamente a partir do caderno de erros
+- **XP por revisão**: 5 XP (acertou) ou 2 XP (errou) por card revisado
 
 ### 📋 Planos de estudo
 - Geração automática de planos estruturados via LLM (5-12 subtópicos)
 - Checklist interativo com barra de progresso
 - Progresso salvo no SQLite — retome de onde parou
 - **Mastery-aware**: planos usam dados de mastery e erros recentes para focar nos pontos fracos
+- **XP por conclusão**: 50 XP ao completar um plano 100%
 
 ### 📝 Caderno de erros
 - Erros de exercícios são salvos automaticamente (pergunta, resposta errada, resposta correta, explicação)
 - Filtrar por tema, marcar como revisado, ver estatísticas
 - **Pipeline exercício→flashcard**: gere flashcards diretamente dos erros pendentes
-- API: `GET /api/errors`, `GET /api/errors/stats`, `POST /api/errors/{id}/review`
-- API: `POST /api/flashcards/generate-from-errors`
 
 ### 📊 Dashboard de progresso
 - Grid de métricas: exercícios feitos, média geral, streak de dias, flashcards dominados, % planos
-- Listas de exercícios recentes e planos ativos
+- **Mastery por tema**: barras coloridas (vermelho/amarelo/verde) com percentual
+- **Resumo semanal**: exercícios 7d, média 7d, tempo estudado, temas praticados
+- **Caderno de erros**: total de erros pendentes, temas com mais erros
+- **Analytics temporal**: horários mais produtivos, tempo médio por sessão
+- **Recomendações por tempo**: "Tenho 30 minutos" → sugere o que estudar
 - Alertas quando há cards pendentes de revisão
+
+### 🎮 Gamificação com XP e Níveis
+- **Sistema de XP**: ganhe XP por exercícios (5-37 XP), flashcards (2-5 XP), streaks (10-30 XP), planos (50 XP)
+- **5 níveis progressivos**:
+  - 🌱 Iniciante (0 XP)
+  - 📖 Estudante (100 XP)
+  - 🎓 Graduado (300 XP)
+  - ⚡ Especialista (600 XP)
+  - 👑 Mestre (1000 XP)
+- **26 conquistas desbloqueáveis**: streaks, domínio, planos, temas, níveis
+- **Leaderboard**: XP total, XP semanal, conquistas, streak, temas dominados
+- **Barra de nível** no dashboard com progresso e XP para próximo nível
+- Verificação automática de conquistas ao interagir com exercícios, flashcards e planos
 
 ### 👤 Perfil adaptativo do aluno
 - Cadastro: nome, série, escola, preferências
@@ -89,12 +101,6 @@ Tutor de estudos multimodal que roda **100% local** no seu computador (Linux): c
 - Barra flutuante com botões ✓ executar / ✕ recusar
 - Histórico de propostas aprovadas/rejeitadas
 
-### 🏆 Gamificação
-- 16 conquistas desbloqueáveis: primeiro exercício, streak 7 dias, domínio total, etc.
-- Progresso visual com barras para conquistas bloqueadas
-- Sequências por tema (streaks) — quantos dias seguidos estudou cada assunto
-- Verificação automática de conquistas ao interagir com exercícios, flashcards e planos
-
 ### ⏱ Perfil avançado
 - Registro de sessões de estudo com duração (exercício, revisão, chat)
 - **Analytics temporal**: horários mais produtivos, média de tempo por sessão
@@ -107,6 +113,18 @@ Tutor de estudos multimodal que roda **100% local** no seu computador (Linux): c
 - **Planos de estudo**: exportar como JSON
 - **Perfil completo**: exportar/importar todos os dados (perfil, mastery, decks, planos)
 
+### 🔒 Segurança
+- **Rate limiting**: chat 15/min, exercícios 5/min, correção 30/min (slowapi)
+- **Permissões explícitas**: nenhum módulo acessa microfone, câmera, tela, arquivos ou internet sem checar
+- **Global exception handler**: erros internos retornam 500 seguro sem vazar detalhes
+
+### 🛠 Infraestrutura
+- `install.sh` — instalação completa (Python, npm, Ollama, systemd)
+- `doctor.sh` — verificação de saúde com cores (pass/warn/fail)
+- `start.sh` / `stop.sh` — gerenciamento de serviços
+- `update.sh` — git pull + backup automático
+- `backup.sh` — backups comprimidos com rotação de 10
+
 ### 🎭 Interface
 - Rosto animado do agente que reage: pensa, ouve, grava, fala — e **reage ao conteúdo** (felicidade, preocupação, curiosidade)
 - **Modo palco:** rosto em tela cheia (⤢, Esc para sair)
@@ -117,8 +135,8 @@ Tutor de estudos multimodal que roda **100% local** no seu computador (Linux): c
 
 ```
 backend/app/
-├── main.py                 FastAPI (6 routers: chat, screen, exercises, documents, audio, tutor)
-├── db.py                   Conexão SQLite centralizada (WAL mode, thread-local, pool)
+├── main.py                 FastAPI (6 routers + rate limiting + exception handler)
+├── db.py                   Conexão SQLite centralizada (WAL mode, thread-local)
 ├── config.py               Caminhos, modelos Ollama
 ├── core/                   Núcleo V2 (desacoplado do agente)
 │   ├── model_manager.py      Papéis de modelos por env (text/vision/synthesis/embedding/stt/tts)
@@ -131,19 +149,16 @@ backend/app/
 ├── agent/
 │   ├── agent.py            Orquestrador: plano → ferramentas → resposta
 │   ├── llm.py              Cliente Ollama + síntese de pesquisas (qwen2.5vl)
-│   ├── memory.py           SQLite: 18 tabelas (sessions, messages, summaries, documents, exercise_history,
-│   │                         exercise_store, flashcard_decks, flashcards, flashcard_reviews, study_plans,
-│   │                         study_items, student_profile, topic_mastery, topic_results, action_proposals,
-│   │                         session_log, adaptive_difficulty, achievements, error_notebook)
-│   └── exercises.py         Gerador + corretor + grade_and_track (atualiza mastery)
+│   ├── memory.py           SQLite: 21 tabelas
+│   └── exercises.py         Gerador + corretor + grade_and_track (atualiza mastery + XP)
 ├── tutor/                  Módulos de tutoria (P5-P10 + Phase 3 adaptive)
-│   ├── flashcards.py         SM-2, geração LLM, review, stats por deck
+│   ├── flashcards.py         SM-2, geração LLM, review, stats por deck, XP
 │   ├── study_plan.py         Planos LLM mastery-aware + checklist toggle + progresso
-│   ├── stats.py              Dashboard combinado (exercícios + flashcards + planos)
+│   ├── stats.py              Dashboard combinado + enhanced dashboard + mastery by subject
 │   ├── profile.py            Perfil + weighted scoring + student_dashboard() para system prompt
 │   ├── automation.py         Propostas de ação, approve/reject, prompt injetado
 │   ├── advanced_profile.py   Sessões, analytics, rolling window real, recomendações ponderadas
-│   ├── gamification.py       16 conquistas, streaks por tema, verificação automática
+│   ├── gamification.py       26 conquistas, XP, 5 níveis, leaderboard, streaks por tema
 │   ├── error_notebook.py     Caderno de erros + pipeline exercício→flashcard
 │   └── export_import.py      CSV/Anki flashcards, JSON planos, perfil completo
 ├── vision/
@@ -172,28 +187,52 @@ frontend/src/
 │   ├── ExercisesPanel.tsx    Quiz com correção
 │   ├── FlashcardsPanel.tsx   Baralhos + revisão SM-2 interativa
 │   ├── StudyPlanPanel.tsx    Checklist de plano de estudo
-│   ├── StatsPanel.tsx        Dashboard de progresso + analytics temporal
+│   ├── StatsPanel.tsx        Dashboard avançado + nível/XP + mastery bars
 │   ├── ProfilePanel.tsx      Perfil + análise de aprendizado
 │   ├── AchievementsPanel.tsx Conquistas + streaks por tema
 │   ├── ActionConfirm.tsx     Barra de confirmação de ações
 │   ├── PdfViewer.tsx         Leitor de documentos + 🎧 audiobook
 │   └── PermissionsPanel.tsx
-└── api.ts                  Cliente tipado (40+ funções)
+└── api.ts                  Cliente tipado (50+ funções)
 ```
+
+### Banco de Dados (21 tabelas)
+
+| Tabela | Descrição |
+|---|---|
+| `sessions` | Sessões de conversa |
+| `messages` | Mensagens do chat |
+| `summaries` | Resumos de sessão |
+| `documents` | Documentos indexados |
+| `exercise_history` | Histórico de exercícios |
+| `exercise_store` | Exercícios gerados (temp) |
+| `flashcard_decks` | Baralhos de flashcards |
+| `flashcards` | Cards individuais |
+| `flashcard_reviews` | Reviews de cards |
+| `study_plans` | Planos de estudo |
+| `study_items` | Itens dos planos |
+| `student_profile` | Perfil do aluno |
+| `topic_mastery` | Mastery por tema (com weighted_score) |
+| `topic_results` | Resultados individuais por tema |
+| `action_proposals` | Propostas de automação |
+| `session_log` | Log de sessões (duração, tipo) |
+| `adaptive_difficulty` | Dificuldade adaptativa por tema |
+| `achievements` | Conquistas desbloqueadas |
+| `error_notebook` | Caderno de erros |
+| `student_xp` | Histórico de XP ganho |
+| `student_level` | Nível e XP total |
 
 ### Testes
 
-178 testes pytest (planner, registry, calculadora, documentos, exercícios, permissões, context_manager, vision_router, wake_word, VAD, RAG, tutor SM-2, flashcards CRUD, study plans, stats, profile, automation, advanced_profile, gamification, export/import, weighted scoring, rolling window, student dashboard, prompt socrático, error notebook, pipeline exercício→flashcard, planos mastery-aware) e lint ruff:
+201 testes pytest e lint ruff:
 
 ```bash
 cd backend
-.venv/bin/python -m pytest -q       # 178 testes
+.venv/bin/python -m pytest -q       # 201 testes
 .venv/bin/python -m ruff check app tests
 ```
 
 Frontend: `npx tsc -b` (zero erros).
-
-CI roda em cada push via GitHub Actions (`.github/workflows/backend.yml`).
 
 ## Variáveis de ambiente
 
@@ -215,6 +254,16 @@ CI roda em cada push via GitHub Actions (`.github/workflows/backend.yml`).
 - GPU recomendada (RTX 3060 12GB roda tudo)
 
 ## Instalação
+
+### Rápida (recomendado)
+
+```bash
+git clone https://github.com/ANTONIOALGMAR/StudyAgent.git ~/StudyAgent
+cd ~/StudyAgent
+./install.sh
+```
+
+### Manual
 
 ```bash
 git clone https://github.com/ANTONIOALGMAR/StudyAgent.git ~/StudyAgent
@@ -251,7 +300,17 @@ sudo apt-get install -y tesseract-ocr tesseract-ocr-por
 
 ## Executando
 
-Com os serviços systemd (sobem no boot, reiniciam sozinhos):
+### Com scripts (recomendado)
+
+```bash
+./start.sh     # Inicia todos os serviços
+./stop.sh      # Para todos os serviços
+./doctor.sh    # Verificação de saúde
+./update.sh    # Atualiza do git + backup
+./backup.sh    # Cria backup comprimido
+```
+
+### Com systemd
 
 ```bash
 cp scripts/*.service ~/.config/systemd/user/
@@ -259,14 +318,7 @@ systemctl --user daemon-reload
 systemctl --user enable --now studyagent-ollama studyagent-api studyagent-web
 ```
 
-Modo viva-voz (opcional):
-
-```bash
-cp scripts/studyagent-listener.service ~/.config/systemd/user/
-systemctl --user daemon-reload && systemctl --user enable --now studyagent-listener
-```
-
-Ou manualmente:
+### Manualmente
 
 ```bash
 # terminal 1
@@ -284,7 +336,7 @@ Abra **http://localhost:5173**
 | Método | Rota | Descrição |
 |---|---|---|
 | GET | `/api/health` | Status e modelos |
-| POST | `/api/chat` | Conversa (`use_screen`, `image_b64`, `doc_id`) |
+| POST | `/api/chat` | Conversa (rate limit: 15/min) |
 | POST | `/api/screen/capture` | Captura + OCR |
 | GET | `/api/screen/monitors` | Lista monitores |
 | GET | `/api/screen/preview` | JPEG do monitor (painel ao vivo) |
@@ -295,51 +347,55 @@ Abra **http://localhost:5173**
 | POST | `/api/documents/upload` | Upload pdf/txt/md |
 | GET | `/api/documents/{id}/file` | Arquivo original (leitor) |
 | GET | `/api/documents/{id}/audio/plan` | Plano do audiobook |
-| GET | `/api/documents/{id}/audio?idx=N` | Áudio WAV da parte N (🎧 acessibilidade) |
-| POST | `/api/exercises/generate` | Gera questões |
-| POST | `/api/exercises/grade` | Corrige + atualiza mastery automaticamente |
+| GET | `/api/documents/{id}/audio?idx=N` | Áudio WAV da parte N |
+| POST | `/api/exercises/generate` | Gera questões (rate limit: 5/min) |
+| POST | `/api/exercises/grade` | Corrige + mastery + XP |
 | GET | `/api/flashcards/decks` | Lista baralhos |
-| GET | `/api/flashcards/decks/{id}/due` | Cards pendentes de revisão |
+| GET | `/api/flashcards/decks/{id}/due` | Cards pendentes |
 | GET | `/api/flashcards/decks/{id}/stats` | Stats do baralho |
 | POST | `/api/flashcards/generate` | Gera baralho via LLM |
-| POST | `/api/flashcards/review` | Registra review (again/hard/good/easy) |
-| GET | `/api/study-plans` | Lista planos de estudo |
+| POST | `/api/flashcards/review` | Review + XP |
+| POST | `/api/flashcards/generate-from-errors` | Flashcards do caderno de erros |
+| GET | `/api/study-plans` | Lista planos |
 | POST | `/api/study-plans/generate` | Gera plano via LLM |
 | GET | `/api/study-plans/{id}` | Plano com itens |
 | POST | `/api/study-plans/items/{id}/toggle` | Marca/desmarca item |
 | GET | `/api/stats/dashboard` | Dashboard combinado |
+| GET | `/api/stats/dashboard/enhanced` | Dashboard + mastery + semanal + erros |
+| GET | `/api/stats/weekly-summary` | Resumo dos últimos 7 dias |
+| GET | `/api/stats/mastery-by-subject` | Mastery por tema |
+| GET | `/api/stats/time-analytics` | Horários produtivos |
 | GET | `/api/profile` | Perfil do aluno |
 | POST | `/api/profile` | Salva perfil |
 | GET | `/api/profile/insights` | Análise de pontos fracos/fortes |
 | GET | `/api/mastery` | Domínio por tema |
 | GET | `/api/mastery/{topic}` | Detalhe de um tema |
-| POST | `/api/actions/propose` | Cria proposta de ação |
+| POST | `/api/actions/propose` | Cria proposta |
 | POST | `/api/actions/{id}/approve` | Aprova proposta |
 | POST | `/api/actions/{id}/reject` | Rejeita proposta |
 | GET | `/api/actions/pending` | Propostas pendentes |
-| POST | `/api/sessions/start` | Inicia sessão de estudo (timer) |
-| POST | `/api/sessions/{id}/end` | Encerra sessão + calcula duração |
-| GET | `/api/stats/time-analytics` | Horários produtivos, tempo médio |
-| GET | `/api/recommendations/{minutes}` | O que estudar em X minutos |
-| GET | `/api/mastery/{topic}/difficulty` | Dificuldade adaptativa atual |
-| POST | `/api/mastery/{topic}/difficulty` | Recalcula dificuldade |
-| GET | `/api/achievements` | Lista todas as conquistas |
+| POST | `/api/sessions/start` | Inicia sessão |
+| POST | `/api/sessions/{id}/end` | Encerra sessão |
+| GET | `/api/recommendations/{minutes}` | O que estudar em X min |
+| GET | `/api/level` | Nível e XP |
+| GET | `/api/leaderboard` | Leaderboard completo |
+| GET | `/api/achievements` | Lista conquistas |
 | GET | `/api/achievements/progress` | Progresso das bloqueadas |
-| GET | `/api/achievements/check` | Verifica e desbloqueia novas |
+| GET | `/api/achievements/check` | Verifica novas conquistas |
 | GET | `/api/streaks` | Sequências por tema |
-| GET | `/api/flashcards/decks/{id}/export/csv` | Exportar deck em CSV |
-| GET | `/api/flashcards/decks/{id}/export/json` | Exportar deck em JSON |
-| POST | `/api/flashcards/import` | Importar deck de CSV |
-| POST | `/api/flashcards/import/json` | Importar deck de JSON |
-| GET | `/api/study-plans/{id}/export` | Exportar plano em JSON |
-| GET | `/api/profile/export` | Exportar perfil completo |
-| POST | `/api/profile/import` | Importar perfil completo |
+| GET | `/api/errors` | Caderno de erros |
+| GET | `/api/errors/stats` | Estatísticas de erros |
+| POST | `/api/errors/{id}/review` | Marca erro como revisado |
+| POST | `/api/errors/review-topic` | Marca todos os erros de um tema |
+| GET | `/api/flashcards/decks/{id}/export/csv` | Export CSV |
+| GET | `/api/flashcards/decks/{id}/export/json` | Export JSON |
+| POST | `/api/flashcards/import` | Import CSV |
+| POST | `/api/flashcards/import/json` | Import JSON |
+| GET | `/api/study-plans/{id}/export` | Export plano JSON |
+| GET | `/api/profile/export` | Export perfil completo |
+| POST | `/api/profile/import` | Import perfil completo |
 | GET | `/api/sessions` | Lista sessões |
 | GET/PUT | `/api/permissions[/{name}]` | Permissões |
-
-## Permissões
-
-Controladas pelo painel lateral (ou `config/permissions.json`). Nenhum módulo acessa microfone, câmera, tela, arquivos ou internet sem checar antes.
 
 ## Roadmap
 
@@ -357,12 +413,12 @@ Controladas pelo painel lateral (ou `config/permissions.json`). Nenhum módulo a
 
 ### Evolution Phases (Master Prompt)
 - [x] Phase 1 — Audit: full codebase analysis, bug inventory, architecture review
-- [x] Phase 2 — Stability: centralized SQLite DB, CORS hardening, safe defaults, router split (main.py → 6 routers), thread-safe permissions, exercises persisted in SQLite
-- [x] Phase 3 — Adaptive Motor: weighted scoring (difficulty/consistency/recency/volume), real rolling window (5 results), topic_results table, weighted mastery classification
+- [x] Phase 2 — Stability: centralized SQLite DB, CORS hardening, safe defaults, router split, thread-safe permissions
+- [x] Phase 3 — Adaptive Motor: weighted scoring (difficulty/consistency/recency/volume), real rolling window, topic_results table
 - [x] Phase 4 — Smart Tutor: Socratic methodology, student_dashboard(), dynamic state injection, contextual awareness
 - [x] Phase 5 — Integrated Learning: error_notebook, exercise→flashcard pipeline, mastery-aware study plans
-- [ ] Phase 6 — Multimodal: (already partially done — vision + audio)
-- [ ] Phase 7 — Dashboard: mastery-by-subject visualization, weekly summary
-- [ ] Phase 8 — Gamification expansion: levels, more achievements
-- [ ] Phase 9 — Security: rate limiting, additional hardening
-- [ ] Phase 10 — Product: install.sh, doctor.sh, backup system
+- [x] Phase 6 — Multimodal: vision (screen/camera/OCR) + audio (VAD/wake word/STT/TTS/listener)
+- [x] Phase 7 — Dashboard: mastery-by-subject bars, weekly summary, error summary, enhanced dashboard
+- [x] Phase 8 — Gamification: XP system, 5 levels (Iniciante→Mestre), 26 achievements, leaderboard
+- [x] Phase 9 — Security: rate limiting (slowapi), global exception handler
+- [x] Phase 10 — Product: install.sh, doctor.sh, start/stop.sh, update.sh, backup.sh
