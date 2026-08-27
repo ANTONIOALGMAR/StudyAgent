@@ -42,6 +42,8 @@ def test_process_capture_ocr_useful():
 
 
 def test_process_capture_no_window():
+    from app.core.cache import vision_cache
+    vision_cache.clear()
     img = Image.new("RGB", (100, 100), color=(255, 255, 255))
     ctx = process_capture(img, monitor_id=1, window_info=None)
     assert ctx.window_app is None

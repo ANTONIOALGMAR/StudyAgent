@@ -3,16 +3,18 @@
 Responsabilidade:
 captura processada → OCR → contexto visual.
 
-Não chama o LLM.
+Não chama o LLM. V2: cache de visão para evitar reprocessamento.
 """
 
 from __future__ import annotations
 
+import hashlib
 import logging
 from typing import Optional
 
 from PIL import Image
 
+from ..core.cache import image_hash, vision_cache
 from ..core.vision_router import VisionContext, VisionIntent
 from ..vision import ocr
 
@@ -30,9 +32,22 @@ def process_capture(
     """Processa captura de tela: OCR + contexto de janela → VisionContext.
 
     Processador puro — sem chamadas LLM. O agente usa o image_bytes
-    para enviar ao modelo de visão.
+    para enviar ao modelo de visão. V2: cache de resultados.
     """
     from ..vision.screen import image_to_base64
+
+    # ── Cache check ──────────────────────────────────────────────
+    try:
+        img_bytes_raw = shot.tobytes()
+        cache_key = hashlib.sha256(
+            f"{image_hash(img_bytes_raw)}:{monitor_id}:{user_question[:100]}".encode()
+        ).hexdigest()[:32]
+        cached = vision_cache.get(cache_key)
+        if cached is not None:
+            log.info("[VISION] cache_hit monitor=%s", monitor_id)
+            return cached
+    except Exception:
+        cache_key = None
 
     stages = ["CAPTURED"]
     errors: list[str] = []
@@ -101,5 +116,9 @@ def process_capture(
         stages.append("CONTEXT_BUILT")
         log.info("[VISION] context_built monitor=%s image_bytes=%d ocr=%s",
                  monitor_id, len(image_bytes), ctx.has_ocr)
+
+    # ── Cache store ──────────────────────────────────────────────
+    if cache_key and ctx.is_valid:
+        vision_cache.set(cache_key, ctx)
 
     return ctx

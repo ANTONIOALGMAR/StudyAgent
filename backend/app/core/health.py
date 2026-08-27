@@ -107,9 +107,25 @@ def check_tool_registry() -> ComponentHealth:
         return ComponentHealth(name="tool_registry", status="error", message=str(exc), latency_ms=(time.time() - t0) * 1000)
 
 
+def check_caches() -> ComponentHealth:
+    t0 = time.time()
+    try:
+        from ..core.cache import document_cache, ocr_cache, vision_cache
+        ocr_stats = ocr_cache.stats()
+        vision_stats = vision_cache.stats()
+        doc_stats = document_cache.stats()
+        return ComponentHealth(
+            name="caches",
+            message=f"ocr={ocr_stats['size']} vision={vision_stats['size']} doc={doc_stats['size']} hit_rate={ocr_stats['hit_rate']}",
+            latency_ms=(time.time() - t0) * 1000,
+        )
+    except Exception as exc:
+        return ComponentHealth(name="caches", status="error", message=str(exc), latency_ms=(time.time() - t0) * 1000)
+
+
 def full_health_check() -> HealthReport:
     report = HealthReport()
-    checks = [check_ollama, check_tesseract, check_database, check_screen_capture, check_tool_registry]
+    checks = [check_ollama, check_tesseract, check_database, check_screen_capture, check_tool_registry, check_caches]
     for check_fn in checks:
         component = check_fn()
         report.components.append(component)

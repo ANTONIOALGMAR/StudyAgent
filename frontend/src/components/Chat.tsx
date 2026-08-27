@@ -155,6 +155,54 @@ export default function Chat() {
     return () => window.removeEventListener('keydown', onKey)
   }, [stage])
 
+  // ── Keyboard shortcuts ──────────────────────────────────────────
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      // Ctrl+Shift+E → Evidence panel
+      if (e.ctrlKey && e.shiftKey && e.key === 'E') {
+        e.preventDefault()
+        setEvidenceOpen((v) => !v)
+      }
+      // Ctrl+Shift+S → Screen capture toggle
+      if (e.ctrlKey && e.shiftKey && e.key === 'S') {
+        e.preventDefault()
+        setUseScreen((v) => !v)
+      }
+      // Ctrl+Shift+X → Exercises panel
+      if (e.ctrlKey && e.shiftKey && e.key === 'X') {
+        e.preventDefault()
+        setExOpen((v) => !v)
+      }
+      // Ctrl+Shift+F → Flashcards panel
+      if (e.ctrlKey && e.shiftKey && e.key === 'F') {
+        e.preventDefault()
+        setFcOpen((v) => !v)
+      }
+      // Ctrl+Shift+L → Live panel
+      if (e.ctrlKey && e.shiftKey && e.key === 'L') {
+        e.preventDefault()
+        setLiveOpen((v) => !v)
+      }
+      // Ctrl+Shift+H → Health check
+      if (e.ctrlKey && e.shiftKey && e.key === 'H') {
+        e.preventDefault()
+        setStOpen((v) => !v)
+      }
+      // Escape → close any open panel
+      if (e.key === 'Escape') {
+        if (evidenceOpen) setEvidenceOpen(false)
+        else if (exOpen) setExOpen(false)
+        else if (fcOpen) setFcOpen(false)
+        else if (spOpen) setSpOpen(false)
+        else if (stOpen) setStOpen(false)
+        else if (profOpen) setProfOpen(false)
+        else if (achOpen) setAchOpen(false)
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [stage, evidenceOpen, exOpen, fcOpen, spOpen, stOpen, profOpen, achOpen])
+
   function closeCamera() {
     camStreamRef.current?.getTracks().forEach((t) => t.stop())
     camStreamRef.current = null

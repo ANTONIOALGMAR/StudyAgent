@@ -359,11 +359,22 @@ def session_end(session_id: str):
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
-# ── Permissions ────────────────────────────────────────────────────────────────
+# ── Permissions V2 ───────────────────────────────────────────────────────────
 
 
 class PermissionUpdate(BaseModel):
     value: bool
+    reason: str = ""
+
+
+class PermissionGroupUpdate(BaseModel):
+    value: bool
+    reason: str = ""
+
+
+class TemporaryPermission(BaseModel):
+    duration_seconds: float
+    reason: str = ""
 
 
 @router.get("/permissions")
@@ -376,10 +387,35 @@ def get_permissions():
 def set_permission(name: str, body: PermissionUpdate):
     from ..security.permissions import PermissionManager
     try:
-        PermissionManager().set(name, body.value)
+        PermissionManager().set(name, body.value, reason=body.reason)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=f"permissão desconhecida: {name}") from exc
     return {name: body.value}
+
+
+@router.put("/permissions/group/{group}")
+def set_permission_group(group: str, body: PermissionGroupUpdate):
+    from ..security.permissions import PermissionManager, PERMISSION_GROUPS
+    if group not in PERMISSION_GROUPS:
+        raise HTTPException(status_code=404, detail=f"grupo desconhecido: {group}")
+    PermissionManager().set_group(group, body.value, reason=body.reason)
+    return {"group": group, "value": body.value, "permissions": PERMISSION_GROUPS[group]}
+
+
+@router.post("/permissions/{name}/temporary")
+def grant_temporary_permission(name: str, body: TemporaryPermission):
+    from ..security.permissions import PermissionManager
+    try:
+        PermissionManager().grant_temporary(name, body.duration_seconds, reason=body.reason)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=f"permissão desconhecida: {name}") from exc
+    return {"name": name, "temporary": True, "duration_seconds": body.duration_seconds}
+
+
+@router.get("/permissions/audit")
+def get_permission_audit(limit: int = 50):
+    from ..security.permissions import PermissionManager
+    return PermissionManager().audit_log(limit=limit)
 
 
 # ── Error Notebook ─────────────────────────────────────────────────────────────

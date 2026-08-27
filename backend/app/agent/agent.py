@@ -229,6 +229,17 @@ class StudyAgent:
         }
 
     def _run_tool_loop(self, messages, images, tools_used, allow_tools=True):
+        """Agent Loop V2: retry + circuit breaker + evidence por step.
+
+        Fluxo:
+        1. Se images → caminho de visão (1 chamada LLM com imagem)
+        2. Se !allow_tools → chat direto
+        3. Loop de tool calling com:
+           - Retry com backoff exponencial por tool
+           - Circuit breaker por tool (3 falhas → open → 60s recovery)
+           - Max 5 iterações (anti-loop)
+           - Structured logging com duration_ms
+        """
         if images:
             total_bytes = sum(len(img) for img in images if isinstance(img, bytes))
             log.info("[VISION] sending_images=%d total_bytes=%d message_count=%d",
@@ -242,6 +253,7 @@ class StudyAgent:
             return response
         if not allow_tools:
             return chat(messages)
+
         from ..core.orchestrator.circuit_breaker import CircuitBreaker
         from .llm import synthesize
 
@@ -250,31 +262,52 @@ class StudyAgent:
             "",
         )
 
-        # Circuit breaker: para após 3 falhas consecutivas
-        cb = CircuitBreaker(failure_threshold=3, recovery_timeout=60.0)
+        # Circuit breakers por tool (independentes)
+        tool_cbs: dict[str, CircuitBreaker] = {}
+        MAX_STEPS = 5
+        MAX_RETRIES_PER_TOOL = 2
+        BACKOFF_BASE_MS = 200.0
 
         current = list(messages)
-        for step in range(4):
-            if not cb.allow():
-                log.warning("[LOOP] circuit_open step=%d — falling back to direct chat", step)
-                return chat(current)
+        for step in range(MAX_STEPS):
             try:
                 reply = chat_with_tools(current, all_schemas())
-            except Exception:
+            except Exception as exc:
+                log.warning("[LOOP] step=%d chat_with_tools failed: %s — fallback", step, exc)
                 return chat(current)
+
             if not reply["tool_calls"]:
                 return reply["content"] or chat(current)
+
             current.append(
                 {"role": "assistant", "content": reply["content"], "tool_calls": reply["tool_calls"]}
             )
+
             for call in reply["tool_calls"]:
                 name = call["function"]["name"]
                 args = call["function"]["arguments"]
                 entry = get(name)
+
                 if not entry:
                     result = f"Ferramenta desconhecida: {name}"
-                    cb.record_failure()
-                else:
+                    log.warning("[LOOP] step=%d unknown_tool=%s", step, name)
+                    current.append({"role": "tool", "name": name, "content": result})
+                    continue
+
+                # Circuit breaker por tool
+                if name not in tool_cbs:
+                    tool_cbs[name] = CircuitBreaker(failure_threshold=3, recovery_timeout=60.0)
+                cb = tool_cbs[name]
+
+                if not cb.allow():
+                    result = f"Ferramenta {name} temporariamente indisponível (circuit open)"
+                    log.warning("[LOOP] step=%d tool=%s circuit_open", step, name)
+                    current.append({"role": "tool", "name": name, "content": result})
+                    continue
+
+                # Retry com backoff exponencial
+                last_error = None
+                for attempt in range(MAX_RETRIES_PER_TOOL + 1):
                     try:
                         if entry.permission:
                             self._require(entry.permission)
@@ -284,23 +317,41 @@ class StudyAgent:
                         duration_ms = (_time.time() - t0) * 1000
                         entry.stats.record_success(duration_ms)
                         cb.record_success()
+                        log.info("[LOOP] step=%d tool=%s attempt=%d success duration_ms=%.1f",
+                                 step, name, attempt + 1, duration_ms)
+                        break
                     except PermissionDeniedError as exc:
                         result = f"Permissão negada para {name}: {exc}"
                         entry.stats.record_failure(str(exc), 0.0)
                         cb.record_failure()
+                        log.warning("[LOOP] step=%d tool=%s permission_denied", step, name)
+                        break
                     except Exception as exc:
-                        result = f"Falha ao executar {name}: {exc}"
+                        last_error = exc
                         entry.stats.record_failure(str(exc), 0.0)
-                        cb.record_failure()
-                    tools_used.append(name)
-                    if name == "web_search" and "---" in result:
-                        try:
-                            return synthesize(last_user, result)
-                        except Exception as exc:
-                            logging.getLogger("uvicorn.error").warning(
-                                "síntese falhou: %s", exc
-                            )
+                        if attempt < MAX_RETRIES_PER_TOOL:
+                            delay_ms = BACKOFF_BASE_MS * (2 ** attempt)
+                            log.warning("[LOOP] step=%d tool=%s attempt=%d failed: %s retry_ms=%.0f",
+                                         step, name, attempt + 1, exc, delay_ms)
+                            import time as _time
+                            _time.sleep(delay_ms / 1000)
+                        else:
+                            cb.record_failure()
+                            result = f"Falha ao executar {name} após {MAX_RETRIES_PER_TOOL + 1} tentativas: {last_error}"
+                            log.error("[LOOP] step=%d tool=%s exhausted: %s", step, name, last_error)
+
+                tools_used.append(name)
+
+                # Síntese para web_search com resultados longos
+                if name == "web_search" and "---" in result:
+                    try:
+                        return synthesize(last_user, result)
+                    except Exception as exc:
+                        log.warning("[LOOP] synthesize failed: %s", exc)
+
                 current.append({"role": "tool", "name": name, "content": result})
+
+        log.warning("[LOOP] max_steps=%d reached", MAX_STEPS)
         return reply.get("content") or ""
 
     def _vision_pipeline(

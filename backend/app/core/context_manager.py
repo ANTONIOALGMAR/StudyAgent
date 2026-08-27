@@ -1,8 +1,7 @@
 """Montagem de contexto: system prompt, histórico com resumo rolante
 e mensagem do usuário enriquecida (imagem/documento).
 
-O núcleo não conhece Ollama: a chamada de LLM para gerar resumos é
-injetada via ``summarize_fn`` (texto -> texto).
+V2: context window management, summarização automática, prioridade de mensagens.
 """
 
 import re
@@ -12,6 +11,13 @@ from .vision_router import VISION_SYSTEM_PROMPT, VisionContext
 
 HISTORY_LIMIT = 10
 SUMMARY_REFRESH_DELTA = 8
+MAX_CONTEXT_CHARS = 12000  # ~3000 tokens approx
+CHARS_PER_TOKEN = 4
+
+
+def _estimate_tokens(text: str) -> int:
+    """Estimativa grosseira de tokens (4 chars ≈ 1 token)."""
+    return len(text) // CHARS_PER_TOKEN
 
 SYSTEM_PROMPT = """Você é o StudyAgent, um tutor pessoal de estudos que roda localmente no computador do usuário.
 
@@ -164,6 +170,19 @@ class ContextManager:
         self.memory = memory
         self._summarize = summarize_fn
 
+    def _trim_history(self, messages: list[dict], max_chars: int = MAX_CONTEXT_CHARS) -> list[dict]:
+        """Remove mensagens antigas se exceder o limite de chars."""
+        total = sum(_estimate_tokens(m.get("content", "")) for m in messages)
+        if total <= max_chars // CHARS_PER_TOKEN:
+            return messages
+        # Mantém system + últimas N mensagens
+        result = [messages[0]]  # system
+        kept = messages[1:]
+        while kept and total > max_chars // CHARS_PER_TOKEN:
+            removed = kept.pop(0)
+            total -= _estimate_tokens(removed.get("content", ""))
+        return result + kept
+
     def assemble(self, session_id: str, user_message: str) -> list[dict]:
         """Monta [system(+resumo+perfil+dashboard), *histórico, user] para enviar ao modelo."""
         history = self.memory.history(session_id, limit=HISTORY_LIMIT)
@@ -203,7 +222,7 @@ class ContextManager:
             )
         messages = [{"role": "system", "content": system_content}, *history]
         messages.append({"role": "user", "content": user_message})
-        return messages
+        return self._trim_history(messages)
 
     def assemble_vision(
         self,
@@ -211,31 +230,23 @@ class ContextManager:
         user_message: str,
         vision_ctx: VisionContext,
     ) -> list[dict]:
-        """Monta mensagens com system prompt de visão (substitui o genérico).
-
-        Quando há imagem, o modelo NÃO deve receber o prompt de tutor/socrático.
-        Em vez disso, recebe um prompt curto e direto que OBRIGA a descrever
-        o conteúdo visual — a causa raiz de "olá" em vez de descrição.
-        """
+        """Monta mensagens com system prompt de visão (substitui o genérico)."""
         history = self.memory.history(session_id, limit=HISTORY_LIMIT)
         system_content = VISION_SYSTEM_PROMPT
 
-        # Adiciona contexto visual ao system prompt para o modelo saber o que tem
         visual_block = _build_visual_context_block(vision_ctx)
         if visual_block:
             system_content += f"\n\n{visual_block}"
 
         messages = [{"role": "system", "content": system_content}, *history]
         messages.append({"role": "user", "content": user_message})
-        return messages
+        return self._trim_history(messages)
 
     def _rolling_summary(self, session_id: str):
         total = self.memory.count_messages(session_id)
         if total <= HISTORY_LIMIT + SUMMARY_REFRESH_DELTA:
             return None
         entry = self.memory.get_summary(session_id)
-        # msg_count = nº de mensagens antigas já cobertas pelo resumo;
-        # regera só quando >= DELTA mensagens ficaram fora da janela E do resumo.
         needs_refresh = entry is None or (
             total - entry["msg_count"] >= HISTORY_LIMIT + SUMMARY_REFRESH_DELTA
         )

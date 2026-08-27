@@ -1,11 +1,9 @@
 """RAG local: busca semântica nos documentos com embeddings do Ollama.
 
-Índice por documento em ``data/rag/<doc_id>.npz`` (vetores + metadados),
-construído na primeira consulta. Sem dependências novas: numpy +
-requisição HTTP para /api/embeddings. Qualquer falha devolve None e o
-agente cai no recuperador léxico.
+V2: embedding cache, reranking, metadata por chunk, filtros de busca.
 """
 
+import hashlib
 import json
 import logging
 import threading
@@ -27,9 +25,33 @@ _lock = threading.Lock()
 _cache: dict[str, tuple[np.ndarray, list[dict]]] = {}
 _cache_lock = threading.Lock()
 
+# ── Embedding cache ──────────────────────────────────────────────
+
+_embedding_cache: dict[str, list[float]] = {}
+_embedding_cache_lock = threading.Lock()
+MAX_EMBED_CACHE = 500
+
+
+def _text_hash(text: str) -> str:
+    return hashlib.md5(text.encode()).hexdigest()
+
+
+def _get_cached_embedding(text: str) -> list[float] | None:
+    h = _text_hash(text)
+    with _embedding_cache_lock:
+        return _embedding_cache.get(h)
+
+
+def _set_cached_embedding(text: str, embedding: list[float]) -> None:
+    h = _text_hash(text)
+    with _embedding_cache_lock:
+        if len(_embedding_cache) >= MAX_EMBED_CACHE:
+            _embedding_cache.pop(next(iter(_embedding_cache)))
+        _embedding_cache[h] = embedding
+
 
 def chunk_document(text: str) -> list[dict]:
-    """Divide por páginas e parágrafos, com sobreposição entre pedaços."""
+    """Divide por páginas e parágrafos, com sobreposição e metadata."""
     chunks: list[dict] = []
     pagina_atual = None
     buffer: list[str] = []
@@ -39,7 +61,12 @@ def chunk_document(text: str) -> list[dict]:
         nonlocal buffer, tamanho
         conteudo = " ".join(buffer).strip()
         if len(conteudo) >= 40:
-            chunks.append({"page": pagina_atual, "text": conteudo})
+            chunk = {"page": pagina_atual, "text": conteudo}
+            # Detectar headings para metadata
+            first_line = buffer[0].strip() if buffer else ""
+            if first_line.startswith("#") or (first_line.isupper() and len(first_line) < 80):
+                chunk["heading"] = first_line.lstrip("#").strip()
+            chunks.append(chunk)
         buffer = []
         tamanho = 0
 
@@ -55,7 +82,6 @@ def chunk_document(text: str) -> list[dict]:
         buffer.append(linha)
         tamanho += len(linha) + 1
         if tamanho >= CHUNK_CHARS:
-            # sobrepõe mantendo a cauda do pedaço atual
             cauda = " ".join(buffer)[-CHUNK_OVERLAP:]
             flush()
             buffer = [cauda] if cauda.strip() else []
@@ -65,11 +91,32 @@ def chunk_document(text: str) -> list[dict]:
 
 
 def embed_texts(texts: list[str], embed_fn=None) -> np.ndarray:
-    """Matriz normalizada n×d dos embeddings (em lote quando possível)."""
+    """Matriz normalizada n×d dos embeddings (com cache)."""
     if embed_fn is None:
-        mat = np.array(_embed_ollama_batch(texts), dtype=np.float32)
+        # Tentar cache individual
+        cached = []
+        to_embed = []
+        indices = []
+        for i, t in enumerate(texts):
+            c = _get_cached_embedding(t)
+            if c is not None:
+                cached.append((i, c))
+            else:
+                to_embed.append(t)
+                indices.append(i)
+
+        if to_embed:
+            new_embeddings = _embed_ollama_batch(to_embed)
+            for idx, emb in zip(indices, new_embeddings, strict=True):
+                _set_cached_embedding(texts[idx], emb)
+                cached.append((idx, emb))
+
+        # Reconstruir na ordem original
+        emb_map = {i: e for i, e in cached}
+        mat = np.array([emb_map[i] for i in range(len(texts))], dtype=np.float32)
     else:
         mat = np.array([embed_fn(t) for t in texts], dtype=np.float32)
+
     if mat.ndim != 2 or mat.shape[0] == 0:
         raise ValueError("embeddings vazios")
     normas = np.linalg.norm(mat, axis=1, keepdims=True)
@@ -136,8 +183,32 @@ def load_index(doc_id: str):
     return vectors, chunks
 
 
-def search(doc_id: str, doc_text: str, query: str, embed_fn=None, k: int = TOP_K):
-    """Top-k trechos semânticos formatados, ou None se indisponível."""
+def _rerank(query: str, results: list[dict], top_k: int = TOP_K) -> list[dict]:
+    """Reranking simples: bônus para chunks com heading que combina com query."""
+    query_lower = query.lower()
+    for r in results:
+        bonus = 0.0
+        heading = r.get("heading", "").lower()
+        if heading and any(w in heading for w in query_lower.split()):
+            bonus = 0.15
+        r["_score"] = r.get("_score", 0) + bonus
+    results.sort(key=lambda x: x.get("_score", 0), reverse=True)
+    return results[:top_k]
+
+
+def search(
+    doc_id: str,
+    doc_text: str,
+    query: str,
+    embed_fn=None,
+    k: int = TOP_K,
+    page_range: tuple[int, int] | None = None,
+) -> str | None:
+    """Top-k trechos semânticos formatados, ou None se indisponível.
+
+    Args:
+        page_range: Filtrar por intervalo de páginas (inclusive).
+    """
     try:
         indice = load_index(doc_id)
         if indice is None:
@@ -148,16 +219,31 @@ def search(doc_id: str, doc_text: str, query: str, embed_fn=None, k: int = TOP_K
         vectors, chunks = indice
         qvec = embed_texts([query], embed_fn)[0]
         scores = vectors @ qvec
-        ordem = np.argsort(scores)[::-1][: max(1, min(k, len(chunks)))]
+        ordem = np.argsort(scores)[::-1]
+
+        # Coletar mais candidatos para reranking
+        candidates = []
+        for i in ordem[: k * 3]:
+            c = dict(chunks[int(i)])
+            c["_score"] = float(scores[i])
+            c["_idx"] = int(i)
+            # Filtrar por página
+            if page_range and c.get("page") is not None:
+                if not (page_range[0] <= c["page"] <= page_range[1]):
+                    continue
+            candidates.append(c)
+
+        # Reranking
+        reranked = _rerank(query, candidates, top_k=k)
+
         logging.getLogger("uvicorn.error").info(
             "RAG %s: top=%s", doc_id,
-            [chunks[int(i)].get("page") for i in ordem[:3]],
+            [c.get("page") for c in reranked[:3]],
         )
         partes = []
         total = 0
-        for i in ordem:
-            c = chunks[int(i)]
-            trecho = f"[página {c['page']}]\n{c['text']}" if c["page"] else c["text"]
+        for c in reranked:
+            trecho = f"[página {c['page']}] {c.get('heading', '')}\n{c['text']}" if c.get("page") else c["text"]
             if total + len(trecho) > MAX_CONTEXT_CHARS:
                 break
             partes.append(trecho)
