@@ -30,6 +30,8 @@ _SEARCH_PAGE_CHARS = 4500
     },
     permission="internet",
     required=["query"],
+    version="1.0.0",
+    tags=["search", "internet", "info"],
 )
 def web_search_tool(args: dict) -> str:
     results = search(str(args.get("query", "")))
@@ -70,6 +72,8 @@ def web_search_tool(args: dict) -> str:
     },
     permission="internet",
     required=["url"],
+    version="1.0.0",
+    tags=["web", "internet", "fetch"],
 )
 def open_url_tool(args: dict) -> str:
     return fetch_page(str(args.get("url", "")))
@@ -85,6 +89,8 @@ def open_url_tool(args: dict) -> str:
         "expression": {"type": "string", "description": "Expressão, ex.: (3/4)*100"}
     },
     required=["expression"],
+    version="1.0.0",
+    tags=["math", "calculate"],
 )
 def calculate_tool(args: dict) -> str:
     return str(calculate(str(args.get("expression", ""))))

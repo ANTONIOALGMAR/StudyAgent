@@ -1,5 +1,6 @@
 """Agent Orchestrator — orquestração profissional do StudyAgent."""
 
+from .circuit_breaker import CircuitBreaker, CircuitState
 from .errors import (
     CaptureError,
     HallucinationError,
@@ -23,6 +24,8 @@ from .validator import ResponseValidator
 
 __all__ = [
     "AgentOrchestrator",
+    "CircuitBreaker",
+    "CircuitState",
     "ExecutionContext",
     "ExecutionPlan",
     "ExecutionStep",

@@ -200,9 +200,108 @@ def grade_and_track(exercise_id: str, answers: dict[str, str]) -> dict:
             update_from_exercise(topic, result["score"], result["total"], result["percent"])
             save_exercise_result(exercise_id, topic, result["score"], result["total"], result["percent"])
             log_errors_from_exercise(exercise_id, topic, result.get("results", []))
+            from ..tutor.advanced_profile import update_difficulty
             from ..tutor.gamification import award_exercise_xp
             xp_result = award_exercise_xp(result["score"], result["total"], "médio")
             result["xp"] = xp_result
+            update_difficulty(topic, result["percent"])
         except Exception:
             pass
     return result
+
+
+# ── Exercise Engine V2: adaptive, review, weak topics ─────────────
+
+
+def generate_adaptive(topic: str, n: int = 4) -> dict:
+    """Gera exercícios com dificuldade adaptativa baseada no histórico."""
+    from ..tutor.advanced_profile import difficulty_for_generation
+
+    level = difficulty_for_generation(topic)
+    return generate(topic, n=n, level=level)
+
+
+def generate_review(n: int = 4) -> dict:
+    """Gera exercícios de revisão a partir do caderno de erros."""
+    from ..tutor.error_notebook import get_errors_by_topic
+    from ..tutor.profile import get_weak_topics
+
+    weak = get_weak_topics(limit=5)
+    if not weak:
+        return {"exercise_id": None, "topic": None, "questions": [], "message": "Nenhum erro registrado para revisão."}
+
+    topic = weak[0]["topic"]
+    errors = get_errors_by_topic(topic, include_reviewed=False)
+
+    if not errors:
+        for w in weak[1:]:
+            errors = get_errors_by_topic(w["topic"], include_reviewed=False)
+            if errors:
+                topic = w["topic"]
+                break
+
+    if not errors:
+        return {"exercise_id": None, "topic": None, "questions": [], "message": "Todos os erros já foram revisados!"}
+
+    error_context = "\n".join(
+        f"- {e['question']} (resposta correta: {e['correct_answer']})"
+        for e in errors[:5]
+    )
+    prompt = (
+        f"Gere {n} questões de revisão sobre: {topic}.\n"
+        f"Foco nos erros recentes do aluno:\n{error_context}\n"
+        "Use múltipla escolha com 4 alternativas. Misture dificuldades.\n"
+        'Responda ESTRITAMENTE neste JSON:\n'
+        '{{"questions": [{{"q": "enunciado", "options": ["a) ...","b) ...","c) ...","d) ..."], '
+        '"answer": "gabarito", "explanation": "explicação"}}]}}'
+    )
+    raw = chat([{"role": "user", "content": prompt}])
+    data = json.loads(_strip_fences(raw))
+    questions = data.get("questions") or []
+    cleaned = []
+    for q in questions[:n]:
+        if not isinstance(q, dict) or not q.get("q") or not q.get("answer"):
+            continue
+        opts = q.get("options")
+        cleaned.append({
+            "id": uuid.uuid4().hex[:8],
+            "q": str(q["q"]),
+            "options": [str(o) for o in opts] if isinstance(opts, list) and opts else None,
+            "answer": str(q["answer"]),
+            "explanation": str(q.get("explanation") or ""),
+        })
+    if not cleaned:
+        return {"exercise_id": None, "topic": topic, "questions": [], "message": "Não consegui gerar revisão. Tente outro tema."}
+
+    exercise_id = uuid.uuid4().hex[:10]
+    conn = get_connection()
+    conn.execute(
+        "INSERT INTO exercise_store (exercise_id, topic, items_json, created_at) VALUES (?, ?, ?, ?)",
+        (exercise_id, topic, json.dumps(cleaned, ensure_ascii=False), time.time()),
+    )
+    conn.commit()
+    _prune()
+
+    public = [{"id": q["id"], "q": q["q"], "options": q["options"]} for q in cleaned]
+    return {
+        "exercise_id": exercise_id,
+        "topic": topic,
+        "questions": public,
+        "review_mode": True,
+        "error_count": len(errors),
+    }
+
+
+def get_weak_topics_exercises(topics: list[str] | None = None, n: int = 4) -> dict:
+    """Gera exercícios para múltiplos tópicos fracos."""
+    from ..tutor.profile import get_weak_topics
+
+    if not topics:
+        weak = get_weak_topics(limit=3)
+        topics = [w["topic"] for w in weak]
+
+    if not topics:
+        return {"exercise_id": None, "topics": [], "questions": [], "message": "Nenhum tópico fraco identificado."}
+
+    topic = topics[0]
+    return generate_adaptive(topic, n=n)

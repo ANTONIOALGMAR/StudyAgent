@@ -1,6 +1,8 @@
 import { useState } from 'react'
 import {
   generateExercises,
+  generateAdaptiveExercises,
+  generateReviewExercises,
   gradeExercise,
   type ExerciseSet,
   type GradeResult,
@@ -32,6 +34,43 @@ export default function ExercisesPanel({ onMood }: Props) {
     setError(null)
     try {
       const ex = await generateExercises(topic.trim(), n, level)
+      setExercise(ex)
+      setAnswers({})
+      setResult(null)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e))
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  async function handleAdaptive() {
+    if (!topic.trim() || loading) return
+    setLoading(true)
+    setError(null)
+    try {
+      const ex = await generateAdaptiveExercises(topic.trim(), n)
+      setExercise(ex)
+      setAnswers({})
+      setResult(null)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e))
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  async function handleReview() {
+    if (loading) return
+    setLoading(true)
+    setError(null)
+    try {
+      const ex = await generateReviewExercises(n)
+      if (!ex.exercise_id) {
+        setError(ex.message || 'Nada para revisar')
+        setLoading(false)
+        return
+      }
       setExercise(ex)
       setAnswers({})
       setResult(null)
@@ -94,6 +133,12 @@ export default function ExercisesPanel({ onMood }: Props) {
             </label>
             <button onClick={handleGenerate} disabled={!topic.trim() || loading}>
               {loading ? 'Gerando…' : '🎯 Gerar'}
+            </button>
+            <button onClick={handleAdaptive} disabled={!topic.trim() || loading} title="Dificuldade adaptativa baseada no seu histórico">
+              🧠 Adaptativo
+            </button>
+            <button onClick={handleReview} disabled={loading} title="Revisar erros do caderno">
+              📝 Revisão
             </button>
           </div>
           {error && <p className="ex-error">{error}</p>}

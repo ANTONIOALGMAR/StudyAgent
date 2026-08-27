@@ -298,6 +298,27 @@ def suggest_review() -> list[dict]:
     return [dict(r) for r in rows]
 
 
+def get_weak_topics(limit: int = 5) -> list[dict]:
+    """Retorna tópicos fracos ordenados por weighted_score ASC."""
+    conn = get_connection()
+    rows = conn.execute(
+        "SELECT topic, weighted_score, attempts, avg_percent "
+        "FROM topic_mastery WHERE attempts >= ? "
+        "ORDER BY weighted_score ASC LIMIT ?",
+        (MIN_ATTEMPTS, limit),
+    ).fetchall()
+    return [
+        {
+            "topic": r["topic"],
+            "weighted_score": r["weighted_score"],
+            "attempts": r["attempts"],
+            "avg_percent": r["avg_percent"],
+        }
+        for r in rows
+        if (r["weighted_score"] or 0) < WEAK_THRESHOLD
+    ]
+
+
 def topic_details(topic: str) -> dict | None:
     conn = get_connection()
     row = conn.execute("SELECT * FROM topic_mastery WHERE topic = ?", (topic,)).fetchone()

@@ -35,6 +35,26 @@ def exercises_generate(request: Request, req: ExerciseGenerateRequest):
         raise HTTPException(status_code=500, detail=f"Falha ao gerar exercícios: {exc}") from exc
 
 
+@router.post("/exercises/generate/adaptive")
+@limiter.limit("5/minute")
+def exercises_generate_adaptive(request: Request, req: ExerciseGenerateRequest):
+    try:
+        return exercises.generate_adaptive(topic=req.topic, n=req.n)
+    except ValueError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Falha ao gerar exercícios adaptativos: {exc}") from exc
+
+
+@router.post("/exercises/generate/review")
+@limiter.limit("5/minute")
+def exercises_generate_review(request: Request, n: int = 4):
+    try:
+        return exercises.generate_review(n=n)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Falha ao gerar revisão: {exc}") from exc
+
+
 @router.post("/exercises/grade")
 @limiter.limit("30/minute")
 def exercises_grade(request: Request, req: ExerciseGradeRequest):

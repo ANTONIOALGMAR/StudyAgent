@@ -4,6 +4,20 @@ export interface ChatResponse {
   session_id: string
   response: string
   tools_used: string[]
+  evidence?: EvidenceData | null
+}
+
+export interface EvidenceData {
+  intent?: string
+  has_screen?: boolean
+  has_ocr?: boolean
+  has_camera?: boolean
+  has_document?: boolean
+  has_window?: boolean
+  monitor?: number
+  ocr_length?: number
+  pipeline_stages?: string[]
+  issues?: string[]
 }
 
 export async function chat(
@@ -186,6 +200,29 @@ export async function generateExercises(
     body: JSON.stringify({ topic, n, level }),
   })
   if (!res.ok) throw new Error((await res.json()).detail || 'Falha ao gerar exercícios')
+  return res.json()
+}
+
+export async function generateAdaptiveExercises(
+  topic: string,
+  n = 4,
+): Promise<ExerciseSet> {
+  const res = await fetch(`${API}/api/exercises/generate/adaptive`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ topic, n }),
+  })
+  if (!res.ok) throw new Error((await res.json()).detail || 'Falha ao gerar exercícios adaptativos')
+  return res.json()
+}
+
+export async function generateReviewExercises(
+  n = 4,
+): Promise<ExerciseSet & { review_mode?: boolean; error_count?: number; message?: string }> {
+  const res = await fetch(`${API}/api/exercises/generate/review?n=${n}`, {
+    method: 'POST',
+  })
+  if (!res.ok) throw new Error((await res.json()).detail || 'Falha ao gerar revisão')
   return res.json()
 }
 
@@ -658,5 +695,26 @@ export async function importProfile(file: File) {
   form.append('file', file)
   const res = await fetch(`${API}/api/profile/import`, { method: 'POST', body: form })
   if (!res.ok) throw new Error((await res.json()).detail || 'Falha ao importar')
+  return res.json()
+}
+
+// ── Health ──────────────────────────────────────────────────────────────────
+
+export interface ComponentHealth {
+  name: string
+  status: 'ok' | 'degraded' | 'error'
+  message: string
+  latency_ms: number
+}
+
+export interface HealthReport {
+  status: 'ok' | 'degraded' | 'error'
+  timestamp: number
+  components: ComponentHealth[]
+}
+
+export async function getHealth(): Promise<HealthReport> {
+  const res = await fetch(`${API}/api/health`)
+  if (!res.ok) throw new Error('Falha ao verificar saúde do sistema')
   return res.json()
 }

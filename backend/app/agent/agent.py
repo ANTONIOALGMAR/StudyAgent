@@ -242,6 +242,7 @@ class StudyAgent:
             return response
         if not allow_tools:
             return chat(messages)
+        from ..core.orchestrator.circuit_breaker import CircuitBreaker
         from .llm import synthesize
 
         last_user = next(
@@ -249,8 +250,14 @@ class StudyAgent:
             "",
         )
 
+        # Circuit breaker: para após 3 falhas consecutivas
+        cb = CircuitBreaker(failure_threshold=3, recovery_timeout=60.0)
+
         current = list(messages)
-        for _ in range(4):
+        for step in range(4):
+            if not cb.allow():
+                log.warning("[LOOP] circuit_open step=%d — falling back to direct chat", step)
+                return chat(current)
             try:
                 reply = chat_with_tools(current, all_schemas())
             except Exception:
@@ -266,18 +273,25 @@ class StudyAgent:
                 entry = get(name)
                 if not entry:
                     result = f"Ferramenta desconhecida: {name}"
+                    cb.record_failure()
                 else:
                     try:
                         if entry.permission:
                             self._require(entry.permission)
-                        logging.getLogger("uvicorn.error").info(
-                            "tool=%s args=%s", name, str(args)[:120]
-                        )
+                        import time as _time
+                        t0 = _time.time()
                         result = entry.handler(args)
+                        duration_ms = (_time.time() - t0) * 1000
+                        entry.stats.record_success(duration_ms)
+                        cb.record_success()
                     except PermissionDeniedError as exc:
                         result = f"Permissão negada para {name}: {exc}"
+                        entry.stats.record_failure(str(exc), 0.0)
+                        cb.record_failure()
                     except Exception as exc:
                         result = f"Falha ao executar {name}: {exc}"
+                        entry.stats.record_failure(str(exc), 0.0)
+                        cb.record_failure()
                     tools_used.append(name)
                     if name == "web_search" and "---" in result:
                         try:

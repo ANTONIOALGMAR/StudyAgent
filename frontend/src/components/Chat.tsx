@@ -9,6 +9,7 @@ import ProfilePanel from './ProfilePanel'
 import Sidebar from './Sidebar'
 import StatsPanel from './StatsPanel'
 import StudyPlanPanel from './StudyPlanPanel'
+import EvidencePanel from './EvidencePanel'
 import {
   chat,
   captureScreen,
@@ -18,6 +19,7 @@ import {
   screenPreviewUrl,
   type ChatResponse,
   type MonitorInfo,
+  type EvidenceData,
   uploadDocument,
   type UploadedDoc,
 } from '../api'
@@ -98,6 +100,9 @@ export default function Chat() {
   const camStreamRef = useRef<MediaStream | null>(null)
   const videoRef = useRef<HTMLVideoElement | null>(null)
   const [camOpen, setCamOpen] = useState(false)
+  const [lastEvidence, setLastEvidence] = useState<EvidenceData | null>(null)
+  const [lastToolsUsed, setLastToolsUsed] = useState<string[]>([])
+  const [evidenceOpen, setEvidenceOpen] = useState(false)
 
   const fileInputRef = useRef<HTMLInputElement | null>(null)
   const [activeDoc, setActiveDoc] = useState<UploadedDoc | null>(() => {
@@ -331,6 +336,8 @@ export default function Chat() {
       setSessionId(res.session_id)
       const tools = res.tools_used.length > 0 ? ` [${res.tools_used.join(', ')}]` : ''
       setMessages((m) => [...m, { role: 'assistant', content: res.response + tools }])
+      setLastEvidence(res.evidence ?? null)
+      setLastToolsUsed(res.tools_used)
       flashReaction(moodFromResponse(res.response))
       if (opts.awaitSpeech) await playSpeechAwait(res.response)
       else void playSpeechAwait(res.response)
@@ -831,6 +838,42 @@ export default function Chat() {
             </button>
           </div>
         </div>
+      )}
+
+      {(lastEvidence || lastToolsUsed.length > 0) && (
+        <button
+          className="btn-screen evidence-toggle"
+          onClick={() => setEvidenceOpen(!evidenceOpen)}
+          title="Mostrar evidência da última resposta"
+          style={{
+            position: 'fixed',
+            bottom: 80,
+            right: 16,
+            zIndex: 999,
+            borderRadius: 999,
+            width: 36,
+            height: 36,
+            fontSize: 14,
+            padding: 0,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            background: evidenceOpen ? '#334155' : '#1e293b',
+            border: '1px solid #475569',
+            color: '#94a3b8',
+            cursor: 'pointer',
+          }}
+        >
+          🔍
+        </button>
+      )}
+
+      {evidenceOpen && (
+        <EvidencePanel
+          evidence={lastEvidence}
+          toolsUsed={lastToolsUsed}
+          onClose={() => setEvidenceOpen(false)}
+        />
       )}
 
       <div className="chat-input">
