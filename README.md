@@ -422,3 +422,17 @@ Abra **http://localhost:5173**
 - [x] Phase 8 — Gamification: XP system, 5 levels (Iniciante→Mestre), 26 achievements, leaderboard
 - [x] Phase 9 — Security: rate limiting (slowapi), global exception handler
 - [x] Phase 10 — Product: install.sh, doctor.sh, start/stop.sh, update.sh, backup.sh
+
+### Infrastructure (V4)
+- [x] Agent Loop V2: per-tool circuit breakers, retry with exponential backoff, MAX_STEPS=5
+- [x] Observability: structured logging, request_id/session_id, health check (6 components)
+- [x] Evidence Panel: frontend visualization of pipeline stages, badges, tools used
+- [x] Exercise Engine V2: adaptive difficulty, review from error notebook, weak topics
+- [x] Permission System V2: audit log, groups, hierarchy, temporary grants
+- [x] Memory & Context V2: token estimation, context window trimming
+- [x] Deployment: Dockerfile, docker-compose, nginx, .env.example
+- [x] Caching: TTLCache LRU (OCR 128/2h, vision 64/30m, docs 32/24h)
+- [x] RAG V2: embedding cache, reranking, metadata, page_range filter
+- [x] Frontend Decomposition: Chat.tsx 993→357 lines, 3 hooks, 4 components
+- [x] Performance: JPEG compression (~5x smaller), lazy loading panels
+- [x] Tests: 406 backend + 5 frontend = 411 total
