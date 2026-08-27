@@ -21,8 +21,8 @@ class PermissionDeniedError(Exception):
 
 
 DEFAULT_PERMISSIONS = {
-    "microphone": False,
-    "camera": False,
+    "microphone": True,
+    "camera": True,
     "screen_capture": True,
     "file_access": True,
     "internet": True,

@@ -126,7 +126,8 @@ export async function speak(text: string): Promise<Blob> {
     body: JSON.stringify({ text }),
   })
   if (!res.ok) throw new Error('Falha ao sintetizar voz')
-  return res.blob()
+  const buf = await res.arrayBuffer()
+  return new Blob([buf], { type: 'audio/wav' })
 }
 
 export const PERMISSION_LABELS: Record<string, string> = {

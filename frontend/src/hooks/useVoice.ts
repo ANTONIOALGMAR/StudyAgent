@@ -61,8 +61,8 @@ export function useVoice({ onUserMessage }: UseVoiceOptions) {
         } finally {
           setSpeaking(false)
         }
-      } catch {
-        // voz é opcional
+      } catch (e) {
+        console.error('Erro ao reproduzir voz:', e)
       }
     },
     [voiceOn],
@@ -126,7 +126,8 @@ export function useVoice({ onUserMessage }: UseVoiceOptions) {
         if (text) {
           onUserMessage(text)
         }
-      } catch {
+      } catch (e) {
+        console.error('Erro na transcrição (hands-free):', e)
         break
       }
     }
@@ -146,8 +147,8 @@ export function useVoice({ onUserMessage }: UseVoiceOptions) {
       hfActiveRef.current = true
       setHandsFree(true)
       void handsFreeLoop()
-    } catch {
-      // erro tratado pelo componente pai
+    } catch (e) {
+      console.error('Erro ao iniciar viva-voz:', e)
     }
   }, [handsFreeLoop])
 
@@ -182,14 +183,14 @@ export function useVoice({ onUserMessage }: UseVoiceOptions) {
         try {
           const text = await transcribeAudio(blob)
           if (text) onUserMessage(text)
-        } catch {
-          // erro tratado pelo componente pai
+        } catch (e) {
+          console.error('Erro na transcrição:', e)
         }
       }
       recorder.start()
       setRecording(true)
-    } catch {
-      // erro tratado pelo componente pai
+    } catch (e) {
+      console.error('Erro ao iniciar gravação:', e)
     }
   }, [recording, onUserMessage])
 
