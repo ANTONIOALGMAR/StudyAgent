@@ -1,22 +1,27 @@
-import { useEffect, useRef, useState } from 'react'
+import { Suspense, lazy, useEffect, useRef, useState } from 'react'
 import AgentFace, { type FaceState } from './AgentFace'
 import ActionConfirm from './ActionConfirm'
 import ChatMessages from './ChatMessages'
 import ChatInput from './ChatInput'
 import LivePanel from './LivePanel'
-import ExercisesPanel from './ExercisesPanel'
-import FlashcardsPanel from './FlashcardsPanel'
-import PdfViewer from './PdfViewer'
-import AchievementsPanel from './AchievementsPanel'
-import ProfilePanel from './ProfilePanel'
 import Sidebar from './Sidebar'
-import StatsPanel from './StatsPanel'
-import StudyPlanPanel from './StudyPlanPanel'
 import EvidencePanel from './EvidencePanel'
 import { type UploadedDoc } from '../api'
 import { useChat } from '../hooks/useChat'
 import { useVoice } from '../hooks/useVoice'
 import { useScreen } from '../hooks/useScreen'
+
+const ExercisesPanel = lazy(() => import('./ExercisesPanel'))
+const FlashcardsPanel = lazy(() => import('./FlashcardsPanel'))
+const PdfViewer = lazy(() => import('./PdfViewer'))
+const AchievementsPanel = lazy(() => import('./AchievementsPanel'))
+const ProfilePanel = lazy(() => import('./ProfilePanel'))
+const StatsPanel = lazy(() => import('./StatsPanel'))
+const StudyPlanPanel = lazy(() => import('./StudyPlanPanel'))
+
+function PanelFallback() {
+  return <div style={{ padding: 20, textAlign: 'center', color: '#8b93a7' }}><span className="spinner" /> carregando…</div>
+}
 
 const FACE_LABELS: Record<FaceState, string> = {
   idle: 'pronto para ajudar',
@@ -232,7 +237,9 @@ export default function Chat() {
           </div>
         )}
 
-        {viewerDoc && <PdfViewer doc={viewerDoc} onClose={() => setViewerDoc(null)} />}
+        <Suspense fallback={<PanelFallback />}>
+          {viewerDoc && <PdfViewer doc={viewerDoc} onClose={() => setViewerDoc(null)} />}
+        </Suspense>
 
         {voice.handsFree && statusLabel && <div className={`status-pill st-${voice.hfState}`}>{statusLabel}</div>}
 
@@ -257,47 +264,49 @@ export default function Chat() {
           </button>
         )}
 
-        {exOpen && (
-          <div className="live-panel exercises-panel">
-            <div className="live-head"><strong>🎯 exercícios</strong><button className="btn-screen" onClick={() => setExOpen(false)}>✕</button></div>
-            <ExercisesPanel onMood={(m) => flashReaction(m as FaceState)} />
-          </div>
-        )}
+        <Suspense fallback={<PanelFallback />}>
+          {exOpen && (
+            <div className="live-panel exercises-panel">
+              <div className="live-head"><strong>🎯 exercícios</strong><button className="btn-screen" onClick={() => setExOpen(false)}>✕</button></div>
+              <ExercisesPanel onMood={(m) => flashReaction(m as FaceState)} />
+            </div>
+          )}
 
-        {fcOpen && (
-          <div className="live-panel flashcards-panel">
-            <div className="live-head"><strong>🃏 flashcards</strong><button className="btn-screen" onClick={() => setFcOpen(false)}>✕</button></div>
-            <FlashcardsPanel onMood={(m) => flashReaction(m as FaceState)} />
-          </div>
-        )}
+          {fcOpen && (
+            <div className="live-panel flashcards-panel">
+              <div className="live-head"><strong>🃏 flashcards</strong><button className="btn-screen" onClick={() => setFcOpen(false)}>✕</button></div>
+              <FlashcardsPanel onMood={(m) => flashReaction(m as FaceState)} />
+            </div>
+          )}
 
-        {spOpen && (
-          <div className="live-panel studyplan-panel">
-            <div className="live-head"><strong>📋 plano de estudo</strong><button className="btn-screen" onClick={() => setSpOpen(false)}>✕</button></div>
-            <StudyPlanPanel onMood={(m) => flashReaction(m as FaceState)} />
-          </div>
-        )}
+          {spOpen && (
+            <div className="live-panel studyplan-panel">
+              <div className="live-head"><strong>📋 plano de estudo</strong><button className="btn-screen" onClick={() => setSpOpen(false)}>✕</button></div>
+              <StudyPlanPanel onMood={(m) => flashReaction(m as FaceState)} />
+            </div>
+          )}
 
-        {stOpen && (
-          <div className="live-panel stats-panel">
-            <div className="live-head"><strong>📊 progresso</strong><button className="btn-screen" onClick={() => setStOpen(false)}>✕</button></div>
-            <StatsPanel />
-          </div>
-        )}
+          {stOpen && (
+            <div className="live-panel stats-panel">
+              <div className="live-head"><strong>📊 progresso</strong><button className="btn-screen" onClick={() => setStOpen(false)}>✕</button></div>
+              <StatsPanel />
+            </div>
+          )}
 
-        {profOpen && (
-          <div className="live-panel profile-panel">
-            <div className="live-head"><strong>👤 perfil</strong><button className="btn-screen" onClick={() => setProfOpen(false)}>✕</button></div>
-            <ProfilePanel />
-          </div>
-        )}
+          {profOpen && (
+            <div className="live-panel profile-panel">
+              <div className="live-head"><strong>👤 perfil</strong><button className="btn-screen" onClick={() => setProfOpen(false)}>✕</button></div>
+              <ProfilePanel />
+            </div>
+          )}
 
-        {achOpen && (
-          <div className="live-panel achievements-panel">
-            <div className="live-head"><strong>🏆 conquistas</strong><button className="btn-screen" onClick={() => setAchOpen(false)}>✕</button></div>
-            <AchievementsPanel />
-          </div>
-        )}
+          {achOpen && (
+            <div className="live-panel achievements-panel">
+              <div className="live-head"><strong>🏆 conquistas</strong><button className="btn-screen" onClick={() => setAchOpen(false)}>✕</button></div>
+              <AchievementsPanel />
+            </div>
+          )}
+        </Suspense>
 
         {camOpen && (
           <div className="camera-panel">

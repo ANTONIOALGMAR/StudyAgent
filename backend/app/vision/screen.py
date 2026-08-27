@@ -187,11 +187,16 @@ def _scale(image: Image.Image, max_width: int) -> Image.Image:
     return image
 
 
-def image_to_base64(image: Image.Image, max_width=1600, quality=85) -> bytes:
+def image_to_base64(image: Image.Image, max_width=1280, quality=75) -> bytes:
+    """Comprime imagem para JPEG antes de enviar ao LLM.
+
+    JPEG é ~5x menor que PNG para screenshots, reduzindo latência
+    de upload ao Ollama significativamente.
+    """
     from io import BytesIO
 
     buffer = BytesIO()
-    _scale(image, max_width).save(buffer, format="PNG")
+    _scale(image, max_width).save(buffer, format="JPEG", quality=quality)
     return buffer.getvalue()
 
 
