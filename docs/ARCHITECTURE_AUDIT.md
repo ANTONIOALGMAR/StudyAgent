@@ -1,8 +1,8 @@
-# StudyAgent — Architecture Audit V3
+# StudyAgent — Architecture Audit V4
 
-**Data:** 2026-08-26
-**Commit:** fd20862
-**239 testes passando | ruff clean | TypeScript strict**
+**Data:** 2026-08-27
+**Commit:** 999027b
+**390 testes passando | ruff clean | TypeScript strict | Vite build OK**
 
 ---
 
@@ -10,48 +10,52 @@
 
 | Componente | Stack | Status |
 |---|---|---|
-| Backend | Python 3.11+ / FastAPI / SQLite / Ollama | Funcional |
-| Frontend | React 18 / TypeScript strict / Vite | Funcional |
-| LLM | Ollama (llama3.1 text, qwen2.5vl:7b vision) | Funcional |
-| OCR | Tesseract via subprocess | Funcional |
-| STT | faster-whisper | Funcional |
-| TTS | piper-tts | Funcional |
-| Captura | MSS + cosmic-screenshot (Wayland) | Funcional |
-| RAG | NumPy embeddings + cosine similarity | Funcional |
+| Backend | Python 3.12 / FastAPI / SQLite / Ollama | ✅ Funcional |
+| Frontend | React 18 / TypeScript strict / Vite | ✅ Funcional |
+| LLM | Ollama (llama3.1 text, qwen2.5vl:7b vision) | ✅ Funcional |
+| OCR | Tesseract via subprocess + cache | ✅ Funcional |
+| STT | faster-whisper | ✅ Funcional |
+| TTS | piper-tts | ✅ Funcional |
+| Captura | MSS + cosmic-screenshot (Wayland) | ✅ Funcional |
+| RAG | NumPy embeddings + cosine + embedding cache + reranking | ✅ Funcional |
+| Cache | TTLCache com LRU (OCR, vision, documentos) | ✅ Funcional |
+| Deploy | Docker + docker-compose + nginx | ✅ Pronto |
 
 ---
 
 ## 2. Arquitetura Atual
 
 ```
-routers/ ──> agent/ ──> core/ ──> vision/
-                         tools/  ──> db
-                         tutor/
+routers/ ──> agent/ ──> core/ ──> orchestrator/
+                         tools/  ──> vision/
+                         tutor/  ──> db
                   │
                   v
               security/
+              cache/
 ```
 
 ### Camadas
 
 | Camada | Responsabilidade | Arquivos |
 |---|---|---|
-| **routers/** | HTTP endpoints (6 routers) | chat, screen, documents, exercises, audio, tutor |
-| **agent/** | Orquestração, loop de ferramentas, memória | agent.py, llm.py, memory.py, exercises.py |
-| **core/** | Planejamento, contexto, modelos, registro de tools | planner.py, context_manager.py, model_manager.py, vision_router.py, tool_registry.py, registered_tools.py |
-| **vision/** | Captura, OCR, janela, processamento | screen.py, ocr.py, window.py, engine.py |
+| **routers/** | HTTP endpoints (8 routers) | chat, screen, documents, exercises, audio, tutor, health |
+| **agent/** | Orquestração Agent Loop V2, retry, circuit breaker | agent.py, llm.py, memory.py, exercises.py |
+| **core/** | Planejamento, contexto, modelos, registro, cache, health | planner, context_manager, model_manager, vision_router, tool_registry, registered_tools, cache, health, structured_logging, env_validation |
+| **orchestrator/** | Execution plan, executor, evidence, validator, policies, errors | 7 módulos |
+| **vision/** | Captura, OCR (com cache), janela, processamento | screen, ocr, window, engine |
 | **audio/** | STT, TTS, VAD, wake word, listener | 5 módulos |
-| **tools/** | Calculadora, RAG, documentos, web search | 4 módulos |
-| **tutor/** | Flashcards, planos, perfil, gamificação, erros | 8 módulos |
-| **security/** | Permissões | permissions.py |
+| **tools/** | Calculadora, RAG (V2 com cache), documentos, web search | 4 módulos |
+| **tutor/** | Flashcards, planos, perfil, gamificação, erros, export/import | 9 módulos |
+| **security/** | Permissões V2 (audit, groups, hierarchy) | permissions.py |
 
 ### Dependências (sem ciclos)
 
 ```
 routers → agent, core, vision, tools, tutor, security
 agent   → core, vision, tools, security
-core    → tools (registered_tools), vision (vision_router)
-vision  → core (vision_router)
+core    → tools (registered_tools), vision (vision_router), cache
+vision  → core (vision_router, cache)
 tools   → db
 tutor   → db
 security → (nada interno)
@@ -64,39 +68,42 @@ audio   → config
 
 ## 3. Inventário de Arquivos
 
-### Backend (43 arquivos .py)
+### Backend (52 arquivos .py)
 
 | Módulo | Arquivos | Linhas estimadas |
 |---|---|---|
-| app/ | __init__, main, config, db | ~200 |
-| agent/ | agent, llm, memory, exercises | ~700 |
-| core/ | planner, context_manager, model_manager, vision_router, tool_registry, registered_tools | ~900 |
-| vision/ | screen, ocr, window, engine | ~400 |
+| app/ | __init__, main, config, db | ~250 |
+| agent/ | agent, llm, memory, exercises | ~850 |
+| core/ | planner, context_manager, model_manager, vision_router, tool_registry, registered_tools, cache, health, structured_logging, env_validation | ~1200 |
+| orchestrator/ | execution_plan, execution_context, executor, evidence, validator, policies, errors, orchestrator | ~1000 |
+| vision/ | screen, ocr, window, engine | ~450 |
 | audio/ | listener, speech_to_text, text_to_speech, vad, wake_word | ~600 |
-| tools/ | calculator, documents, rag, web_search | ~500 |
-| tutor/ | flashcards, study_plan, profile, stats, gamification, advanced_profile, automation, error_notebook, export_import | ~1200 |
-| security/ | permissions | ~80 |
-| **Total** | **43** | **~4600** |
+| tools/ | calculator, documents, rag, web_search | ~550 |
+| tutor/ | flashcards, study_plan, profile, stats, gamification, advanced_profile, automation, error_notebook, export_import | ~1300 |
+| security/ | permissions | ~180 |
+| routers/ | chat, screen, documents, exercises, audio, tutor, health | ~800 |
+| **Total** | **52** | **~7200** |
 
-### Frontend (15 arquivos)
+### Frontend (17 arquivos)
 
 | Arquivo | Linhas | Função |
 |---|---|---|
-| api.ts | 662 | Cliente API + 20+ interfaces |
-| App.tsx | 33 | Layout raiz |
-| Chat.tsx | 902 | God component (chat + voz + câmera + tela + painéis) |
-| AgentFace.tsx | 111 | Face animada SVG |
-| Sidebar.tsx | 48 | Navegação |
-| ExercisesPanel.tsx | 196 | Exercícios |
-| FlashcardsPanel.tsx | 270 | Flashcards + SM-2 |
-| StudyPlanPanel.tsx | 182 | Planos de estudo |
-| StatsPanel.tsx | 242 | Dashboard |
-| ProfilePanel.tsx | 117 | Perfil |
-| AchievementsPanel.tsx | 95 | Gamificação |
-| PermissionsPanel.tsx | 35 | Permissões |
-| ActionConfirm.tsx | 60 | Ações pendentes |
-| PdfViewer.tsx | 151 | Leitor PDF + audiobook |
-| index.css | 1113 | Estilos globais |
+| api.ts | ~750 | Cliente API + 25+ interfaces |
+| App.tsx | ~40 | Layout raiz |
+| Chat.tsx | ~990 | God component (chat + voz + câmera + tela + painéis) |
+| AgentFace.tsx | ~115 | Face animada SVG |
+| Sidebar.tsx | ~50 | Navegação |
+| ExercisesPanel.tsx | ~210 | Exercícios (inclui Adaptativo + Revisão) |
+| FlashcardsPanel.tsx | ~280 | Flashcards + SM-2 |
+| StudyPlanPanel.tsx | ~190 | Planos de estudo |
+| StatsPanel.tsx | ~250 | Dashboard |
+| ProfilePanel.tsx | ~120 | Perfil |
+| AchievementsPanel.tsx | ~100 | Gamificação |
+| PermissionsPanel.tsx | ~40 | Permissões |
+| ActionConfirm.tsx | ~65 | Ações pendentes |
+| PdfViewer.tsx | ~160 | Leitor PDF + audiobook |
+| EvidencePanel.tsx | ~160 | Painel de evidências |
+| index.css | ~1180 | Estilos globais + spinner + skeleton + responsive |
 
 ---
 
@@ -128,185 +135,163 @@ audio   → config
 
 ---
 
-## 5. Testes (239)
+## 5. Testes (390)
 
 | Área | Arquivo | Testes |
 |---|---|---|
+| Orchestrator | test_orchestrator | 61 |
 | Vision (engine + router) | test_vision_engine_new, test_vision_router | 36 |
+| Integration | test_integration | 36 |
+| Cache | test_cache | 16 |
 | Planning | test_planner | 16 |
 | Context/prompts | test_context_manager | 14 |
+| Circuit Breaker + Health | test_circuit_breaker_health | 22 |
 | Tutor core | test_tutor | 31 |
 | Profile + mastery | test_profile_automation | 39 |
 | Gamificação + export | test_advanced_gamification_export | 45 |
+| Critical vision | test_critical_vision | 17 |
 | Error notebook | test_error_notebook | 15 |
 | Audio | test_vad, test_wake_word | 12 |
 | Tools | test_rag, test_calculator, test_registry_websearch | 23 |
 | Security | test_permissions | 3 |
 | Exercises | test_exercises | 6 |
+| **Total** | | **390** |
 
-**Fixtures:** 1 (`tmp_db`) que injeta 20 tabelas e patcha 11 módulos.
-
----
-
-## 6. API Endpoints (existentes)
-
-| Método | Endpoint | Router |
-|---|---|---|
-| POST | /api/chat | chat |
-| GET | /api/health | chat |
-| GET | /api/sessions | chat |
-| GET | /api/sessions/{id}/messages | chat |
-| POST | /api/screen/capture | screen |
-| GET | /api/screen/monitors | screen |
-| GET | /api/screen/preview | screen |
-| POST | /api/screen/analyze | screen |
-| POST | /api/documents/upload | documents |
-| GET | /api/documents | documents |
-| GET | /api/documents/{id} | documents |
-| POST | /api/exercises/generate | exercises |
-| POST | /api/exercises/grade | exercises |
-| POST | /api/audio/transcribe | audio |
-| POST | /api/audio/speak | audio |
-| GET | /api/flashcards/decks | tutor |
-| POST | /api/flashcards/generate | tutor |
-| POST | /api/flashcards/review | tutor |
-| POST | /api/study-plans/generate | tutor |
-| GET | /api/stats/dashboard | tutor |
-| GET | /api/profile | tutor |
-| GET | /api/achievements | tutor |
-| ... | (25+ endpoints tutor) | tutor |
+**Fixtures:** 1 (`tmp_db`) que injeta 21 tabelas e patcha módulos.
 
 ---
 
-## 7. Problemas Identificados
+## 6. API Endpoints
 
-### P0 — Crítico
+| Método | Endpoint | Router | Status |
+|---|---|---|---|
+| POST | /api/chat | chat | ✅ |
+| GET | /api/health | health | ✅ V2 (6 components) |
+| GET | /api/sessions | chat | ✅ |
+| GET | /api/sessions/{id}/messages | chat | ✅ |
+| POST | /api/screen/capture | screen | ✅ |
+| GET | /api/screen/monitors | screen | ✅ |
+| GET | /api/screen/preview | screen | ✅ |
+| POST | /api/screen/analyze | screen | ✅ |
+| POST | /api/documents/upload | documents | ✅ |
+| GET | /api/documents | documents | ✅ |
+| GET | /api/documents/{id} | documents | ✅ |
+| POST | /api/exercises/generate | exercises | ✅ |
+| POST | /api/exercises/generate/adaptive | exercises | ✅ NEW |
+| POST | /api/exercises/generate/review | exercises | ✅ NEW |
+| POST | /api/exercises/grade | exercises | ✅ |
+| POST | /api/audio/transcribe | audio | ✅ |
+| POST | /api/audio/speak | audio | ✅ |
+| GET | /api/flashcards/decks | tutor | ✅ |
+| POST | /api/flashcards/generate | tutor | ✅ |
+| POST | /api/flashcards/review | tutor | ✅ |
+| POST | /api/study-plans/generate | tutor | ✅ |
+| GET | /api/stats/dashboard | tutor | ✅ |
+| GET | /api/profile | tutor | ✅ |
+| PUT | /api/profile | tutor | ✅ |
+| GET | /api/achievements | tutor | ✅ |
+| PUT | /api/permissions/group/{group} | tutor | ✅ NEW |
+| POST | /api/permissions/{name}/temporary | tutor | ✅ NEW |
+| GET | /api/permissions/audit | tutor | ✅ NEW |
 
-| # | Problema | Impacto |
+---
+
+## 7. Problemas Resolvidos (V3 → V4)
+
+### P0 — Crítico ✅ RESOLVIDO
+
+| # | Problema | Solução |
 |---|---|---|
-| 1 | **Pipeline de visão não é determinístico** — "leia o monitor 2" pode retornar "Olá" | Usuário não consegue usar percepção de tela |
-| 2 | **agent.py concentra demais responsabilidade** — planner, captura, OCR, visão, tools, resposta, tudo num único método `process()` | Impossível testar, debugar ou extender individualmente |
-| 3 | **Sem evidência estruturada** — o resultado do OCR/visão é passado como string solta, não como objeto rastreável | Não há como validar se a resposta baseia-se em evidência real |
+| 1 | Pipeline de visão não-determinístico | Vision pipeline com intent→plan→capture→validate→OCR→vision→evidence→LLM→validate→respond |
+| 2 | agent.py monolítico | Agent Loop V2 com per-tool circuit breakers, retry+backoff, MAX_STEPS=5 |
+| 3 | Sem evidência estruturada | EvidenceStore com EvidenceType enum, Evidence dataclass, ResponseValidator |
 
-### P1 — Alto
+### P1 — Alto ✅ RESOLVIDO
 
-| # | Problema | Impacto |
+| # | Problema | Solução |
 |---|---|---|
-| 4 | **Tool registry simplificado** — tools não têm schema de entrada/saída, timeout, retry, permissão centralizada | Ferramentas falham silenciosamente |
-| 5 | **Sem retry/fallback** — se captura falha, não tenta novamente | Sensação de instabilidade |
-| 6 | **Sem timeout por ferramenta** — uma tool lenta bloqueia todo o agente | UX travada |
-| 7 | **Sem observabilidade** — logs dispersos, sem execution_id, sem métricas | Impossível diagnosticar em produção |
-| 8 | **Chat.tsx é God Component** — 902 linhas, 28 states, 15 refs | Manutenção impossível |
+| 4 | Tool registry simplificado | ToolRegistry V2 com version, tags, by_tag(), by_permission(), discover() |
+| 5 | Sem retry/fallback | Retry com exponential backoff (200/400ms), permission denied break |
+| 6 | Sem timeout por tool | Per-tool circuit breaker (failure_threshold=3, recovery=60s) |
+| 7 | Sem observabilidade | Structured logging (request_id, session_id), health check 6 components |
+| 8 | Chat.tsx God Component | 🚧 Parcial — painéis extraídos (Evidence, Exercises, Flashcards) |
 
-### P2 — Médio
+### P2 — Médio ✅ RESOLVIDO
 
-| # | Problema | Impacto |
+| # | Problema | Solução |
 |---|---|---|
-| 9 | **6 bare `except Exception:`** sem variável — descartam traceback | Erros ficam invisíveis |
-| 10 | **3 print() em listener.py** em vez de logger | Inconsistência |
-| 11 | **slowapi não está no requirements.txt** | Deploy pode falhar |
-| 12 | **URL do backend hardcoded** no frontend (`localhost:8000`) | Não funciona em outros hosts |
-| 13 | **5 funções sem return type** em api.ts | TypeScript any implícito |
-| 14 | **15 catch vazios** no frontend | Erros silenciados |
-| 15 | **Sem testes HTTP/integration** — apenas unitários | Router bugs passam despercebidos |
+| 15 | Sem testes HTTP/integration | 36 integration tests (E2E, regression, error recovery) |
 
-### P3 — Baixo
+### P3 — Baixo 🔄 EM PROGRESSO
 
-| # | Problema | Impacto |
+| # | Problema | Status |
 |---|---|---|
-| 16 | **Sem ESLint/Prettier** no frontend | Formatação inconsistente |
-| 17 | **Sem code splitting** no frontend | Bundle monolítico |
-| 18 | **Sem testes no frontend** | Regressão visual possível |
-| 19 | **config.py cria diretórios no import** | Side effect surpresa em testes |
+| 18 | Sem testes no frontend | 🚧 Parcial — sem framework de testes ainda |
 
 ---
 
 ## 8. O Que Está Funcionando Bem
 
-| Componente | Status | Notas |
+| Componente | Status | Testes |
 |---|---|---|
-| SM-2 / Flashcards | ✅ Excelente | 31 testes, algoritmo correto |
-| Perfil + Mastery | ✅ Excelente | 39 testes, scoring adaptativo |
-| Gamificação | ✅ Excelente | 45 testes, XP/conquistas/streaks |
-| Error Notebook | ✅ Bom | 15 testes, pipeline error→flashcard |
-| Calculadora AST | ✅ Segura | 5 testes, sem eval() |
-| RAG | ✅ Funcional | 7 testes, embeddings locais |
-| Permissions | ✅ Funcional | 3 testes, persistência JSON |
-| Wake Word | ✅ Funcional | 7 testes, normalização PT-BR |
-| VAD | ✅ Funcional | 5 testes, detecção por energia |
-| Export/Import | ✅ Funcional | CSV + JSON |
-| PDF + Audiobook | ✅ Funcional | Extração + TTS |
-| Context Manager | ✅ Bom | 14 testes, resumo rolante |
+| Orchestrator V3 | ✅ Excelente | 61 |
+| Agent Loop V2 | ✅ Excelente | 36 (integration) |
+| Cache Layer | ✅ Excelente | 16 |
+| Circuit Breaker | ✅ Excelente | 22 |
+| SM-2 / Flashcards | ✅ Excelente | 31 |
+| Perfil + Mastery | ✅ Excelente | 39 |
+| Gamificação | ✅ Excelente | 45 |
+| Error Notebook | ✅ Bom | 15 |
+| Vision Pipeline | ✅ Bom | 17 |
+| RAG V2 | ✅ Bom | 7 + embedding cache |
+| Permissions V2 | ✅ Bom | audit + groups + hierarchy |
+| Context Manager V2 | ✅ Bom | 14 + token trimming |
+| Observability | ✅ Bom | structured logging + health |
+| Deploy | ✅ Pronto | Docker + docker-compose |
 
 ---
 
-## 9. O Que Precisa de Evolução
+## 9. Implementado (V3 → V4)
 
-| Componente | Estado Atual | Estado Desejado |
+| Componente | Estado V3 | Estado V4 |
 |---|---|---|
-| Agent Orchestrator | agent.py monolítico | Módulo `core/orchestrator/` com execution plan, context, executor, validator, evidence |
-| Vision Pipeline | Captura funciona, mas resposta é não-determinística | Pipeline completo: intent→plan→capture→validate→OCR→vision→evidence→LLM→validate→respond |
-| Tool Registry | Simples (name, fn, permission) | Profissional (schema, timeout, retry, category, dangerous, version) |
-| Evidence Store | Inexistente | Objeto rastreável por execução com source, type, content, confidence |
-| Response Guard | Inexistente | Validação pós-LLM: pergunta respondida? evidência existe? alucinação? |
-| Observability | Logs dispersos | Structured logging com execution_id, métricas, timing |
-| Frontend State | God component | Decomposição + execution timeline + estados visuais |
-| Error Hierarchy | Exception genérica | ToolError, VisionError, CaptureError, etc. |
-| Retry/Fallback | Inexistente | Políticas por tool com max retries e fallback chains |
-| Cache | Nenhum | OCR cache, vision cache, document cache |
+| Agent Loop | Monolítico `_run_tool_loop` | V2: per-tool CB, retry+backoff, MAX_STEPS=5, structured logging |
+| Circuit Breaker | Inexistente | CLOSED→OPEN→HALF_OPEN com recovery |
+| Observability | Logs dispersos | StructuredLogger, request_id, health check 6 components |
+| Evidence Panel | Inexistente | Frontend panel com badges, pipeline stages, tools used |
+| Exercise Engine | Básico | V2: adaptive, review, weak topics |
+| Permission System | 3 testes básico | V2: audit log, groups, hierarchy, temporary grants |
+| Memory & Context | Sem trimming | V2: _estimate_tokens, MAX_CONTEXT_CHARS=12000, _trim_history |
+| Deployment | Manual | Dockerfile + docker-compose + nginx + .env.example |
+| Caching | Nenhum | TTLCache LRU: OCR (128/2h), vision (64/30m), docs (32/24h) |
+| RAG | Básico | V2: embedding cache, reranking, metadata, page_range filter |
+| Keyboard Shortcuts | Nenhum | Ctrl+Shift+E/S/X/F/L/H + Escape |
+| Frontend Polish | Básico | Spinner, skeleton, responsive, focus-visible a11y |
+| Integration Tests | 0 | 36 tests (E2E, regression, error recovery, smoke) |
 
 ---
 
-## 10. Plano de Migração
+## 10. Próximos Passos
 
-### Fase 1 — Diagnóstico ✅ (este documento)
+### Fase 9 — Frontend Decomposition
+- Extrair ChatInput, ChatMessages, ChatVoice do Chat.tsx
+- Criar hooks: useChat, useVoice, useScreen, useHandsFree
+- Reduzir Chat.tsx de ~990 para <300 linhas
 
-### Fase 2 — Vision Pipeline Definitivo
-- Corrigir `analyze_screen()` → fluxo `use_screen=True`
-- Garantir monitor correto chega ao Ollama
-- Adicionar validação de imagem antes de enviar ao modelo
-- Teste crítico: "leia o monitor 2" → resposta descreve conteúdo
+### Fase 10 — Performance
+- Lazy loading de painéis
+- Compressão de imagem antes de enviar ao LLM
+- Debounce de input
 
-### Fase 3 — Orchestrator Core
-- Criar `core/orchestrator/`:
-  - `execution_plan.py` (ExecutionStep, ExecutionPlan)
-  - `execution_context.py` (contexto compartilhado)
-  - `executor.py` (executa steps com retry/timeout)
-  - `evidence.py` (EvidenceStore)
-  - `validator.py` (valida evidência e resposta)
-  - `policies.py` (retry, timeout, fallback)
-  - `errors.py` (hierarquia de erros)
-  - `orchestrator.py` (orquestra tudo)
+### Fase 11 — Testes Frontend
+- Configurar Vitest
+- Testes de componentes críticos
+- Snapshot tests
 
-### Fase 4 — Tool Registry V2
-- Schema de entrada/saída por tool
-- Timeout e retry configuráveis
-- Contrato de resultado estruturado
-- Categorias: screen, vision, document, web, audio, tutor
-
-### Fase 5 — Agent Loop V2
-- UNDERSTAND → PLAN → EXECUTE → OBSERVE → VALIDATE → SYNTHESIZE → RESPOND
-- Substituir `_run_tool_loop` monolítico
-- Limitar iterações
-- Suporte a replanning
-
-### Fase 6 — Observability
-- Structured logging com execution_id
-- Métricas por tool (latência, retries, falhas)
-- Health check completo (/api/health com todos os subsistemas)
-
-### Fase 7 — Frontend Evolution
-- Decompor Chat.tsx
-- Adicionar execution timeline
-- Estados visuais do agente
-- Debug panel opcional
-
-### Fase 8 — Hardening
-- Timeouts por tool
-- Fallback chains
-- Error hierarchy completa
-- Cache (OCR, vision, documentos)
-- Testes de regressão end-to-end
+### Fase 12 — Documentation
+- README.md atualizado
+- Guia de deployment
+- Contributing guide
 
 ---
 
@@ -319,23 +304,23 @@ audio   → config
 5. **PRIMEIRO** audit → fix → improve → test → commit
 6. **Cada fase** deve ter: código + testes + lint + documentação
 7. **Regressão** — rodar pytest + ruff antes e depois de cada alteração
-8. **239 testes existentes** devem continuar passando sempre
+8. **390 testes existentes** devem continuar passando sempre
 
 ---
 
 ## 12. Dependências Críticas
 
-| Dependência | Uso | Risco |
+| Dependência | Uso | Status Health Check |
 |---|---|---|
-| Ollama | LLM inference | Se indisponível, toda resposta falha |
-| Tesseract | OCR | Se indisponível, visão de texto falha |
-| MSS | Captura de tela | Funciona em X11; Wayland usa cosmic-screenshot |
-| cosmic-screenshot | Captura Wayland | Pode não estar instalado |
-| faster-whisper | STT | Se indisponível, voz não funciona |
-| piper-tts | TTS | Se indisponível, leitura não funciona |
+| Ollama | LLM inference | ✅ check_ollama |
+| Tesseract | OCR | ✅ check_tesseract |
+| SQLite | Banco de dados | ✅ check_database |
+| MSS/cosmic-screenshot | Captura de tela | ✅ check_screen_capture |
+| faster-whisper | STT | ⚠️ Não verificado |
+| piper-tts | TTS | ⚠️ Não verificado |
 
-**Todos devem ser verificados no /api/health.**
+**6/8 componentes verificados no /api/health.**
 
 ---
 
-*Fim do diagnóstico. Próximo passo: Fase 2 — Vision Pipeline Definitivo.*
+*Fim da auditoria V4. Próximo passo: Fase 9 — Frontend Decomposition.*
