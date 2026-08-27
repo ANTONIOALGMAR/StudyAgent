@@ -85,3 +85,24 @@ class TestGlobalCaches:
         ocr_cache.set("test_ocr_key", "ocr result")
         assert ocr_cache.get("test_ocr_key") == "ocr result"
         ocr_cache.clear()
+
+    def test_overwrite_key(self):
+        c = TTLCache(max_size=10, ttl_seconds=60)
+        c.set("k", "v1")
+        c.set("k", "v2")
+        assert c.get("k") == "v2"
+
+    def test_many_evictions(self):
+        c = TTLCache(max_size=2, ttl_seconds=3600)
+        for i in range(10):
+            c.set(f"k{i}", i)
+        assert c.stats()["size"] == 2
+        assert c.get("k9") == 9
+
+    def test_empty_cache_stats(self):
+        c = TTLCache(max_size=5, ttl_seconds=60)
+        s = c.stats()
+        assert s["size"] == 0
+        assert s["hits"] == 0
+        assert s["misses"] == 0
+        assert s["hit_rate"] == 0.0

@@ -1111,3 +1111,43 @@ body {
   font-size: 0.65rem; color: #c9cfdb; font-weight: 600; white-space: nowrap;
 }
 .level-max { font-size: 0.82rem; color: #34d27b; margin-top: 4px; font-weight: 600; }
+
+/* ── Spinner ──────────────────────────────────────────────────────── */
+.spinner {
+  display: inline-block;
+  width: 18px;
+  height: 18px;
+  border: 2px solid #334155;
+  border-top-color: #8b5cf6;
+  border-radius: 50%;
+  animation: spin 0.6s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.spinner-sm { width: 14px; height: 14px; border-width: 2px; }
+.spinner-lg { width: 28px; height: 28px; border-width: 3px; }
+
+/* ── Skeleton loading ─────────────────────────────────────────────── */
+.skeleton {
+  background: linear-gradient(90deg, #1d2230 25%, #262b38 50%, #1d2230 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+  border-radius: 6px;
+}
+@keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+
+/* ── Responsive ───────────────────────────────────────────────────── */
+@media (max-width: 768px) {
+  .app { flex-direction: column; }
+  .sidebar { width: 100%; flex-direction: row; padding: 10px 12px; overflow-x: auto; gap: 12px; border-right: none; border-bottom: 1px solid #262b38; }
+  .logo { flex-direction: row; align-items: center; gap: 8px; }
+  .permissions { display: none; }
+  .main { width: 100% !important; }
+  .chat-input input { font-size: 0.85rem; padding: 9px 12px; }
+}
+
+/* ── Focus ring (a11y) ────────────────────────────────────────────── */
+:focus-visible {
+  outline: 2px solid #8b5cf6;
+  outline-offset: 2px;
+}
