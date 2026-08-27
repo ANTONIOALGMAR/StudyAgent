@@ -68,16 +68,10 @@ export default function Chat() {
     reactionTimerRef.current = window.setTimeout(() => setReaction(null), 6000)
   }
 
-  const screen = useScreen({
-    sessionIdRef: { current: null },
-    setMessages: () => {},
-    setSessionId: () => {},
-  })
-
   const chatHook = useChat({
-    useScreen: screen.useScreenCapture,
-    liveOpen: screen.liveOpen,
-    monitorSel: screen.monitorSel,
+    useScreen: false,
+    liveOpen: false,
+    monitorSel: 0,
     activeDoc,
     onMood: flashReaction,
   })
@@ -93,12 +87,18 @@ export default function Chat() {
     chatHook.sessionIdRef.current = chatHook.sessionId
   }, [chatHook.sessionId])
 
-  // Re-wire screen hooks with actual chat state
-  const screenFixed = useScreen({
+  const screen = useScreen({
     sessionIdRef: chatHook.sessionIdRef,
     setMessages: chatHook.setMessages,
     setSessionId: chatHook.setSessionId,
   })
+
+  // Update chatHook with actual screen state
+  useEffect(() => {
+    chatHook.setUseScreen(screen.useScreenCapture)
+    chatHook.setLiveOpen(screen.liveOpen)
+    chatHook.setMonitorSel(screen.monitorSel)
+  }, [screen.useScreenCapture, screen.liveOpen, screen.monitorSel])
 
   useEffect(() => {
     if (!stage) return
@@ -110,10 +110,10 @@ export default function Chat() {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.ctrlKey && e.shiftKey && e.key === 'E') { e.preventDefault(); setEvidenceOpen((v) => !v) }
-      if (e.ctrlKey && e.shiftKey && e.key === 'S') { e.preventDefault(); screenFixed.setUseScreenCapture((v) => !v) }
+      if (e.ctrlKey && e.shiftKey && e.key === 'S') { e.preventDefault(); screen.setUseScreenCapture((v) => !v) }
       if (e.ctrlKey && e.shiftKey && e.key === 'X') { e.preventDefault(); setExOpen((v) => !v) }
       if (e.ctrlKey && e.shiftKey && e.key === 'F') { e.preventDefault(); setFcOpen((v) => !v) }
-      if (e.ctrlKey && e.shiftKey && e.key === 'L') { e.preventDefault(); screenFixed.setLiveOpen((v) => !v) }
+      if (e.ctrlKey && e.shiftKey && e.key === 'L') { e.preventDefault(); screen.setLiveOpen((v) => !v) }
       if (e.ctrlKey && e.shiftKey && e.key === 'H') { e.preventDefault(); setStOpen((v) => !v) }
       if (e.key === 'Escape') {
         if (evidenceOpen) setEvidenceOpen(false)
@@ -127,7 +127,7 @@ export default function Chat() {
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [evidenceOpen, exOpen, fcOpen, spOpen, stOpen, profOpen, achOpen, screenFixed])
+  }, [evidenceOpen, exOpen, fcOpen, spOpen, stOpen, profOpen, achOpen, screen])
 
   function send() {
     const text = input.trim()
@@ -199,8 +199,8 @@ export default function Chat() {
     : ''
 
   const sidebarItems = [
-    { icon: '🖥', label: 'Anexar tela', active: screenFixed.useScreenCapture, onClick: () => screenFixed.setUseScreenCapture(!screenFixed.useScreenCapture), title: 'Anexar captura de tela à mensagem' },
-    { icon: '📺', label: 'Telas ao vivo', active: screenFixed.liveOpen, onClick: () => { screenFixed.setLiveMinimized(false); screenFixed.setLiveOpen(!screenFixed.liveOpen) }, title: 'Acompanhe o que o agente vê' },
+    { icon: '🖥', label: 'Anexar tela', active: screen.useScreenCapture, onClick: () => screen.setUseScreenCapture(!screen.useScreenCapture), title: 'Anexar captura de tela à mensagem' },
+    { icon: '📺', label: 'Telas ao vivo', active: screen.liveOpen, onClick: () => { screen.setLiveMinimized(false); screen.setLiveOpen(!screen.liveOpen) }, title: 'Acompanhe o que o agente vê' },
     { icon: '📷', label: 'Câmera', active: camOpen, onClick: () => camOpen ? closeCamera() : void openCamera(), title: 'Aponte a câmera e pergunte' },
     { icon: '📎', label: 'Anexar PDF', active: !!activeDoc, onClick: () => fileInputRef.current?.click(), title: 'Estudar um documento' },
     { icon: '📖', label: 'Ler PDF', active: !!viewerDoc, onClick: () => setViewerDoc(viewerDoc ? null : activeDoc), title: 'Abrir/fechar leitor de documentos' },
@@ -210,7 +210,7 @@ export default function Chat() {
     { icon: '📊', label: 'Progresso', active: stOpen, onClick: () => setStOpen(!stOpen), title: 'Dashboard de progresso' },
     { icon: '👤', label: 'Perfil', active: profOpen, onClick: () => setProfOpen(!profOpen), title: 'Perfil do aluno e análise de aprendizado' },
     { icon: '🏆', label: 'Conquistas', active: achOpen, onClick: () => setAchOpen(!achOpen), title: 'Conquistas e sequências de estudo' },
-    { icon: '👁', label: 'Olhar agora', active: false, onClick: screenFixed.peekScreen, title: 'Captura rápida da tela atual' },
+    { icon: '👁', label: 'Olhar agora', active: false, onClick: screen.peekScreen, title: 'Captura rápida da tela atual' },
     { icon: '🎭', label: 'Modo palco', active: stage, onClick: () => setStage(true), title: 'Rosto em tela cheia' },
   ]
 
@@ -245,21 +245,21 @@ export default function Chat() {
 
         <ActionConfirm />
 
-        {screenFixed.liveOpen && !screenFixed.liveMinimized && (
+        {screen.liveOpen && !screen.liveMinimized && (
           <LivePanel
-            monitors={screenFixed.monitors}
-            monitorSel={screenFixed.monitorSel}
-            setMonitorSel={screenFixed.setMonitorSel}
-            previewTick={screenFixed.previewTick}
-            watchMode={screenFixed.watchMode}
-            setWatchMode={screenFixed.setWatchMode}
-            onClose={() => { screenFixed.setWatchMode(false); screenFixed.setLiveOpen(false) }}
-            onMinimize={() => screenFixed.setLiveMinimized(true)}
+            monitors={screen.monitors}
+            monitorSel={screen.monitorSel}
+            setMonitorSel={screen.setMonitorSel}
+            previewTick={screen.previewTick}
+            watchMode={screen.watchMode}
+            setWatchMode={screen.setWatchMode}
+            onClose={() => { screen.setWatchMode(false); screen.setLiveOpen(false) }}
+            onMinimize={() => screen.setLiveMinimized(true)}
           />
         )}
 
-        {screenFixed.liveOpen && screenFixed.liveMinimized && (
-          <button className="live-minimized" onClick={() => screenFixed.setLiveMinimized(false)} title="Restaurar painel ao vivo">
+        {screen.liveOpen && screen.liveMinimized && (
+          <button className="live-minimized" onClick={() => screen.setLiveMinimized(false)} title="Restaurar painel ao vivo">
             📺 ao vivo ▴
           </button>
         )}

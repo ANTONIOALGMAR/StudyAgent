@@ -49,9 +49,13 @@ export function useChat({ useScreen, liveOpen, monitorSel, activeDoc, onMood }: 
   const [lastToolsUsed, setLastToolsUsed] = useState<string[]>([])
   const monitorSelRef = useRef(monitorSel)
   const sessionIdRef = useRef(sessionId)
+  const useScreenRef = useRef(useScreen)
+  const liveOpenRef = useRef(liveOpen)
 
   monitorSelRef.current = monitorSel
   sessionIdRef.current = sessionId
+  useScreenRef.current = useScreen
+  liveOpenRef.current = liveOpen
 
   const sendText = useCallback(
     async (
@@ -72,7 +76,7 @@ export function useChat({ useScreen, liveOpen, monitorSel, activeDoc, onMood }: 
         const res: ChatResponse = await chat(
           text,
           sessionIdRef.current,
-          useScreen || liveOpen,
+          useScreenRef.current || liveOpenRef.current,
           opts.imageB64 ?? null,
           monitorSelRef.current,
           activeDoc?.id ?? null,
@@ -91,7 +95,7 @@ export function useChat({ useScreen, liveOpen, monitorSel, activeDoc, onMood }: 
         setLoading(false)
       }
     },
-    [loading, useScreen, liveOpen, activeDoc, onMood],
+    [loading, activeDoc, onMood],
   )
 
   const loadDocument = useCallback(
@@ -126,5 +130,8 @@ export function useChat({ useScreen, liveOpen, monitorSel, activeDoc, onMood }: 
     lastEvidence, lastToolsUsed,
     sendText, loadDocument,
     sessionIdRef,
+    setUseScreen: (v: boolean) => { useScreenRef.current = v },
+    setLiveOpen: (v: boolean) => { liveOpenRef.current = v },
+    setMonitorSel: (v: number) => { monitorSelRef.current = v },
   }
 }

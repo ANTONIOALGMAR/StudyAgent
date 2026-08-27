@@ -51,6 +51,11 @@ def list_monitors() -> list[dict]:
     return ScreenManager.list_monitors()
 
 
+def capture(monitor: int = 1, region: Optional[dict] = None) -> Image.Image:
+    """Captura de tela pública — usada por routers."""
+    return _capture(monitor=monitor, region=region)
+
+
 def validate_capture(image, monitor: int):
     """Valida imagem capturada e retorna ScreenCaptureResult."""
     from ..core.vision_router import ScreenCaptureResult
@@ -153,7 +158,7 @@ def _capture(monitor=1, region=None) -> Image.Image:
         if full is not None and not _looks_black(full):
             return _crop_virtual(full, monitor, region)
 
-    with mss.mss() as sct:
+    with mss.MSS() as sct:
         monitors = sct.monitors
         if monitor < 0 or monitor >= len(monitors):
             raise ValueError(
