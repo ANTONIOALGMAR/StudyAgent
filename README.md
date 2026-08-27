@@ -182,6 +182,9 @@ frontend/src/
 ├── App.tsx                 Layout: sidebar permissões + chat
 ├── components/
 │   ├── Chat.tsx              Núcleo da UI (conversa, voz, telas, câmera, 10 botões sidebar)
+│   ├── ChatMessages.tsx      Lista de mensagens + estado vazio/loading/error
+│   ├── ChatInput.tsx         Campo de entrada + botões de ação
+│   ├── LivePanel.tsx         Painel ao vivo multi-monitor
 │   ├── AgentFace.tsx         Rosto SVG expressivo
 │   ├── Sidebar.tsx           Ferramentas sanfona
 │   ├── ExercisesPanel.tsx    Quiz com correção
@@ -193,6 +196,15 @@ frontend/src/
 │   ├── ActionConfirm.tsx     Barra de confirmação de ações
 │   ├── PdfViewer.tsx         Leitor de documentos + 🎧 audiobook
 │   └── PermissionsPanel.tsx
+├── hooks/
+│   ├── useChat.ts            Lógica de chat + envio
+│   ├── useVoice.ts           Gravação + transcrição
+│   ├── useScreen.ts          Captura + monitores
+│   └── useDebounce.ts        Debounce de input
+├── test/
+│   ├── App.test.tsx          5 testes básicos
+│   ├── snapshots.test.tsx    10 snapshot tests
+│   └── useDebounce.test.ts   3 testes de debounce
 └── api.ts                  Cliente tipado (50+ funções)
 ```
 
@@ -224,15 +236,20 @@ frontend/src/
 
 ### Testes
 
-201 testes pytest e lint ruff:
+424 testes (406 backend + 18 frontend):
 
 ```bash
+# Backend
 cd backend
-.venv/bin/python -m pytest -q       # 201 testes
-.venv/bin/python -m ruff check app tests
-```
+.venv/bin/pytest tests/ -v       # 406 testes
+.venv/bin/ruff check app tests
 
-Frontend: `npx tsc -b` (zero erros).
+# Frontend
+cd frontend
+npx vitest run                   # 18 testes
+npx tsc --noEmit
+npx vite build
+```
 
 ## Variáveis de ambiente
 
@@ -435,4 +452,4 @@ Abra **http://localhost:5173**
 - [x] RAG V2: embedding cache, reranking, metadata, page_range filter
 - [x] Frontend Decomposition: Chat.tsx 993→357 lines, 3 hooks, 4 components
 - [x] Performance: JPEG compression (~5x smaller), lazy loading panels
-- [x] Tests: 406 backend + 5 frontend = 411 total
+- [x] Tests: 406 backend + 18 frontend = 424 total
