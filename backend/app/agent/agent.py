@@ -9,6 +9,8 @@ from ..core.context_manager import (
     whole_doc_body,
 )
 from ..core.model_manager import available_models
+from ..core.orchestrator.evidence import EvidenceStore
+from ..core.orchestrator.validator import ResponseValidator
 from ..core.planner import WHOLE_DOC_MAX_CHARS, build_plan
 from ..core.registered_tools import calculate_tool, open_url_tool, web_search_tool  # noqa: F401
 from ..core.tool_registry import all_schemas, get
@@ -52,6 +54,7 @@ class StudyAgent:
         session_id = self.memory.get_or_create_session(session_id)
         tools_used = []
         images = []
+        evidence = EvidenceStore()
 
         # ── Planner: decisões centralizadas ─────────────────────────
         plan = build_plan(
@@ -66,6 +69,8 @@ class StudyAgent:
         effective_monitor = monitor or 1
         if plan.monitor is not None:
             effective_monitor = plan.monitor
+
+        evidence.add_intent(plan.vision_intent.value, effective_monitor)
 
         # ── Validação do monitor ────────────────────────────────────
         if plan.capture_screen:
@@ -106,6 +111,17 @@ class StudyAgent:
             tools_used.append("screen_capture")
             images.append(vision_ctx.image_bytes)
             ocr_text = vision_ctx.ocr_text
+            # ── Evidence tracking ────────────────────────────────
+            if vision_ctx.resolution:
+                evidence.add_screen(
+                    monitor=effective_monitor,
+                    width=vision_ctx.resolution[0],
+                    height=vision_ctx.resolution[1],
+                )
+            if vision_ctx.ocr_text:
+                evidence.add_ocr(vision_ctx.ocr_text)
+            if vision_ctx.window_app:
+                evidence.add_window(vision_ctx.window_app, vision_ctx.window_title)
 
         # ── Imagem da câmera (camera_image explícito) ───────────────
         if camera_image is not None:
@@ -195,6 +211,13 @@ class StudyAgent:
             messages, images, tools_used, allow_tools=not plan.wants_document
         )
 
+        # ── Validação da resposta (anti-alucinação) ────────────────
+        if evidence.has_screen:
+            validator = ResponseValidator(evidence)
+            issues = validator.validate(response_text)
+            if issues:
+                log.warning("[VALIDATOR] response_issues=%s", issues)
+
         self.memory.add_message(session_id, "user", message)
         self.memory.add_message(session_id, "assistant", response_text)
 
@@ -202,6 +225,7 @@ class StudyAgent:
             "session_id": session_id,
             "response": response_text,
             "tools_used": tools_used,
+            "evidence": evidence.summary() if evidence else None,
         }
 
     def _run_tool_loop(self, messages, images, tools_used, allow_tools=True):
