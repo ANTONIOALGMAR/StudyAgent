@@ -1,0 +1,372 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`ChatInput snapshots > renders default state 1`] = `
+<div>
+  <div
+    class="chat-input"
+  >
+    <input
+      accept=".pdf,.txt,.md"
+      style="display: none;"
+      type="file"
+    />
+    <button
+      class="btn-mic "
+      title="Falar com o agente (aperte para falar)"
+    >
+      🎙
+    </button>
+    <input
+      placeholder="Fale com o StudyAgent…"
+      value=""
+    />
+    <button
+      class="btn-screen active"
+      title="Responder por voz"
+    >
+      🔊
+    </button>
+    <button
+      class="btn-send "
+      title="Modo conversa automática"
+    >
+      🔄
+    </button>
+  </div>
+</div>
+`;
+
+exports[`ChatInput snapshots > renders hands-free state 1`] = `
+<div>
+  <div
+    class="chat-input"
+  >
+    <input
+      accept=".pdf,.txt,.md"
+      style="display: none;"
+      type="file"
+    />
+    <button
+      class="btn-mic "
+      disabled=""
+      title="Falar com o agente (aperte para falar)"
+    >
+      🎙
+    </button>
+    <input
+      placeholder="modo conversa ativo — pode falar!"
+      value=""
+    />
+    <button
+      class="btn-screen active"
+      title="Responder por voz"
+    >
+      🔊
+    </button>
+    <button
+      class="btn-send hf-on"
+      title="Desligar modo conversa"
+    >
+      ⏹
+    </button>
+  </div>
+</div>
+`;
+
+exports[`ChatInput snapshots > renders recording state 1`] = `
+<div>
+  <div
+    class="chat-input"
+  >
+    <input
+      accept=".pdf,.txt,.md"
+      style="display: none;"
+      type="file"
+    />
+    <button
+      class="btn-mic recording"
+      title="Parar gravação e enviar"
+    >
+      🎙
+    </button>
+    <input
+      disabled=""
+      placeholder="Fale com o StudyAgent…"
+      value=""
+    />
+    <button
+      class="btn-screen active"
+      title="Responder por voz"
+    >
+      🔊
+    </button>
+    <button
+      class="btn-send "
+      title="Modo conversa automática"
+    >
+      🔄
+    </button>
+  </div>
+</div>
+`;
+
+exports[`ChatInput snapshots > renders with text input 1`] = `
+<div>
+  <div
+    class="chat-input"
+  >
+    <input
+      accept=".pdf,.txt,.md"
+      style="display: none;"
+      type="file"
+    />
+    <button
+      class="btn-mic "
+      title="Falar com o agente (aperte para falar)"
+    >
+      🎙
+    </button>
+    <input
+      placeholder="Fale com o StudyAgent…"
+      value="Olá mundo"
+    />
+    <button
+      class="btn-screen active"
+      title="Responder por voz"
+    >
+      🔊
+    </button>
+    <button
+      class="btn-send "
+      title="Modo conversa automática"
+    >
+      🔄
+    </button>
+  </div>
+</div>
+`;
+
+exports[`ChatMessages snapshots > renders error state 1`] = `
+<div>
+  <div
+    class="chat-messages"
+  >
+    <div
+      class="chat-welcome"
+    >
+      <h2>
+        Olá! 👋
+      </h2>
+      <p>
+        Como posso ajudar nos seus estudos?
+      </p>
+      <p
+        class="hint"
+      >
+        🔄 modo conversa · 🖥 tela · 🎙 aperte para falar
+      </p>
+    </div>
+    <div
+      class="msg-error"
+    >
+      ⚠ 
+      Erro teste
+    </div>
+  </div>
+</div>
+`;
+
+exports[`ChatMessages snapshots > renders loading state 1`] = `
+<div>
+  <div
+    class="chat-messages"
+  >
+    <div
+      class="chat-welcome"
+    >
+      <h2>
+        Olá! 👋
+      </h2>
+      <p>
+        Como posso ajudar nos seus estudos?
+      </p>
+      <p
+        class="hint"
+      >
+        🔄 modo conversa · 🖥 tela · 🎙 aperte para falar
+      </p>
+    </div>
+    <div
+      class="msg msg-assistant"
+    >
+      <div
+        class="msg-content typing"
+      >
+        pensando…
+      </div>
+    </div>
+  </div>
+</div>
+`;
+
+exports[`ChatMessages snapshots > renders welcome state 1`] = `
+<div>
+  <div
+    class="chat-messages"
+  >
+    <div
+      class="chat-welcome"
+    >
+      <h2>
+        Olá! 👋
+      </h2>
+      <p>
+        Como posso ajudar nos seus estudos?
+      </p>
+      <p
+        class="hint"
+      >
+        🔄 modo conversa · 🖥 tela · 🎙 aperte para falar
+      </p>
+    </div>
+  </div>
+</div>
+`;
+
+exports[`ChatMessages snapshots > renders with messages 1`] = `
+<div>
+  <div
+    class="chat-messages"
+  >
+    <div
+      class="msg msg-user"
+    >
+      <div
+        class="msg-role"
+      >
+        você
+      </div>
+      <div
+        class="msg-content"
+      >
+        Olá
+      </div>
+    </div>
+    <div
+      class="msg msg-assistant"
+    >
+      <div
+        class="msg-role"
+      >
+        study
+      </div>
+      <div
+        class="msg-content"
+      >
+        Como posso ajudar?
+      </div>
+    </div>
+  </div>
+</div>
+`;
+
+exports[`LivePanel snapshots > renders default state 1`] = `
+<div>
+  <div
+    class="live-panel"
+  >
+    <div
+      class="live-head"
+    >
+      <span
+        class="live-dot"
+      />
+      <strong>
+        ao vivo
+      </strong>
+      <select>
+        <option
+          value="0"
+        >
+          Todas as telas
+        </option>
+      </select>
+      <button
+        class="btn-screen"
+        title="Minimizar"
+      >
+        —
+      </button>
+      <button
+        class="btn-screen"
+      >
+        ✕
+      </button>
+    </div>
+    <img
+      alt="tela ao vivo"
+      class="live-img"
+      src="http://localhost:8000/api/screen/preview?monitor=0"
+    />
+    <label
+      class="watch-toggle"
+    >
+      <input
+        type="checkbox"
+      />
+      agente comenta mudanças automaticamente
+    </label>
+  </div>
+</div>
+`;
+
+exports[`LivePanel snapshots > renders with watch mode enabled 1`] = `
+<div>
+  <div
+    class="live-panel"
+  >
+    <div
+      class="live-head"
+    >
+      <span
+        class="live-dot"
+      />
+      <strong>
+        ao vivo
+      </strong>
+      <select>
+        <option
+          value="0"
+        >
+          Todas as telas
+        </option>
+      </select>
+      <button
+        class="btn-screen"
+        title="Minimizar"
+      >
+        —
+      </button>
+      <button
+        class="btn-screen"
+      >
+        ✕
+      </button>
+    </div>
+    <img
+      alt="tela ao vivo"
+      class="live-img"
+      src="http://localhost:8000/api/screen/preview?monitor=0"
+    />
+    <label
+      class="watch-toggle"
+    >
+      <input
+        checked=""
+        type="checkbox"
+      />
+      agente comenta mudanças automaticamente
+    </label>
+  </div>
+</div>
+`;
