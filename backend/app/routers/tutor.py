@@ -395,7 +395,7 @@ def set_permission(name: str, body: PermissionUpdate):
 
 @router.put("/permissions/group/{group}")
 def set_permission_group(group: str, body: PermissionGroupUpdate):
-    from ..security.permissions import PermissionManager, PERMISSION_GROUPS
+    from ..security.permissions import PERMISSION_GROUPS, PermissionManager
     if group not in PERMISSION_GROUPS:
         raise HTTPException(status_code=404, detail=f"grupo desconhecido: {group}")
     PermissionManager().set_group(group, body.value, reason=body.reason)

@@ -1,7 +1,9 @@
 """Testes do Orchestrator V3 — errors, evidence, plan, context, executor, validator, policies."""
 
 import time
+
 import pytest
+
 from app.core.orchestrator.errors import (
     CaptureError,
     HallucinationError,
@@ -15,19 +17,16 @@ from app.core.orchestrator.errors import (
     ValidationError,
     VisionError,
 )
-from app.core.orchestrator.evidence import Evidence, EvidenceStore, EvidenceType
+from app.core.orchestrator.evidence import EvidenceStore, EvidenceType
 from app.core.orchestrator.execution_context import ExecutionContext
 from app.core.orchestrator.execution_plan import ExecutionPlan, ExecutionStep, StepStatus
 from app.core.orchestrator.executor import ToolExecutor
-from app.core.orchestrator.validator import ResponseValidator
+from app.core.orchestrator.orchestrator import AgentOrchestrator
 from app.core.orchestrator.policies import (
     RetryPolicy,
-    TimeoutPolicy,
-    ToolPolicy,
     get_policy,
 )
-from app.core.orchestrator.orchestrator import AgentOrchestrator
-
+from app.core.orchestrator.validator import ResponseValidator
 
 # ── Errors ────────────────────────────────────────────────────────
 

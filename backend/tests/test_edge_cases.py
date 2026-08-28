@@ -3,11 +3,7 @@
 import threading
 import time
 
-import numpy as np
-import pytest
-
 from app.core.cache import TTLCache, image_hash
-
 
 # ── Cache Edge Cases ──────────────────────────────────────────────
 
@@ -109,7 +105,7 @@ class TestImageHashEdgeCases:
 class TestContextManagerEdgeCases:
     def test_trim_history(self):
         """_trim_history deve remover mensagens mais antigas."""
-        from app.core.context_manager import ContextManager, MAX_CONTEXT_CHARS, CHARS_PER_TOKEN
+        from app.core.context_manager import ContextManager
         cm = ContextManager.__new__(ContextManager)
         # Primeira mensagem é system (mantida), depois user/assistant
         history = [

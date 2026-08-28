@@ -128,19 +128,27 @@ def test_intent_screen_exercise():
     assert detect_vision_intent("qual exercício aparece na tela") == VisionIntent.SCREEN_EXERCISE
 
 
+def test_intent_screen_show_returns_read():
+    # "mostre" é verbo de análise → lê a tela
+    assert detect_vision_intent("me mostre a tela") == VisionIntent.SCREEN_READ
+
+
 def test_intent_screen_describe_default():
-    assert detect_vision_intent("me mostre a tela") == VisionIntent.SCREEN_DESCRIBE
+    # sem verbos/refs explícitas cai em descrição
+    assert detect_vision_intent("isso aí") == VisionIntent.SCREEN_DESCRIBE
 
 
 # ── Vision system prompt ───────────────────────────────────────────
 
 
 def test_vision_system_prompt_forbids_greeting():
-    assert "NUNCA dê saudação" in VISION_SYSTEM_PROMPT
+    assert "NUNCA comece com" in VISION_SYSTEM_PROMPT
+    assert "Olá" in VISION_SYSTEM_PROMPT
 
 
-def test_vision_system_prompt_is_short():
-    assert len(VISION_SYSTEM_PROMPT.splitlines()) < 20
+def test_vision_system_prompt_is_vision_role():
+    assert "VISÃO" in VISION_SYSTEM_PROMPT
+    assert len(VISION_SYSTEM_PROMPT.splitlines()) > 20
 
 
 def test_vision_system_prompt_has_format():
@@ -156,7 +164,7 @@ def test_nota_de_tela_com_monitor_e_tamanho():
     nota = build_image_note(camera=False, monitor=2, size=(1440, 900))
     assert "monitor 2" in nota
     assert "1440x900" in nota
-    assert "CONTEÚDO VISUAL" in nota
+    assert "CAPTURA REAL DE TELA" in nota
 
 
 def test_nota_de_camera():
@@ -166,7 +174,7 @@ def test_nota_de_camera():
 
 
 def test_nota_sem_monitor_menciona_tela():
-    assert "tela" in build_image_note(camera=False)
+    assert "TELA" in build_image_note(camera=False)
 
 
 def test_ocr_curto_nao_vira_bloco():

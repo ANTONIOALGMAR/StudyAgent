@@ -28,7 +28,11 @@ def test_registro_e_schema():
 
 def test_ferramentas_padrao_registradas():
     # registered_tools é importado pelo agent; garante que o import carrega tudo
-    import app.core.registered_tools  # noqa: F401
+    # Recarrega para re-registrar as ferramentas (reset_registry pode ter limpado)
+    import importlib
+
+    import app.core.registered_tools as rt
+    importlib.reload(rt)
 
     for nome in ("web_search", "open_url", "calculate"):
         assert get(nome) is not None, f"faltou registrar {nome}"

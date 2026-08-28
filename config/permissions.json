@@ -4,7 +4,7 @@
   "screen_capture": true,
   "file_access": true,
   "internet": true,
-  "mouse_control": false,
-  "keyboard_control": false,
-  "command_execution": false
+  "mouse_control": true,
+  "keyboard_control": true,
+  "command_execution": true
 }

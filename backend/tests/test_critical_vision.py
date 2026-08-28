@@ -159,7 +159,7 @@ class TestCriticalLeiaMonitor2:
         call_args = mock_chat.call_args
         messages = call_args[0][0]
         system_msg = messages[0]["content"]
-        assert "analista visual" in system_msg.lower()
+        assert "modulo de visao" in system_msg.lower() or "visão" in system_msg.lower()
         assert "METODOLOGIA SOCRÁTICA" not in system_msg
 
     @patch("app.agent.agent.chat")

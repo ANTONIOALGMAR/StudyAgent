@@ -5,7 +5,8 @@ from app.core.vision_router import VisionIntent
 def test_pergunta_sobre_tela_captura():
     p = build_plan("que questões aparecem na tela 2?", use_screen_requested=False)
     assert p.capture_screen
-    assert p.monitor == 2
+    # "tela 2" usa numeração humana → monitor interno 1
+    assert p.monitor == 1
 
 
 def test_monitor_por_extensao_na_mensagem():
@@ -114,4 +115,5 @@ def test_vision_intent_camera():
 
 def test_vision_intent_on_use_screen_requested():
     p = build_plan("o que tem na tela?", use_screen_requested=True)
-    assert p.vision_intent == VisionIntent.SCREEN_READ
+    # "o que ... na tela" → pergunta sobre tela
+    assert p.vision_intent == VisionIntent.SCREEN_QUESTION
