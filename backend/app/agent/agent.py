@@ -11,7 +11,11 @@ from ..core.context_manager import (
 from ..core.model_manager import available_models
 from ..core.orchestrator.evidence import EvidenceStore
 from ..core.orchestrator.validator import ResponseValidator
-from ..core.planner import WHOLE_DOC_MAX_CHARS, build_plan
+from ..core.planner import (
+    WHOLE_DOC_MAX_CHARS,
+    build_plan,
+    is_social_greeting,
+)
 from ..core.registered_tools import calculate_tool, open_url_tool, web_search_tool  # noqa: F401
 from ..core.tool_registry import all_schemas, get
 from ..core.vision_router import (
@@ -91,11 +95,20 @@ class StudyAgent:
 
         # ── Captura de tela via planner ─────────────────────────────
         if plan.capture_screen:
+            physical_name = None
+            try:
+                monitors = ScreenManager.list_monitors()
+                if 0 <= effective_monitor < len(monitors):
+                    physical_name = monitors[effective_monitor].get("name")
+            except Exception:
+                physical_name = None
             vision_ctx = self._vision_pipeline(
                 message=message,
                 monitor=effective_monitor,
                 region=region,
                 intent=plan.vision_intent,
+                human_monitor=plan.human_monitor,
+                physical_monitor_name=physical_name,
             )
             if not vision_ctx.is_valid:
                 log.error("[VISION] pipeline_failed errors=%s", vision_ctx.errors)
@@ -207,9 +220,20 @@ class StudyAgent:
             messages = self.ctx.assemble(session_id, enriched_message)
 
         # ── Resposta ────────────────────────────────────────────────
-        response_text = self._run_tool_loop(
-            messages, images, tools_used, allow_tools=not plan.wants_document
-        )
+        if (
+            not images
+            and not plan.wants_document
+            and is_social_greeting(message)
+        ):
+            # Fast-path anti-alucinação: saudações/conversa casual vão
+            # para chat de texto simples SEM tool-calling. Modelos de
+            # tool-calling confabulam "resposta de função JSON" em vez
+            # de apenas saudar.
+            response_text = chat(messages)
+        else:
+            response_text = self._run_tool_loop(
+                messages, images, tools_used, allow_tools=not plan.wants_document
+            )
 
         # ── Validação da resposta (anti-alucinação) ────────────────
         if evidence.has_screen:
@@ -360,6 +384,9 @@ class StudyAgent:
         monitor: int,
         region,
         intent: VisionIntent,
+        *,
+        human_monitor: int | None = None,
+        physical_monitor_name: str | None = None,
     ) -> VisionContext:
         """Pipeline dedicado de visão: captura → processa → contexto."""
         stages = []
@@ -401,6 +428,24 @@ class StudyAgent:
             intent=intent,
         )
         ctx.errors.extend(errors)
+
+        # ── ENRIQUECIMENTO V3 — metadados de monitor ───────────────
+        if human_monitor is not None:
+            ctx.human_monitor = human_monitor
+        if physical_monitor_name:
+            ctx.physical_monitor_name = physical_monitor_name
+        try:
+            mon_info = ScreenManager.get_monitor(monitor)
+            if mon_info:
+                ctx.position = {
+                    "left": mon_info.get("left", 0),
+                    "top": mon_info.get("top", 0),
+                    "width": mon_info.get("width", 0),
+                    "height": mon_info.get("height", 0),
+                    "index": mon_info.get("index", monitor),
+                }
+        except Exception:
+            pass
         return ctx
 
     @staticmethod

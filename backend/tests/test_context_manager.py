@@ -142,7 +142,7 @@ def test_assemble_vision_inclui_contexto_visual(tmp_path):
     assert "monitor 1" in system
     assert "1920x1080" in system
     assert "firefox" in system
-    assert "TEXTO DETECTADO POR OCR" in system
+    assert "OCR (APENAS confirmatório" in system
 
 
 def test_assemble_vision_user_message_preserved(tmp_path):
@@ -153,14 +153,30 @@ def test_assemble_vision_user_message_preserved(tmp_path):
     assert msgs[-1] == {"role": "user", "content": "leia a tela 2"}
 
 
-def test_assemble_vision_histórico_preservado(tmp_path):
+def test_assemble_vision_sem_historico_por_padrao(tmp_path):
+    # Anti-alucinação: por padrão a visão de tela NÃO injeta histórico,
+    # pois contexto antigo leva o modelo a responder sem ter sido
+    # perguntado e a confabular.
     mem, ctx, _ = make_ctx(tmp_path)
     sid = mem.get_or_create_session(None)
     mem.add_message(sid, "user", "pergunta anterior")
     mem.add_message(sid, "assistant", "resposta anterior")
     vctx = VisionContext(source="screen", image_bytes=b"\x89PNG")
     msgs = ctx.assemble_vision(sid, "nova pergunta", vctx)
-    # system + 2历史 + user
+    # system + user (sem histórico)
+    assert len(msgs) == 2
+    assert msgs[0]["role"] == "system"
+    assert msgs[1] == {"role": "user", "content": "nova pergunta"}
+
+
+def test_assemble_vision_historico_reativado(tmp_path):
+    mem, ctx, _ = make_ctx(tmp_path)
+    sid = mem.get_or_create_session(None)
+    mem.add_message(sid, "user", "pergunta anterior")
+    mem.add_message(sid, "assistant", "resposta anterior")
+    vctx = VisionContext(source="screen", image_bytes=b"\x89PNG")
+    msgs = ctx.assemble_vision(sid, "nova pergunta", vctx, use_history=True)
+    # system + 2 histórico + user
     assert len(msgs) == 4
     assert msgs[1]["content"] == "pergunta anterior"
     assert msgs[2]["content"] == "resposta anterior"

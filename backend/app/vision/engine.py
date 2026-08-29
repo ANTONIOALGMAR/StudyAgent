@@ -93,15 +93,30 @@ def process_capture(
         errors.append("Imagem serializada ficou vazia")
 
     # ── CONTEXTO FINAL ──────────────────────────────────────────────
+    ocr_text = (
+        ocr_result.text
+        if ocr_result and ocr_result.text
+        else ""
+    )
+
+    # V3 — proxy de confiança do OCR: 1.0 se houver texto útil,
+    # 0.5 se houver texto mínimo, 0.0 se ausente.
+    ocr_conf = None
+    if ocr_result is not None and ocr_result.text:
+        ocr_conf = (
+            1.0
+            if ocr_result.is_useful
+            else 0.5
+        )
+    else:
+        ocr_conf = 0.0
+
     ctx = VisionContext(
         source="screen",
         monitor_id=monitor_id,
         resolution=(shot.width, shot.height),
-        ocr_text=(
-            ocr_result.text
-            if ocr_result and ocr_result.text
-            else ""
-        ),
+        ocr_text=ocr_text,
+        ocr_confidence=ocr_conf,
         window_app=window_info.get("app") if window_info else None,
         window_title=window_info.get("title") if window_info else None,
         image_bytes=image_bytes,

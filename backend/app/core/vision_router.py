@@ -28,6 +28,11 @@ para o agente e para o orquestrador.
 
 O pipeline deve ser determinístico sempre que possível.
 
+V3: VisionContext ganha human_monitor, physical_monitor_name,
+position, vision_intent (alias) e ocr_confidence. O prompt_context
+adota EvidenceFirst (EVIDÊNCIA vs INFERÊNCIA). Foram adicionadas as
+intenções SCREEN_ANALYZE, SCREEN_COMPARE e SCREEN_MONITOR.
+
 Exemplos:
 
     "leia meu monitor 2"
@@ -45,6 +50,15 @@ Exemplos:
     "tem algum erro no monitor 2?"
         → SCREEN_ERROR
         → monitor_id=2
+
+    "compare as telas 2 e 3"
+        → SCREEN_COMPARE
+
+    "em qual tela vai aparecer?"
+        → SCREEN_MONITOR
+
+    "analise o monitor 1"
+        → SCREEN_ANALYZE
 """
 
 from __future__ import annotations
@@ -75,6 +89,9 @@ class VisionIntent(Enum):
     SCREEN_QUESTION = "SCREEN_QUESTION"
     SCREEN_READ = "SCREEN_READ"
     SCREEN_DESCRIBE = "SCREEN_DESCRIBE"
+    SCREEN_ANALYZE = "SCREEN_ANALYZE"
+    SCREEN_COMPARE = "SCREEN_COMPARE"
+    SCREEN_MONITOR = "SCREEN_MONITOR"
     SCREEN_ERROR = "SCREEN_ERROR"
     SCREEN_CODE = "SCREEN_CODE"
     SCREEN_EXERCISE = "SCREEN_EXERCISE"
@@ -272,9 +289,17 @@ class VisionContext:
 
     monitor_id: int | None = None
 
+    human_monitor: int | None = None
+
+    physical_monitor_name: str | None = None
+
+    position: dict[str, Any] | None = None
+
     resolution: tuple[int, int] | None = None
 
     ocr_text: str | None = None
+
+    ocr_confidence: float | None = None
 
     window_app: str | None = None
 
@@ -293,6 +318,11 @@ class VisionContext:
     errors: list[str] = field(default_factory=list)
 
     metadata: dict[str, Any] = field(default_factory=dict)
+
+    @property
+    def vision_intent(self) -> str:
+        """Alias de leitura amigável para a intenção visual."""
+        return self.intent.value
 
     @property
     def has_ocr(self) -> bool:
@@ -327,6 +357,9 @@ class VisionContext:
     def prompt_context(self) -> str:
         """
         Constrói contexto textual para o modelo de visão.
+
+        V3 — EvidenceFirst: separa EVIDÊNCIA (o que foi realmente
+        observado) de INFERÊNCIA/ANÁLISE (o que o modelo deve concluir).
         """
 
         resolution = "desconhecida"
@@ -342,14 +375,55 @@ class VisionContext:
             else "não especificado"
         )
 
+        human_monitor = (
+            str(self.human_monitor)
+            if self.human_monitor is not None
+            else "não especificado"
+        )
+
+        physical_name = (
+            self.physical_monitor_name
+            or "não identificado"
+        )
+
+        ocr_conf = (
+            str(self.ocr_confidence)
+            if self.ocr_confidence is not None
+            else "não medida"
+        )
+
+        position_text = "não informada"
+
+        if self.position:
+            try:
+                position_text = (
+                    f"esquerda={self.position.get('left', 0)}, "
+                    f"topo={self.position.get('top', 0)}, "
+                    f"largura={self.position.get('width', 0)}, "
+                    f"altura={self.position.get('height', 0)}"
+                )
+            except (TypeError, AttributeError):
+                position_text = "não informada"
+
         return f"""
 CONTEXTO VISUAL REAL DO STUDYAGENT
+
+===== EVIDÊNCIA (fatos observados, não inferências) =====
 
 FONTE:
 {self.source}
 
-MONITOR:
+MONITOR (índice técnico):
 {monitor}
+
+MONITOR (número humano que o usuário usou):
+{human_monitor}
+
+MONITOR (nome físico):
+{physical_name}
+
+POSIÇÃO NO DESKTOP VIRTUAL:
+{position_text}
 
 RESOLUÇÃO:
 {resolution}
@@ -363,6 +437,9 @@ APLICATIVO DETECTADO:
 JANELA:
 {self.window_title or "não identificada"}
 
+CONFIANÇA DO OCR:
+{ocr_conf}
+
 OCR:
 {self.ocr_text or "(nenhum texto detectado)"}
 
@@ -372,25 +449,25 @@ PERGUNTA ORIGINAL DO USUÁRIO:
 ESTÁGIOS DO PIPELINE:
 {", ".join(self.pipeline_stages) or "nenhum"}
 
-A imagem anexada deve ser considerada a representação visual REAL
-do monitor solicitado.
+A imagem anexada é a representação visual REAL do monitor solicitado.
 
-REGRAS OBRIGATÓRIAS:
+===== REGRAS — EVIDÊNCIA vs INFERÊNCIA =====
 
-1. Analise a imagem antes de responder.
-2. Não invente informações que não estejam na imagem.
-3. Não dê saudação.
-4. Não responda com frases genéricas.
+1. EVIDÊNCIA: registre apenas o que está realmente visível na imagem
+   (textos, código, erros, janelas, resolução). Não adicione suposições.
+2. INFERÊNCIA/ANÁLISE: apenas depois de observar a evidência, conclua,
+   explique ou responda ao usuário.
+3. Não invente informações que não estejam na imagem.
+4. Não dê saudação.
 5. Responda diretamente à pergunta do usuário.
 6. Se houver código, leia e analise o código.
 7. Se houver erro, identifique o erro.
 8. Se houver exercício, leia o enunciado.
 9. Se houver gráfico, interprete os elementos visíveis.
-10. Se houver texto, utilize o texto realmente visível.
-11. Use OCR como apoio, não como substituto da imagem.
-12. Caso OCR e imagem entrem em conflito, priorize a imagem.
-13. Se a imagem não permitir concluir algo, diga claramente.
-14. Nunca finja ter visto algo que não está na imagem.
+10. Use OCR como apoio, não como substituto da imagem.
+11. Caso OCR e imagem entrem em conflito, priorize a imagem.
+12. Se a imagem não permitir concluir algo, diga claramente.
+13. Nunca finja ter visto algo que não está na imagem.
 """.strip()
 
 
@@ -402,11 +479,22 @@ REGRAS OBRIGATÓRIAS:
 VISION_SYSTEM_PROMPT = """
 Você é o módulo de VISÃO do StudyAgent.
 
-Sua função é analisar visualmente a imagem recebida.
+Você recebeu EXATAMENTE UMA imagem real: a captura do monitor
+solicitado ou uma foto de câmera. A imagem é a ÚNICA fonte confiável
+de fatos.
 
-A imagem é a fonte primária da informação.
+Sua tarefa é responder APENAS à pergunta do usuário, com base
+SOMENTE no que estiver de fato visível na imagem.
 
-NUNCA responda como um chatbot genérico.
+ANTI-ALUCINAÇÃO (REGRA NÚCLEO):
+- Responda SOMENTE à pergunta feita. Não acrescente assuntos,
+  detalhes ou perguntas não solicitadas.
+- Falar sobre algo que NÃO está presente na imagem é PROIBIDO.
+- Se a informação não estiver visível, leitura confiável ou claramente
+  dedutível da imagem, diga exatamente: "Isso não está visível na imagem."
+- Não misture conhecimento prévio seu com o conteúdo da tela.
+- Código, números e nomes devem ser copiados do que está visível,
+  nunca reconstruídos de memória.
 
 NUNCA comece com:
 - Olá
@@ -415,42 +503,40 @@ NUNCA comece com:
 - Estou aqui para ajudar
 - Vamos começar
 
-Quando uma imagem for recebida, OLHE A IMAGEM PRIMEIRO.
+Quando a imagem for recebida, OLHE A IMAGEM PRIMEIRO e responda
+diretamente à pergunta. Use o OCR apenas para CONFIRMAR o que você
+viu na imagem; se OCR e imagem divergirem, prevaleça a imagem.
 
-Você deve:
+Você pode precisar identificar:
+- o aplicativo ou ambiente visível
+- texto, código, erro, exercício, gráfico ou tabela visíveis
 
-1. Identificar o aplicativo ou ambiente visível.
-2. Identificar a janela ou conteúdo principal.
-3. Ler textos visíveis.
-4. Identificar código quando existir.
-5. Identificar erros quando existirem.
-6. Identificar exercícios quando existirem.
-7. Identificar gráficos, tabelas e elementos relevantes.
-8. Responder à pergunta específica do usuário.
-9. Informar quando algo não puder ser identificado.
+Mas identifique ELEMENTOS SOMENTE se eles estiverem visíveis e forem
+necessários para responder à pergunta.
 
 FORMATO:
 
 O QUE VEJO:
-Descrição objetiva do conteúdo visual.
+Somente o que está objetivamente visível e necessário à pergunta.
 
 CONTEÚDO:
-Texto, código, erro, exercício, gráfico ou outros elementos relevantes.
+Texto, código, erro, exercício ou gráfico realmente presentes.
+Se nada for necessário, escreva: "(sem conteúdo complementar visível)".
 
 ANÁLISE:
-Resposta direta à pergunta do usuário.
+Resposta direta à pergunta do usuário, baseada apenas na evidência.
 
 IMPORTANTE:
 
-Se o usuário perguntou sobre um monitor específico,
-analise somente a imagem daquele monitor.
+Se o usuário perguntou sobre um monitor específico, analise somente a
+imagem daquele monitor.
 
-Não invente conteúdo.
+Não invente conteúdo. Não responda sobre o que não está visível.
 
-Não diga que analisou uma tela se nenhuma imagem foi realmente recebida.
+NÃO explique passo a passo nem descreva a tela inteira a menos que a
+pergunta peça isso explicitamente.
 
-Se a imagem não estiver disponível ou estiver ilegível,
-responda:
+Se a imagem não estiver disponível ou estiver ilegível, responda:
 
 "Não consegui analisar a imagem recebida."
 """.strip()
@@ -514,6 +600,38 @@ _SCREEN_REFERENCE_RE = re.compile(
     r"desktop|"
     r"área de trabalho|area de trabalho|"
     r"screen"
+    r")\b",
+    re.IGNORECASE,
+)
+
+
+_SCREEN_COMPARE_RE = re.compile(
+    r"\b("
+    r"compar\w*|diferenc\w*|diferença|diferenca|"
+    r"contra|vs\.?|versus|qual é diferente|o que mudou|"
+    r"mudança|mudanca|alterou|mudou"
+    r")\b",
+    re.IGNORECASE,
+)
+
+
+_SCREEN_MONITOR_RE = re.compile(
+    r"\b("
+    r"qual monitor|monitor correto|"
+    r"em qual monitor|qualquer monitor|"
+    r"qualquer tela|qual tela|"
+    r"monitor ativo|tela ativa|"
+    r"onde está|em que monitor|em qual tela"
+    r")\b",
+    re.IGNORECASE,
+)
+
+
+_SCREEN_ANALYZE_RE = re.compile(
+    r"\b("
+    r"analis\w*|análise|analise|inspecion\w*|"
+    r"investig\w*|diagnostic\w*|avali\w*|"
+    r"examin\w*|revise|revis\w*"
     r")\b",
     re.IGNORECASE,
 )
@@ -681,7 +799,9 @@ def detect_vision_intent(
         erro
         código
         exercício
-        leitura/análise
+        comparação
+        seleção de monitor
+        leitura/análise explícita
         pergunta sobre tela
         descrição
     """
@@ -702,6 +822,21 @@ def detect_vision_intent(
     # Exercício.
     if _SCREEN_EXERCISE_RE.search(text):
         return VisionIntent.SCREEN_EXERCISE
+
+    # Comparação entre telas/monitores.
+    if (
+        _SCREEN_COMPARE_RE.search(text)
+        and _SCREEN_REFERENCE_RE.search(text)
+    ):
+        return VisionIntent.SCREEN_COMPARE
+
+    # Seleção de qual monitor usar (usuário não sabe qual tela).
+    if _SCREEN_MONITOR_RE.search(text):
+        return VisionIntent.SCREEN_MONITOR
+
+    # Análise explícita.
+    if _SCREEN_ANALYZE_RE.search(text):
+        return VisionIntent.SCREEN_ANALYZE
 
     # Pedido explícito de leitura/análise.
     if _SCREEN_VERBS_RE.search(text):

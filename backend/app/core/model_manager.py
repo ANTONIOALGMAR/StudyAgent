@@ -35,6 +35,15 @@ def num_predict() -> int:
     return int(os.getenv("STUDY_NUM_PREDICT", "2048"))
 
 
+def vision_temperature() -> float:
+    """Temperatura para o modelo de visão.
+
+    Valor baixo reduz alucinação e confabulação. Configurável por env
+    (STUDY_VISION_TEMPERATURE). Ollama usa 0.8 por padrão.
+    """
+    return float(os.getenv("STUDY_VISION_TEMPERATURE", "0.2"))
+
+
 def model(role: str) -> str:
     """Nome do modelo para uma finalidade (configurável por env)."""
     try:
@@ -56,19 +65,38 @@ def available_models() -> list[str]:
         return []
 
 
+def _matching_available(wanted: str, avail: list[str]) -> str | None:
+    """Retorna o nome (com tag) do modelo disponível que corresponde ao
+    configurado (ex.: 'llama3.1' → 'llama3.1:latest')."""
+    if wanted in avail:
+        return wanted
+    for a in avail:
+        if a.startswith(wanted + ":"):
+            return a
+    return None
+
+
 def resolve(role: str) -> str:
-    """Modelo da função; se não existir no Ollama, tenta fallback útil."""
+    """Modelo da função; se não existir no Ollama, tenta fallback útil.
+
+    Retorna o nome EXATO disponível no Ollama (incluindo a tag,
+    ex.: 'llama3.1:latest'), evitando erro 404 do modelo sem tag.
+    """
     wanted = model(role)
     avail = available_models()
-    if not avail or any(a.startswith(wanted) for a in avail):
+    if not avail:
         return wanted
+    matched = _matching_available(wanted, avail)
+    if matched is not None:
+        return matched
     if role == "synthesis":
         # síntese aceita qualquer modelo visão ou texto disponível
         vision = model("vision")
         text = model("text")
         for candidate in (vision, text):
-            if any(a.startswith(candidate) for a in avail):
-                return candidate
+            hit = _matching_available(candidate, avail)
+            if hit is not None:
+                return hit
     return wanted
 
 

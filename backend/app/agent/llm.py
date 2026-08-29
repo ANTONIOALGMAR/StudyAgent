@@ -4,7 +4,12 @@ import logging
 import ollama
 
 from ..config import OLLAMA_HOST
-from ..core.model_manager import context_tokens, num_predict, resolve
+from ..core.model_manager import (
+    context_tokens,
+    num_predict,
+    resolve,
+    vision_temperature,
+)
 
 _client = ollama.Client(host=OLLAMA_HOST)
 log = logging.getLogger("studyagent.vision")
@@ -22,11 +27,15 @@ def chat(messages, images=None):
         role = "text"
     model = resolve(role)
     log.info("[VISION] model=%s images=%d", model, len(images or []))
+    options = {"num_ctx": context_tokens(role), "num_predict": num_predict()}
+    if role == "vision":
+        # Temperatura baixa reduz alucinação/confabulação na análise visual.
+        options["temperature"] = vision_temperature()
     try:
         response = _client.chat(
             model=model,
             messages=messages,
-            options={"num_ctx": context_tokens(role), "num_predict": num_predict()},
+            options=options,
         )
         content = response["message"]["content"]
         if images and not content.strip():

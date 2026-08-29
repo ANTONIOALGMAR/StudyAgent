@@ -107,6 +107,51 @@ export async function captureScreen(): Promise<{ image_b64: string; text: string
   return res.json()
 }
 
+export interface FacePresentResult {
+  present: boolean
+  name?: string | null
+  confidence?: number
+}
+
+export async function recognizeFace(imageB64: string): Promise<FacePresentResult> {
+  const res = await fetch(`${API}/api/face/recognize`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ image_b64: imageB64 }),
+  })
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: res.statusText }))
+    throw new Error(err.detail ?? `Erro ${res.status}`)
+  }
+  return res.json() as Promise<FacePresentResult>
+}
+
+export async function detectFace(imageB64: string): Promise<FacePresentResult> {
+  const res = await fetch(`${API}/api/face/present`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ image_b64: imageB64 }),
+  })
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: res.statusText }))
+    throw new Error(err.detail ?? `Erro ${res.status}`)
+  }
+  return res.json() as Promise<FacePresentResult>
+}
+
+export async function registerFace(name: string, imageB64: string): Promise<{ name: string; registered: boolean }> {
+  const res = await fetch(`${API}/api/face/register`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name, image_b64: imageB64 }),
+  })
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: res.statusText }))
+    throw new Error(err.detail ?? `Erro ${res.status}`)
+  }
+  return res.json() as Promise<{ name: string; registered: boolean }>
+}
+
 export async function transcribeAudio(blob: Blob): Promise<string> {
   const form = new FormData()
   form.append('file', blob, 'gravacao.webm')

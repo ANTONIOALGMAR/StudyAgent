@@ -22,7 +22,7 @@ from .core.structured_logging import (
     new_request_id,
     setup_structured_logging,
 )
-from .routers import audio, chat, documents, exercises, health, screen, tutor
+from .routers import audio, chat, documents, exercises, facial, health, screen, tutor
 
 log = logging.getLogger("studyagent.startup")
 
@@ -74,6 +74,7 @@ app.include_router(documents.router)
 app.include_router(audio.router)
 app.include_router(tutor.router)
 app.include_router(health.router)
+app.include_router(facial.router)
 
 
 # ── Graceful Shutdown ────────────────────────────────────────────

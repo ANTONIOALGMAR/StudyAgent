@@ -1,13 +1,18 @@
 """
-Planner V2 — roteamento de intenções antes do LLM.
+Planner V3 — roteamento de intenções antes do LLM.
 
 Centraliza as decisões que hoje vivem espalhadas por regex no agente:
 
+- qual a CATEGORIA de intenção (chat, documento, tela, câmera,
+  busca na web, cálculo, ação de sistema)?
 - a mensagem pede leitura de tela?
 - de qual monitor?
 - refere-se a um documento anexado?
 - quer o conteúdo inteiro?
 - pede informação atualizada?
+
+V3 adiciona a classificação ampla de intenção (IntentCategory) e o
+monitor no formato humano (human_monitor) usado pelo usuário.
 
 Mantido puro (sem I/O) para ser trivialmente testável.
 """
@@ -16,21 +21,34 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
+from enum import Enum
 
 from .vision_router import VisionIntent, detect_vision_intent
+
+
+class IntentCategory(Enum):
+    """Categoria ampla de intenção do usuário."""
+
+    CHAT = "CHAT"
+    DOCUMENT = "DOCUMENT"
+    SCREEN = "SCREEN"
+    CAMERA = "CAMERA"
+    WEB_SEARCH = "WEB_SEARCH"
+    CALCULATE = "CALCULATE"
+    SYSTEM_ACTION = "SYSTEM_ACTION"
 
 # ============================================================================
 # REGEX — TELA / MONITOR
 # ============================================================================
 
 SCREEN_EXPLICIT_RE = re.compile(
-    r"\b(tela|monitor|screen)\b",
+    r"\b(?:telas?|monitor(?:es)?|screen(?:s)?)\b",
     re.IGNORECASE | re.UNICODE,
 )
 
 
 MONITOR_NUM_RE = re.compile(
-    r"\b(?:tela|monitor)"
+    r"\b(?:telas?|monitor(?:es)?)"
     r"\s*(?:n[ºo°]?|número|numero)?"
     r"\s*([0-9]+)\b",
     re.IGNORECASE | re.UNICODE,
@@ -111,6 +129,125 @@ WHOLE_DOC_MAX_CHARS = 15000
 
 
 # ============================================================================
+# REGEX — CATEGORIA AMPLA
+# ============================================================================
+
+WEB_SEARCH_RE = re.compile(
+    r"\b("
+    r"busque|buscar|busca|"
+    r"pesquise|pesquisar|pesquisa|"
+    r"procure|procurar|"
+    r"notícia\w*|noticia\w*|"
+    r"preço\w*?|preco\w*?|cota\w*?|"
+    r"resultad\w*|placar|"
+    r"clima|tempo hoje|"
+    r"quem (?:ganhou|venceu)|"
+    r"últim\w*"
+    r")\b",
+    re.IGNORECASE | re.UNICODE,
+)
+
+
+CALCULATE_RE = re.compile(
+    r"\b("
+    r"quanto é|quanto e|quanto dá|quanto da|"
+    r"calcule|calcular|cálculo|calculo|"
+    r"soma\w*|some|subtrai\w*|"
+    r"multiplic\w*|divide|dividi|"
+    r"raiz|potência\w*|potencia\w*|[+\-*/^=]"
+    r")\b",
+    re.IGNORECASE | re.UNICODE,
+)
+
+
+SYSTEM_ACTION_RE = re.compile(
+    r"\b("
+    r"abra |abrir |abra o |"
+    r"feche|fechar|"
+    r"minimize|minimizar|"
+    r"maximize|maximizar|"
+    r"execute|executar|rodar|"
+    r"abre o|abre a|"
+    r"open |start |launch "
+    r")\b",
+    re.IGNORECASE,
+)
+
+
+# ============================================================================
+# CATEGORIA AMPLA
+# ============================================================================
+
+
+def detect_category(
+    message: str,
+    *,
+    capture_screen: bool,
+    camera_image: bool,
+    wants_document: bool,
+) -> IntentCategory:
+    """Classifica a intenção ampla do usuário.
+
+    Prioridade:
+        documento > câmera > tela > busca web > cálculo >
+        ação de sistema > chat
+    """
+
+    lower = (message or "").lower()
+
+    if wants_document:
+        return IntentCategory.DOCUMENT
+
+    if camera_image:
+        return IntentCategory.CAMERA
+
+    if capture_screen:
+        return IntentCategory.SCREEN
+
+    if WEB_SEARCH_RE.search(lower):
+        return IntentCategory.WEB_SEARCH
+
+    if CALCULATE_RE.search(lower):
+        return IntentCategory.CALCULATE
+
+    if SYSTEM_ACTION_RE.search(lower):
+        return IntentCategory.SYSTEM_ACTION
+
+    return IntentCategory.CHAT
+
+
+# ============================================================================
+# SAUDAÇÕES / CONVERSA CASUAL
+# ============================================================================
+
+GREETING_RE = re.compile(
+    r"^\s*("
+    r"oi|olá|ola|oii|oiii|e\s*aí|eai|salve|opa|fala|"
+    r"bom\s+dia|boa\s+tarde|boa\s+noite|"
+    r"hello|hi|hey|hem|hmm"
+    r")\s*"
+    r"(tudo\s+bem|tudo\s+blz|blz|beleza|"
+    r"como\s+vai|como\s+voc[eê]\s+est[aá]|"
+    r"como\s+est[aá]|td\s+bem|est[aá]\s+a[ií]|"
+    r"[!.,;?]*)*"
+    r"\s*$",
+    re.IGNORECASE | re.UNICODE,
+)
+
+
+def is_social_greeting(message: str) -> bool:
+    """Indica se a mensagem é essencialmente uma saudação/social.
+
+    Usado para desviar de saudações para o chat de texto simples
+    (sem tool-calling), evitando que modelos de tool-calling
+    confabulem respostas sobre 'função JSON' em vez de saudar.
+    """
+    if not message or not message.strip():
+        return False
+    return bool(GREETING_RE.search(message.strip()))
+
+
+# ============================================================================
 # PLANO
 # ============================================================================
 
@@ -120,10 +257,14 @@ class Plan:
 
     message: str
 
+    category: IntentCategory = IntentCategory.CHAT
+
     explicit_screen: bool = False
     capture_screen: bool = False
 
     monitor: int | None = None
+
+    human_monitor: int | None = None
 
     vision_required: bool = False
     vision_intent: VisionIntent = VisionIntent.SCREEN_QUESTION
@@ -179,10 +320,13 @@ def build_plan(
     if num:
         requested_number = int(num.group(1))
 
+        # Número humano informado pelo usuário (tela 1 / monitor 2).
+        plan.human_monitor = requested_number
+
         # "tela 1" = monitor interno 0
         # "tela 2" = monitor interno 1
         # "tela 3" = monitor interno 2
-        if re.search(r"\btela\b", lower):
+        if re.search(r"\btelas?\b", lower):
             plan.monitor = requested_number - 1
 
         # "monitor 0" = monitor interno 0
@@ -252,5 +396,16 @@ def build_plan(
             plan.whole_doc = bool(
                 WHOLE_DOC_RE.search(lower)
             )
+
+    # ================================================================
+    # CATEGORIA AMPLA DE INTENÇÃO (V3)
+    # ================================================================
+
+    plan.category = detect_category(
+        message,
+        capture_screen=plan.capture_screen,
+        camera_image=camera_image,
+        wants_document=plan.wants_document,
+    )
 
     return plan

@@ -138,6 +138,88 @@ def test_intent_screen_describe_default():
     assert detect_vision_intent("isso aí") == VisionIntent.SCREEN_DESCRIBE
 
 
+def test_intent_screen_compare():
+    assert detect_vision_intent("compare as telas 1 e 2") == VisionIntent.SCREEN_COMPARE
+
+
+def test_intent_screen_compare_difference():
+    assert detect_vision_intent("qual a diferença entre os monitores") == VisionIntent.SCREEN_COMPARE
+
+
+def test_intent_screen_monitor_selection():
+    assert detect_vision_intent("em qual monitor vai aparecer?") == VisionIntent.SCREEN_MONITOR
+
+
+def test_intent_screen_monitor_active():
+    assert detect_vision_intent("qual monitor está ativo?") == VisionIntent.SCREEN_MONITOR
+
+
+def test_intent_screen_analyze():
+    assert detect_vision_intent("analise o monitor 1") == VisionIntent.SCREEN_ANALYZE
+
+
+def test_intent_screen_analyze_inspect():
+    assert detect_vision_intent("inspecione a tela 3") == VisionIntent.SCREEN_ANALYZE
+
+
+def test_intent_code_still_prioritized_over_analyze():
+    assert detect_vision_intent("analise o código da tela") == VisionIntent.SCREEN_CODE
+
+
+# ── VisionContext V3 ───────────────────────────────────────────────
+
+
+def test_vision_context_v3_fields_defaults():
+    ctx = VisionContext(source="screen")
+    assert ctx.human_monitor is None
+    assert ctx.physical_monitor_name is None
+    assert ctx.position is None
+    assert ctx.ocr_confidence is None
+
+
+def test_vision_context_v3_vision_intent_alias():
+    ctx = VisionContext(source="screen", intent=VisionIntent.SCREEN_COMPARE)
+    assert ctx.vision_intent == "SCREEN_COMPARE"
+
+
+def test_vision_context_v3_fields_set():
+    ctx = VisionContext(
+        source="screen",
+        monitor_id=1,
+        human_monitor=2,
+        physical_monitor_name="HDMI-A-1",
+        position={"left": 0, "top": 0, "width": 1920, "height": 1080},
+        ocr_confidence=0.9,
+        intent=VisionIntent.SCREEN_ANALYZE,
+    )
+    assert ctx.human_monitor == 2
+    assert ctx.physical_monitor_name == "HDMI-A-1"
+    assert ctx.position["width"] == 1920
+    assert ctx.ocr_confidence == 0.9
+
+
+def test_vision_context_prompt_evidence_first():
+    ctx = VisionContext(
+        source="screen",
+        monitor_id=1,
+        human_monitor=2,
+        physical_monitor_name="HDMI-A-1",
+        position={"left": 0, "top": 0, "width": 1920, "height": 1080},
+        ocr_text="x" * 100,
+        window_app="okular",
+        user_question="qual a resposta?",
+        ocr_confidence=1.0,
+    )
+    prompt = ctx.prompt_context()
+    # EvidenceFirst: separa EVIDÊNCIA de INFERÊNCIA
+    assert "EVIDÊNCIA" in prompt
+    assert "INFERÊNCIA" in prompt
+    assert "HDMI-A-1" in prompt
+    assert "MONITOR (número humano" in prompt
+    assert "POSIÇÃO NO DESKTOP VIRTUAL" in prompt
+    assert "CONFIANÇA DO OCR" in prompt
+
+
 # ── Vision system prompt ───────────────────────────────────────────
 
 

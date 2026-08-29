@@ -135,6 +135,8 @@ def _build_visual_context_block(ctx: VisionContext) -> str:
 
     if ctx.source == "screen":
         origem = f"Captura de tela do monitor {ctx.monitor_id}" if ctx.monitor_id else "Captura de tela"
+        if ctx.physical_monitor_name:
+            origem += f" ({ctx.physical_monitor_name})"
         if ctx.resolution:
             origem += f" ({ctx.resolution[0]}x{ctx.resolution[1]})"
         parts.append(origem)
@@ -154,8 +156,8 @@ def _build_visual_context_block(ctx: VisionContext) -> str:
         if len(texto) > 2500:
             texto = texto[:2500] + "\n[…]"
         parts.append(
-            "TEXTO DETECTADO POR OCR (confiável para nomes, números "
-            "e símbolos; ignore erros óbvios de leitura):\n\n"
+            "OCR (APENAS confirmatório — use somente para conferir o que "
+            "está visível na imagem; nunca para inventar conteúdo):\n\n"
             f"{texto}"
         )
 
@@ -229,16 +231,27 @@ class ContextManager:
         session_id: str,
         user_message: str,
         vision_ctx: VisionContext,
+        use_history: bool = False,
     ) -> list[dict]:
-        """Monta mensagens com system prompt de visão (substitui o genérico)."""
-        history = self.memory.history(session_id, limit=HISTORY_LIMIT)
+        """Monta mensagens com system prompt de visão (substitui o genérico).
+
+        Anti-alucinação: para capturas de tela NÃO injetamos o histórico
+        completo da conversa. Histórico antigo leva o modelo a responder
+        sem ter sido perguntado e a confabular fatos do contexto anterior.
+        `use_history=True` reativa o histórico para casos específicos.
+        """
         system_content = VISION_SYSTEM_PROMPT
 
         visual_block = _build_visual_context_block(vision_ctx)
         if visual_block:
             system_content += f"\n\n{visual_block}"
 
-        messages = [{"role": "system", "content": system_content}, *history]
+        messages: list[dict] = [{"role": "system", "content": system_content}]
+
+        if use_history:
+            history = self.memory.history(session_id, limit=HISTORY_LIMIT)
+            messages.extend(history)
+
         messages.append({"role": "user", "content": user_message})
         return self._trim_history(messages)
 
