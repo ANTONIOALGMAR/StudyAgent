@@ -17,3 +17,4 @@ data/**
 backend/.env
 backend/models/
 .pytest_cache/
+.aider*

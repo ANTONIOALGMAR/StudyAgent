@@ -6,7 +6,7 @@ import ChatInput from './ChatInput'
 import LivePanel from './LivePanel'
 import Sidebar from './Sidebar'
 import EvidencePanel from './EvidencePanel'
-import { type UploadedDoc } from '../api'
+import { type UploadedDoc, recognizeFace, registerFace } from '../api'
 import { useChat } from '../hooks/useChat'
 import { useVoice } from '../hooks/useVoice'
 import { useScreen } from '../hooks/useScreen'
@@ -18,6 +18,7 @@ const AchievementsPanel = lazy(() => import('./AchievementsPanel'))
 const ProfilePanel = lazy(() => import('./ProfilePanel'))
 const StatsPanel = lazy(() => import('./StatsPanel'))
 const StudyPlanPanel = lazy(() => import('./StudyPlanPanel'))
+const StudyAgentAvatar = lazy(() => import('./StudyAgent3D/StudyAgentAvatar'))
 
 function PanelFallback() {
   return <div style={{ padding: 20, textAlign: 'center', color: '#8b93a7' }}><span className="spinner" /> carregando…</div>
@@ -33,6 +34,9 @@ const FACE_LABELS: Record<FaceState, string> = {
   happy: 'ficou feliz com você! 🎉',
   concerned: 'quer te ajudar a melhorar',
   curious: 'fez uma pergunta pra você',
+  excited: 'mal posso esperar! ⚡',
+  confused: 'deixa eu pensar melhor…',
+  sleeping: 'em repouso 😴',
 }
 
 export default function Chat() {
@@ -56,11 +60,18 @@ export default function Chat() {
   const [stOpen, setStOpen] = useState(false)
   const [profOpen, setProfOpen] = useState(false)
   const [achOpen, setAchOpen] = useState(false)
+  const [faceMsg, setFaceMsg] = useState<string | null>(null)
+  const [faceBusy, setFaceBusy] = useState(false)
+  const [mode3D, setMode3D] = useState(() => localStorage.getItem('studyagent.3d') === '1')
 
   useEffect(() => {
     if (activeDoc) localStorage.setItem('studyagent.doc', JSON.stringify(activeDoc))
     else localStorage.removeItem('studyagent.doc')
   }, [activeDoc])
+
+  useEffect(() => {
+    localStorage.setItem('studyagent.3d', mode3D ? '1' : '0')
+  }, [mode3D])
 
   function flashReaction(mood: FaceState) {
     if (reactionTimerRef.current) window.clearTimeout(reactionTimerRef.current)
@@ -135,14 +146,21 @@ export default function Chat() {
     void chatHook.sendText(text)
   }
 
-  function snapAndAsk() {
+  function captureFrame(): string | null {
     const video = document.querySelector<HTMLVideoElement>('.camera-panel video')
-    if (!video || !video.videoWidth) return
+    if (!video || !video.videoWidth) return null
     const canvas = document.createElement('canvas')
     canvas.width = video.videoWidth
     canvas.height = video.videoHeight
     canvas.getContext('2d')?.drawImage(video, 0, 0)
-    const b64 = canvas.toDataURL('image/jpeg', 0.85).split(',')[1]
+    return canvas.toDataURL('image/jpeg', 0.85).split(',')[1]
+  }
+
+  function snapAndAsk() {
+    const video = document.querySelector<HTMLVideoElement>('.camera-panel video')
+    if (!video || !video.videoWidth) return
+    const b64 = captureFrame()
+    if (!b64) return
     setCamOpen(false)
     const question = input.trim() || 'O que você vê nesta imagem?'
     setInput('')
@@ -167,6 +185,40 @@ export default function Chat() {
     camStreamRef.current?.getTracks().forEach((t) => t.stop())
     camStreamRef.current = null
     setCamOpen(false)
+  }
+
+  async function handleRecognize() {
+    const b64 = captureFrame()
+    if (!b64) { setFaceMsg('Aguarde a câmera estabilizar…'); return }
+    setFaceBusy(true)
+    setFaceMsg(null)
+    try {
+      const res = await recognizeFace(b64)
+      if (!res.present) setFaceMsg('Nenhum rosto claro detectado na imagem.')
+      else if (res.name) setFaceMsg(`Olá, ${res.name}! Bem-vindo(a) de volta 👋`)
+      else setFaceMsg('Rosto detectado, mas não cadastrado. Use "Cadastrar rosto".')
+    } catch (e) {
+      setFaceMsg(e instanceof Error ? e.message : 'Falha no reconhecimento facial')
+    } finally {
+      setFaceBusy(false)
+    }
+  }
+
+  async function handleRegisterFace() {
+    const b64 = captureFrame()
+    if (!b64) { setFaceMsg('Aguarde a câmera estabilizar…'); return }
+    const name = window.prompt('Como devo chamar você? (seu nome)')
+    if (!name || !name.trim()) return
+    setFaceBusy(true)
+    setFaceMsg(null)
+    try {
+      const res = await registerFace(name.trim(), b64)
+      setFaceMsg(`Rosto cadastrado como "${res.name}". Agora posso reconhecê-lo(a)!`)
+    } catch (e) {
+      setFaceMsg(e instanceof Error ? e.message : 'Falha ao cadastrar rosto')
+    } finally {
+      setFaceBusy(false)
+    }
   }
 
   useEffect(() => {
@@ -219,12 +271,23 @@ export default function Chat() {
       <Sidebar items={sidebarItems} />
       <div className="chat">
         <div className="chat-header">
-          <AgentFace state={faceState} size={84} />
+          {mode3D ? (
+            <Suspense fallback={<AgentFace state={faceState} size={84} />}>
+              <StudyAgentAvatar state={faceState} size={84} voice={voice.voiceOn} sensitivity={3.4} />
+            </Suspense>
+          ) : (
+            <AgentFace state={faceState} size={84} />
+          )}
           <div className="face-label">
             <span className="face-title">StudyAgent</span>
             <span className="face-status">{FACE_LABELS[faceState]}</span>
           </div>
-          <button className="btn-screen btn-stage" onClick={() => setStage(true)} title="Ampliar o rosto (modo palco)">⤢</button>
+          <div className="header-actions">
+            <button className="btn-screen btn-stage" onClick={() => setMode3D(!mode3D)} title={mode3D ? 'Usar rosto 2D' : 'Usar avatar 3D'}>
+              {mode3D ? '🧊' : '🎲'}
+            </button>
+            <button className="btn-screen" onClick={() => setStage(true)} title="Ampliar o rosto (modo palco)">⤢</button>
+          </div>
         </div>
 
         <ChatMessages messages={chatHook.messages} loading={chatHook.loading} handsFree={voice.handsFree} error={chatHook.error} />
@@ -309,13 +372,16 @@ export default function Chat() {
         </Suspense>
 
         {camOpen && (
-          <div className="camera-panel">
-            <video ref={videoRef} autoPlay muted playsInline />
-            <div className="camera-actions">
-              <button className="btn-send" onClick={snapAndAsk} disabled={chatHook.loading}>📸 capturar e perguntar</button>
-              <button className="btn-screen" onClick={closeCamera}>✕ fechar</button>
+            <div className="camera-panel">
+              <video ref={videoRef} autoPlay muted playsInline />
+              <div className="camera-actions">
+                <button className="btn-send" onClick={snapAndAsk} disabled={chatHook.loading}>📸 capturar e perguntar</button>
+                <button className="btn-screen" onClick={handleRecognize} disabled={faceBusy}>👤 reconhecer</button>
+                <button className="btn-screen" onClick={handleRegisterFace} disabled={faceBusy}>✍ cadastrar rosto</button>
+                <button className="btn-screen" onClick={closeCamera}>✕ fechar</button>
+              </div>
+              {faceMsg && <div className="camera-face-msg">{faceBusy ? '⏳ processando…' : faceMsg}</div>}
             </div>
-          </div>
         )}
 
         {(chatHook.lastEvidence || chatHook.lastToolsUsed.length > 0) && (
@@ -354,7 +420,19 @@ export default function Chat() {
           <div className="stage-overlay" onClick={() => setStage(false)}>
             <button className="btn-screen stage-close" onClick={() => setStage(false)} title="Voltar (Esc)">✕</button>
             <div className="stage-inner" onClick={(e) => e.stopPropagation()}>
-              <AgentFace state={faceState} size={Math.min(window.innerWidth, window.innerHeight) * 0.62} />
+              {mode3D ? (
+                <Suspense fallback={<AgentFace state={faceState} size={Math.min(window.innerWidth, window.innerHeight) * 0.62} />}>
+                  <StudyAgentAvatar
+                    state={faceState}
+                    size={Math.min(window.innerWidth, window.innerHeight) * 0.5}
+                    controls
+                    voice={voice.voiceOn}
+                    sensitivity={3.4}
+                  />
+                </Suspense>
+              ) : (
+                <AgentFace state={faceState} size={Math.min(window.innerWidth, window.innerHeight) * 0.62} />
+              )}
               <p className="stage-label">{FACE_LABELS[faceState]}</p>
               <button className={`btn-screen ${voice.voiceOn ? 'active' : ''}`} onClick={() => voice.setVoiceOn(!voice.voiceOn)} title="Responder por voz">🔊</button>
             </div>

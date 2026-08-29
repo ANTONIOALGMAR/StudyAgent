@@ -21,11 +21,21 @@ const CONCERN_WORDS = [
   'cuidado', 'atenção', 'atencao', 'erro', 'errado', 'incorreto',
   'não é isso', 'nao e isso', 'quase lá', 'revise', 'ops',
 ]
+const EXCITED_WORDS = [
+  'uau', 'incrível', 'incrivel', 'genial', 'maravilhoso', 'fantástico', 'fantastico',
+  'adorei', 'parabéns de novo', 'show de bola', 'demais!',
+]
+const CONFUSED_WORDS = [
+  'não sei', 'nao sei', 'não tenho certeza', 'nao tenho certeza', 'não entendi',
+  'nao entendi', 'não entendi sua pergunta', 'não ficou claro', 'nao ficou claro',
+]
 
 function moodFromResponse(text: string): FaceState {
   const lower = text.toLowerCase()
   const happy = HAPPY_WORDS.filter((w) => lower.includes(w)).length
   const concern = CONCERN_WORDS.filter((w) => lower.includes(w)).length
+  if (EXCITED_WORDS.some((w) => lower.includes(w))) return 'excited'
+  if (CONFUSED_WORDS.some((w) => lower.includes(w))) return 'confused'
   if (concern > happy) return 'concerned'
   if (happy > concern) return 'happy'
   if (text.trim().endsWith('?')) return 'curious'
