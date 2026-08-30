@@ -69,6 +69,18 @@ fi
 .venv/bin/pip install -r requirements.txt -q
 log "✓ Dependências do backend instaladas"
 
+# Insightface (reconhecimento facial) é OPCIONAL: precisa de onnxruntime/
+# compilação e pode falhar em máquinas sem GPU. Se falhar, o resto do sistema
+# continua funcionando (apenas o reconhecimento facial ficará indisponível).
+log "Instalando insightface (reconhecimento facial — opcional)..."
+if .venv/bin/pip install insightface -q 2>/tmp/opencode/insightface-err.log; then
+    log "✓ insightface instalado"
+else
+    warn "insightface NÃO instalado (reconhecimento facial indisponível)."
+    warn "Motivo: $(tail -n 3 /tmp/opencode/insightface-err.log 2>/dev/null | tr '\n' ' ')"
+    warn "Para tentar depois: $SCRIPT_DIR/backend/.venv/bin/pip install insightface"
+fi
+
 log "Instalando frontend..."
 cd "$SCRIPT_DIR/frontend"
 npm install --silent
