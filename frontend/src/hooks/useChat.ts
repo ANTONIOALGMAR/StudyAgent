@@ -1,4 +1,5 @@
 import { useCallback, useRef, useState } from 'react'
+import { useUserStore } from '../store/userStore'
 import {
   chat,
   type ChatResponse,
@@ -51,6 +52,7 @@ export interface UseChatOptions {
 }
 
 export function useChat({ useScreen, liveOpen, monitorSel, activeDoc, onMood }: UseChatOptions) {
+  const { addXp } = useUserStore()
   const [messages, setMessages] = useState<Message[]>([])
   const [sessionId, setSessionId] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
@@ -98,6 +100,10 @@ export function useChat({ useScreen, liveOpen, monitorSel, activeDoc, onMood }: 
         setLastEvidence(res.evidence ?? null)
         setLastToolsUsed(res.tools_used)
         onMood?.(moodFromResponse(res.response))
+        
+        // Reward XP for interacting with the agent
+        addXp(2) 
+        
         if (opts.onSpeech) await opts.onSpeech(res.response)
       } catch (e) {
         setError(e instanceof Error ? e.message : 'Erro desconhecido')

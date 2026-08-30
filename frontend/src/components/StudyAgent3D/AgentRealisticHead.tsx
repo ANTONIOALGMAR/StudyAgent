@@ -70,13 +70,17 @@ export default function AgentRealisticHead({ state, voice = true }: Props) {
 
   const accent = AGENT3D_STYLES[state].accent
 
+  // Material "porcelana / polímero futurista" fosco: base tecnológica branco-gelo
+  // com leve metalness e clearcoat para reflexão suave, não metálica.
   const material = useMemo(() => {
-    const m = new THREE.MeshStandardMaterial({
-      color: new THREE.Color('#ffffff'),
+    const m = new THREE.MeshPhysicalMaterial({
+      color: new THREE.Color('#dce6f0'),
       emissive: new THREE.Color('#2f7bff'),
       emissiveIntensity: 0.45,
-      metalness: 0.0,
-      roughness: 0.5,
+      metalness: 0.15,
+      roughness: 0.38,
+      clearcoat: 0.2,
+      clearcoatRoughness: 0.4,
       transparent: true,
       opacity: 1.0,
       depthWrite: true,

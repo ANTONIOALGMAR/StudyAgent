@@ -56,39 +56,42 @@ export function useVoice({ onUserMessage }: UseVoiceOptions) {
     async (text: string): Promise<void> => {
       if (!voiceOn || !text.trim()) return
       try {
-      const blob = await speak(stripForSpeech(text))
-      playerRef.current?.pause()
-      const player = new Audio(URL.createObjectURL(blob))
-      playerRef.current = player
+        // Se o texto for muito longo, podemos tentar usar o endpoint de stream
+        // Mas para manter a compatibilidade imediata, usamos o speak normal.
+        // A integração real do stream acontece no loop do agente.
+        const blob = await speak(stripForSpeech(text))
+        playerRef.current?.pause()
+        const player = new Audio(URL.createObjectURL(blob))
+        playerRef.current = player
 
-      // Wire the playing speech into an analyser for real-time mouth sync
-      teardownSpeechGraph()
-      try {
-        const ctx = new AudioContext()
-        const source = ctx.createMediaElementSource(player)
-        const talkAnalyser = ctx.createAnalyser()
-        source.connect(talkAnalyser)
-        talkAnalyser.connect(ctx.destination)
-        registerVoiceAnalyser(talkAnalyser)
-        speechCtxRef.current = ctx
-        speechSourceRef.current = source
-      } catch (e) {
-        console.error('Não foi possível analisar o áudio da fala:', e)
-      }
-
-      setHfState('speaking')
-      setSpeaking(true)
-      try {
-        await new Promise<void>((resolve) => {
-          const cap = setTimeout(resolve, SPEAK_CAP_MS)
-          player.onended = () => { clearTimeout(cap); resolve() }
-          player.onerror = () => { clearTimeout(cap); resolve() }
-          void player.play()
-        })
-      } finally {
-        setSpeaking(false)
+        // Wire the playing speech into an analyser for real-time mouth sync
         teardownSpeechGraph()
-      }
+        try {
+          const ctx = new AudioContext()
+          const source = ctx.createMediaElementSource(player)
+          const talkAnalyser = ctx.createAnalyser()
+          source.connect(talkAnalyser)
+          talkAnalyser.connect(ctx.destination)
+          registerVoiceAnalyser(talkAnalyser)
+          speechCtxRef.current = ctx
+          speechSourceRef.current = source
+        } catch (e) {
+          console.error('Não foi possível analisar o áudio da fala:', e)
+        }
+
+        setHfState('speaking')
+        setSpeaking(true)
+        try {
+          await new Promise<void>((resolve) => {
+            const cap = setTimeout(resolve, SPEAK_CAP_MS)
+            player.onended = () => { clearTimeout(cap); resolve() }
+            player.onerror = () => { clearTimeout(cap); resolve() }
+            void player.play()
+          })
+        } finally {
+          setSpeaking(false)
+          teardownSpeechGraph()
+        }
       } catch (e) {
         console.error('Erro ao reproduzir voz:', e)
       }

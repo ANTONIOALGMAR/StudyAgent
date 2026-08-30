@@ -6,6 +6,9 @@ inteligente quando um modelo configurado não existe.
 """
 
 import os
+import psutil
+import platform
+import shutil
 
 import ollama
 
@@ -21,6 +24,20 @@ MODEL_ROLES = {
     "embedding": ("STUDY_EMBEDDING_MODEL", "nomic-embed-text"),
     "stt": ("STUDY_STT_MODEL", "small"),
     "tts": ("STUDY_TTS_MODEL", "pt_BR-faber-medium"),
+}
+
+# Sugestões de modelos baseadas em RAM (GB)
+HARDWARE_RECOMMENDATIONS = {
+    "text": {
+        "low": "phi3",        # < 8GB
+        "medium": "llama3.1", # 8GB - 16GB
+        "high": "llama3.1:70b" # > 16GB
+    },
+    "vision": {
+        "low": "moondream",    # < 8GB
+        "medium": "qwen2.5vl:7b", # 8GB - 16GB
+        "high": "llava-v1.6"   # > 16GB
+    }
 }
 
 _context_tokens = {
@@ -82,7 +99,19 @@ def resolve(role: str) -> str:
     Retorna o nome EXATO disponível no Ollama (incluindo a tag,
     ex.: 'llama3.1:latest'), evitando erro 404 do modelo sem tag.
     """
+    # Hardware-aware selection: se não houver override no .env, sugere modelo por RAM
     wanted = model(role)
+    
+    # Se o modelo for o default e for de texto/visão, checamos a RAM
+    if wanted in [r[1] for r in MODEL_ROLES.values()] and role in HARDWARE_RECOMMENDATIONS:
+        ram_gb = psutil.virtual_memory().total / (1024**3)
+        if ram_gb < 8:
+            wanted = HARDWARE_RECOMMENDATIONS[role]["low"]
+        elif ram_gb < 16:
+            wanted = HARDWARE_RECOMMENDATIONS[role]["medium"]
+        else:
+            wanted = HARDWARE_RECOMMENDATIONS[role]["high"]
+
     avail = available_models()
     if not avail:
         return wanted
@@ -105,9 +134,11 @@ def hardware_summary() -> dict:
     import platform
     import shutil
 
+    ram_gb = psutil.virtual_memory().total / (1024**3)
     return {
         "python": platform.python_version(),
         "platform": platform.platform(),
+        "ram_gb": round(ram_gb, 2),
         "ollama_host": OLLAMA_HOST,
         "ollama_reachable": bool(available_models()),
         "ffmpeg": bool(shutil.which("ffmpeg")),

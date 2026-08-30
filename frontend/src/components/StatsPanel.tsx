@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useUserStore } from '../store/userStore'
 import {
   getEnhancedDashboard,
   getLeaderboard,
@@ -10,6 +11,7 @@ import {
 } from '../api'
 
 export default function StatsPanel() {
+  const { profile, setProfile } = useUserStore()
   const [data, setData] = useState<EnhancedDashboard | null>(null)
   const [timeData, setTimeData] = useState<TimeAnalytics | null>(null)
   const [lb, setLb] = useState<Leaderboard | null>(null)
@@ -19,10 +21,25 @@ export default function StatsPanel() {
 
   useEffect(() => {
     void Promise.all([getEnhancedDashboard(), getTimeAnalytics(), getLeaderboard()])
-      .then(([d, t, l]) => { setData(d); setTimeData(t); setLb(l) })
+      .then(([d, t, l]) => { 
+        setData(d); 
+        setTimeData(t); 
+        setLb(l);
+        
+        // Sync with global store
+        if (l) {
+          setProfile({
+            name: l.name || 'Estudante',
+            level: l.level,
+            xp: l.total_xp,
+            streak: d.exercises.streak_days,
+            mastery: {} // Will be populated by dashboard data
+          })
+        }
+      })
       .catch(() => {})
       .finally(() => setLoading(false))
-  }, [])
+  }, [setProfile])
 
   async function loadRecs() {
     try {

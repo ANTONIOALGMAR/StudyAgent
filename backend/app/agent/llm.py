@@ -19,19 +19,27 @@ def available_models():
     return [m.model for m in _client.list().models]
 
 
-def chat(messages, images=None):
+def chat(messages, images=None, stream=False):
     if images:
         messages = _attach_images(messages, images)
         role = "vision"
     else:
         role = "text"
     model = resolve(role)
-    log.info("[VISION] model=%s images=%d", model, len(images or []))
+    log.info("[VISION] model=%s images=%d stream=%s", model, len(images or []), stream)
     options = {"num_ctx": context_tokens(role), "num_predict": num_predict()}
     if role == "vision":
         # Temperatura baixa reduz alucinação/confabulação na análise visual.
         options["temperature"] = vision_temperature()
     try:
+        if stream:
+            return _client.chat(
+                model=model,
+                messages=messages,
+                options=options,
+                stream=True,
+            )
+        
         response = _client.chat(
             model=model,
             messages=messages,

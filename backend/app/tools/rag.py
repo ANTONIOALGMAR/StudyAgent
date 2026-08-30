@@ -13,6 +13,9 @@ import requests
 
 from ..config import DATA_DIR, OLLAMA_HOST
 from ..core.model_manager import model as role_model
+from ..core.numpy_store import NumPyStore
+from ..core.chroma_store import ChromaStore
+from ..core.vector_store import VectorStore
 
 INDEX_DIR = DATA_DIR / "rag"
 CHUNK_CHARS = 800
@@ -20,6 +23,16 @@ CHUNK_OVERLAP = 120
 TOP_K = 4
 MAX_CONTEXT_CHARS = 8000
 EMBED_TIMEOUT = 60
+
+# ── Store Selection ──────────────────────────────────────────────
+
+# Alterne para ChromaStore para ativar a nova engine de busca
+STORE_ENGINE = "numpy" # "numpy" | "chroma"
+
+if STORE_ENGINE == "chroma":
+    store = ChromaStore()
+else:
+    store = NumPyStore()
 
 _lock = threading.Lock()
 _cache: dict[str, tuple[np.ndarray, list[dict]]] = {}
@@ -146,41 +159,30 @@ def _index_path(doc_id: str):
 
 
 def has_index(doc_id: str) -> bool:
-    return _index_path(doc_id).exists()
+    return store.exists(doc_id)
 
 
 def build_index(doc_id: str, doc_text: str, embed_fn=None, force=False) -> bool:
     """Constrói e persiste o índice do documento. True se construído agora."""
-    if not force and has_index(doc_id):
+    if not force and store.exists(doc_id):
         return False
     chunks = chunk_document(doc_text)
     if not chunks:
         return False
     vectors = embed_texts([c["text"] for c in chunks], embed_fn)
-    INDEX_DIR.mkdir(parents=True, exist_ok=True)
-    np.savez_compressed(
-        _index_path(doc_id),
-        vectors=vectors,
-        chunks=np.array(json.dumps(chunks, ensure_ascii=False)),
-    )
+    
+    store.add_documents(doc_id, vectors, chunks)
     return True
 
 
 def load_index(doc_id: str):
-    with _cache_lock:
-        if doc_id in _cache:
-            return _cache[doc_id]
-    path = _index_path(doc_id)
-    if not path.exists():
-        return None
-    dados = np.load(path, allow_pickle=False)
-    vectors = dados["vectors"].astype(np.float32)
-    chunks = json.loads(str(dados["chunks"]))
-    with _cache_lock:
-        if len(_cache) > 6:
-            _cache.pop(next(iter(_cache)))
-        _cache[doc_id] = (vectors, chunks)
-    return vectors, chunks
+    # O load_index agora é apenas um wrapper para compatibilidade, 
+    # já que o store gerencia a busca internamente.
+    if store.exists(doc_id):
+        # Retornamos um dummy ou carregamos para manter a assinatura se necessário
+        # Mas a função search() agora usa store.search() diretamente.
+        return True 
+    return None
 
 
 def _rerank(query: str, results: list[dict], top_k: int = TOP_K) -> list[dict]:
@@ -210,23 +212,25 @@ def search(
         page_range: Filtrar por intervalo de páginas (inclusive).
     """
     try:
-        indice = load_index(doc_id)
-        if indice is None:
+        if not store.exists(doc_id):
             build_index(doc_id, doc_text, embed_fn)
-            indice = load_index(doc_id)
-        if indice is None:
+        
+        if not store.exists(doc_id):
             return None
-        vectors, chunks = indice
+            
         qvec = embed_texts([query], embed_fn)[0]
-        scores = vectors @ qvec
-        ordem = np.argsort(scores)[::-1]
-
-        # Coletar mais candidatos para reranking
+        res = store.search(doc_id, qvec, k=k * 3)
+        
+        if res is None:
+            return None
+            
+        scores, chunks = res
+        
+        # Coletar candidatos para reranking
         candidates = []
-        for i in ordem[: k * 3]:
-            c = dict(chunks[int(i)])
+        for i in range(len(chunks)):
+            c = dict(chunks[i])
             c["_score"] = float(scores[i])
-            c["_idx"] = int(i)
             # Filtrar por página
             if page_range and c.get("page") is not None:
                 if not (page_range[0] <= c["page"] <= page_range[1]):

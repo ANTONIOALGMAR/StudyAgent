@@ -11,6 +11,7 @@ from ..core.context_manager import (
 from ..core.model_manager import available_models
 from ..core.orchestrator.evidence import EvidenceStore
 from ..core.orchestrator.validator import ResponseValidator
+from ..core.memory_manager import CognitiveMemory
 from ..core.planner import (
     WHOLE_DOC_MAX_CHARS,
     build_plan,
@@ -38,6 +39,7 @@ log = logging.getLogger("studyagent.vision")
 class StudyAgent:
     def __init__(self):
         self.memory = Memory()
+        self.cognitive_memory = CognitiveMemory()
         self.ctx = ContextManager(
             self.memory,
             summarize_fn=lambda prompt: chat([{"role": "system", "content": prompt}]),
@@ -68,6 +70,12 @@ class StudyAgent:
             requested_doc_id=doc_id,
             session_doc_id=self._session_docs.get(session_id),
         )
+        
+        # ── Memória Cognitiva: Recuperação ──────────────────────────
+        user_facts = self.cognitive_memory.recall(message)
+        # Guardamos os fatos para injetar no prompt e para a reflexão posterior
+        cognitive_context = user_facts if user_facts else []
+
 
         # ── Resolução de monitor: plano > parâmetro > default ───────
         effective_monitor = monitor or 1
@@ -148,7 +156,14 @@ class StudyAgent:
 
         # ── Montagem da mensagem ────────────────────────────────────
         msg_parts = [message]
+        
+        if cognitive_context:
+            facts_str = "\n".join([f"- {f}" for f in cognitive_context])
+            msg_parts.insert(0, f"[MEMÓRIA DO ALUNO]\n{facts_str}\n")
+
         if images and not vision_ctx:
+            # ...existing code...
+
             msg_parts.append(
                 build_image_note(
                     camera=(vision_source == "camera"),
@@ -264,6 +279,15 @@ class StudyAgent:
 
         self.memory.add_message(session_id, "user", message)
         self.memory.add_message(session_id, "assistant", response_text)
+
+        # ── Reflexão Cognitiva: aprende com a interação ────────────────
+        # Executamos em background para não atrasar a resposta ao usuário
+        import threading
+        threading.Thread(
+            target=self._reflect_and_remember, 
+            args=(message, response_text), 
+            daemon=True
+        ).start()
 
         return {
             "session_id": session_id,

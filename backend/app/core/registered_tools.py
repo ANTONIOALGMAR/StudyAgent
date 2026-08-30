@@ -6,6 +6,7 @@ fica no loop do agente — assim o erro de permissão é formatado num lugar só
 
 from ..tools.calculator import calculate
 from ..tools.web_search import distill_page, fetch_page, search
+from ..tools.code_editor import read_file, write_file, edit_file, list_directory, search_in_files
 from .tool_registry import tool
 
 _SEARCH_PAGE_CHARS = 4500
@@ -94,3 +95,86 @@ def open_url_tool(args: dict) -> str:
 )
 def calculate_tool(args: dict) -> str:
     return str(calculate(str(args.get("expression", ""))))
+
+
+@tool(
+    name="read_code",
+    description="Lê o conteúdo de um arquivo de código no sistema de arquivos do usuário.",
+    parameters={
+        "path": {"type": "string", "description": "Caminho absoluto ou relativo ao projeto do arquivo."}
+    },
+    permission="filesystem",
+    required=["path"],
+    version="1.0.0",
+    tags=["code", "filesystem", "read"],
+)
+def read_code_tool(args: dict) -> str:
+    return read_file(str(args.get("path", "")))
+
+
+@tool(
+    name="write_code",
+    description="Cria ou sobrescreve um arquivo de código com o conteúdo fornecido.",
+    parameters={
+        "path": {"type": "string", "description": "Caminho do arquivo a ser escrito."},
+        "content": {"type": "string", "description": "Conteúdo completo do arquivo."}
+    },
+    permission="filesystem",
+    required=["path", "content"],
+    version="1.0.0",
+    tags=["code", "filesystem", "write"],
+)
+def write_code_tool(args: dict) -> str:
+    return write_file(str(args.get("path", "")), str(args.get("content", "")))
+
+
+@tool(
+    name="edit_code",
+    description="Edita um arquivo de código substituindo uma string específica por outra. Use para alterações pontuais.",
+    parameters={
+        "path": {"type": "string", "description": "Caminho do arquivo."},
+        "old_string": {"type": "string", "description": "Texto exato a ser substituído."},
+        "new_string": {"type": "string", "description": "Novo texto para inserir no lugar."}
+    },
+    permission="filesystem",
+    required=["path", "old_string", "new_string"],
+    version="1.0.0",
+    tags=["code", "filesystem", "edit"],
+)
+def edit_code_tool(args: dict) -> str:
+    return edit_file(str(args.get("path", "")), str(args.get("old_string", "")), str(args.get("new_string", "")))
+
+
+@tool(
+    name="list_files",
+    description="Lista arquivos e pastas em um diretório específico.",
+    parameters={
+        "path": {"type": "string", "description": "Caminho do diretório para listar."}
+    },
+    permission="filesystem",
+    required=["path"],
+    version="1.0.0",
+    tags=["code", "filesystem", "list"],
+)
+def list_files_tool(args: dict) -> str:
+    files = list_directory(str(args.get("path", "")))
+    return "\n".join(files) if files else "Diretório vazio ou erro ao listar."
+
+
+@tool(
+    name="search_code",
+    description="Busca por uma string em todos os arquivos de um diretório recursivamente.",
+    parameters={
+        "query": {"type": "string", "description": "Texto a ser buscado."},
+        "path": {"type": "string", "description": "Diretório raiz da busca."}
+    },
+    permission="filesystem",
+    required=["query", "path"],
+    version="1.0.0",
+    tags=["code", "filesystem", "search"],
+)
+def search_code_tool(args: dict) -> str:
+    results = search_in_files(str(args.get("query", "")), str(args.get("path", "")))
+    if not results:
+        return "Nenhuma ocorrência encontrada."
+    return "\n".join([f"{r['path']} - {r['line']}" for r in results])

@@ -6,18 +6,14 @@ import ChatInput from './ChatInput'
 import LivePanel from './LivePanel'
 import Sidebar from './Sidebar'
 import EvidencePanel from './EvidencePanel'
-import { type UploadedDoc, recognizeFace, registerFace } from '../api'
+import CameraPanel from './CameraPanel'
+import PanelManager from './PanelManager'
+import { type UploadedDoc } from '../api'
 import { useChat } from '../hooks/useChat'
 import { useVoice } from '../hooks/useVoice'
 import { useScreen } from '../hooks/useScreen'
 
-const ExercisesPanel = lazy(() => import('./ExercisesPanel'))
-const FlashcardsPanel = lazy(() => import('./FlashcardsPanel'))
 const PdfViewer = lazy(() => import('./PdfViewer'))
-const AchievementsPanel = lazy(() => import('./AchievementsPanel'))
-const ProfilePanel = lazy(() => import('./ProfilePanel'))
-const StatsPanel = lazy(() => import('./StatsPanel'))
-const StudyPlanPanel = lazy(() => import('./StudyPlanPanel'))
 const StudyAgentAvatar = lazy(() => import('./StudyAgent3D/StudyAgentAvatar'))
 
 function PanelFallback() {
@@ -39,14 +35,14 @@ export default function Chat() {
   const [evidenceOpen, setEvidenceOpen] = useState(false)
   const [stage, setStage] = useState(false)
   const [camOpen, setCamOpen] = useState(false)
-  const [exOpen, setExOpen] = useState(false)
-  const [fcOpen, setFcOpen] = useState(false)
-  const [spOpen, setSpOpen] = useState(false)
-  const [stOpen, setStOpen] = useState(false)
-  const [profOpen, setProfOpen] = useState(false)
-  const [achOpen, setAchOpen] = useState(false)
-  const [faceMsg, setFaceMsg] = useState<string | null>(null)
-  const [faceBusy, setFaceBusy] = useState(false)
+  const [panels, setPanels] = useState({
+    exOpen: false,
+    fcOpen: false,
+    spOpen: false,
+    stOpen: false,
+    profOpen: false,
+    achOpen: false,
+  })
 
   useEffect(() => {
     if (activeDoc) localStorage.setItem('studyagent.doc', JSON.stringify(activeDoc))
@@ -102,23 +98,23 @@ export default function Chat() {
     const onKey = (e: KeyboardEvent) => {
       if (e.ctrlKey && e.shiftKey && e.key === 'E') { e.preventDefault(); setEvidenceOpen((v) => !v) }
       if (e.ctrlKey && e.shiftKey && e.key === 'S') { e.preventDefault(); screen.setUseScreenCapture((v) => !v) }
-      if (e.ctrlKey && e.shiftKey && e.key === 'X') { e.preventDefault(); setExOpen((v) => !v) }
-      if (e.ctrlKey && e.shiftKey && e.key === 'F') { e.preventDefault(); setFcOpen((v) => !v) }
+      if (e.ctrlKey && e.shiftKey && e.key === 'X') { e.preventDefault(); setPanels(p => ({ ...p, exOpen: !p.exOpen })) }
+      if (e.ctrlKey && e.shiftKey && e.key === 'F') { e.preventDefault(); setPanels(p => ({ ...p, fcOpen: !p.fcOpen })) }
       if (e.ctrlKey && e.shiftKey && e.key === 'L') { e.preventDefault(); screen.setLiveOpen((v) => !v) }
-      if (e.ctrlKey && e.shiftKey && e.key === 'H') { e.preventDefault(); setStOpen((v) => !v) }
+      if (e.ctrlKey && e.shiftKey && e.key === 'H') { e.preventDefault(); setPanels(p => ({ ...p, stOpen: !p.stOpen })) }
       if (e.key === 'Escape') {
         if (evidenceOpen) setEvidenceOpen(false)
-        else if (exOpen) setExOpen(false)
-        else if (fcOpen) setFcOpen(false)
-        else if (spOpen) setSpOpen(false)
-        else if (stOpen) setStOpen(false)
-        else if (profOpen) setProfOpen(false)
-        else if (achOpen) setAchOpen(false)
+        else if (panels.exOpen) setPanels(p => ({ ...p, exOpen: false }))
+        else if (panels.fcOpen) setPanels(p => ({ ...p, fcOpen: false }))
+        else if (panels.spOpen) setPanels(p => ({ ...p, spOpen: false }))
+        else if (panels.stOpen) setPanels(p => ({ ...p, stOpen: false }))
+        else if (panels.profOpen) setPanels(p => ({ ...p, profOpen: false }))
+        else if (panels.achOpen) setPanels(p => ({ ...p, achOpen: false }))
       }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [evidenceOpen, exOpen, fcOpen, spOpen, stOpen, profOpen, achOpen, screen])
+  }, [evidenceOpen, panels, screen])
 
   function send() {
     const text = input.trim()
@@ -126,87 +122,8 @@ export default function Chat() {
     void chatHook.sendText(text)
   }
 
-  function captureFrame(): string | null {
-    const video = document.querySelector<HTMLVideoElement>('.camera-panel video')
-    if (!video || !video.videoWidth) return null
-    const canvas = document.createElement('canvas')
-    canvas.width = video.videoWidth
-    canvas.height = video.videoHeight
-    canvas.getContext('2d')?.drawImage(video, 0, 0)
-    return canvas.toDataURL('image/jpeg', 0.85).split(',')[1]
-  }
-
-  function snapAndAsk() {
-    const video = document.querySelector<HTMLVideoElement>('.camera-panel video')
-    if (!video || !video.videoWidth) return
-    const b64 = captureFrame()
-    if (!b64) return
-    setCamOpen(false)
-    const question = input.trim() || 'O que você vê nesta imagem?'
-    setInput('')
-    void chatHook.sendText(question, { imageB64: b64 })
-  }
-
   const camStreamRef = useRef<MediaStream | null>(null)
   const videoRef = useRef<HTMLVideoElement | null>(null)
-
-  async function openCamera() {
-    chatHook.setError(null)
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ video: { width: { ideal: 1280 }, height: { ideal: 720 } } })
-      camStreamRef.current = stream
-      setCamOpen(true)
-    } catch {
-      chatHook.setError('Câmera não autorizada no navegador')
-    }
-  }
-
-  function closeCamera() {
-    camStreamRef.current?.getTracks().forEach((t) => t.stop())
-    camStreamRef.current = null
-    setCamOpen(false)
-  }
-
-  async function handleRecognize() {
-    const b64 = captureFrame()
-    if (!b64) { setFaceMsg('Aguarde a câmera estabilizar…'); return }
-    setFaceBusy(true)
-    setFaceMsg(null)
-    try {
-      const res = await recognizeFace(b64)
-      if (!res.present) setFaceMsg('Nenhum rosto claro detectado na imagem.')
-      else if (res.name) setFaceMsg(`Olá, ${res.name}! Bem-vindo(a) de volta 👋`)
-      else setFaceMsg('Rosto detectado, mas não cadastrado. Use "Cadastrar rosto".')
-    } catch (e) {
-      setFaceMsg(e instanceof Error ? e.message : 'Falha no reconhecimento facial')
-    } finally {
-      setFaceBusy(false)
-    }
-  }
-
-  async function handleRegisterFace() {
-    const b64 = captureFrame()
-    if (!b64) { setFaceMsg('Aguarde a câmera estabilizar…'); return }
-    const name = window.prompt('Como devo chamar você? (seu nome)')
-    if (!name || !name.trim()) return
-    setFaceBusy(true)
-    setFaceMsg(null)
-    try {
-      const res = await registerFace(name.trim(), b64)
-      setFaceMsg(`Rosto cadastrado como "${res.name}". Agora posso reconhecê-lo(a)!`)
-    } catch (e) {
-      setFaceMsg(e instanceof Error ? e.message : 'Falha ao cadastrar rosto')
-    } finally {
-      setFaceBusy(false)
-    }
-  }
-
-  useEffect(() => {
-    if (camOpen && videoRef.current && camStreamRef.current) {
-      videoRef.current.srcObject = camStreamRef.current
-      void videoRef.current.play().catch(() => {})
-    }
-  }, [camOpen])
 
   useEffect(() => {
     return () => {
@@ -233,15 +150,15 @@ export default function Chat() {
   const sidebarItems = [
     { icon: '🖥', label: 'Anexar tela', active: screen.useScreenCapture, onClick: () => screen.setUseScreenCapture(!screen.useScreenCapture), title: 'Anexar captura de tela à mensagem' },
     { icon: '📺', label: 'Telas ao vivo', active: screen.liveOpen, onClick: () => { screen.setLiveMinimized(false); screen.setLiveOpen(!screen.liveOpen) }, title: 'Acompanhe o que o agente vê' },
-    { icon: '📷', label: 'Câmera', active: camOpen, onClick: () => camOpen ? closeCamera() : void openCamera(), title: 'Aponte a câmera e pergunte' },
+    { icon: '📷', label: 'Câmera', active: camOpen, onClick: () => setCamOpen(!camOpen), title: 'Aponte a câmera e pergunte' },
     { icon: '📎', label: 'Anexar PDF', active: !!activeDoc, onClick: () => fileInputRef.current?.click(), title: 'Estudar um documento' },
     { icon: '📖', label: 'Ler PDF', active: !!viewerDoc, onClick: () => setViewerDoc(viewerDoc ? null : activeDoc), title: 'Abrir/fechar leitor de documentos' },
-    { icon: '🎯', label: 'Exercícios', active: exOpen, onClick: () => setExOpen(!exOpen), title: 'Gerar exercícios com correção' },
-    { icon: '🃏', label: 'Flashcards', active: fcOpen, onClick: () => setFcOpen(!fcOpen), title: 'Revisão espaçada com flashcards' },
-    { icon: '📋', label: 'Plano de estudo', active: spOpen, onClick: () => setSpOpen(!spOpen), title: 'Gerar plano de estudo estruturado' },
-    { icon: '📊', label: 'Progresso', active: stOpen, onClick: () => setStOpen(!stOpen), title: 'Dashboard de progresso' },
-    { icon: '👤', label: 'Perfil', active: profOpen, onClick: () => setProfOpen(!profOpen), title: 'Perfil do aluno e análise de aprendizado' },
-    { icon: '🏆', label: 'Conquistas', active: achOpen, onClick: () => setAchOpen(!achOpen), title: 'Conquistas e sequências de estudo' },
+    { icon: '🎯', label: 'Exercícios', active: panels.exOpen, onClick: () => setPanels(p => ({ ...p, exOpen: !p.exOpen })), title: 'Gerar exercícios com correção' },
+    { icon: '🃏', label: 'Flashcards', active: panels.fcOpen, onClick: () => setPanels(p => ({ ...p, fcOpen: !p.fcOpen })), title: 'Revisão espaçada com flashcards' },
+    { icon: '📋', label: 'Plano de estudo', active: panels.spOpen, onClick: () => setPanels(p => ({ ...p, spOpen: !p.spOpen })), title: 'Gerar plano de estudo estruturado' },
+    { icon: '📊', label: 'Progresso', active: panels.stOpen, onClick: () => setPanels(p => ({ ...p, stOpen: !p.stOpen })), title: 'Dashboard de progresso' },
+    { icon: '👤', label: 'Perfil', active: panels.profOpen, onClick: () => setPanels(p => ({ ...p, profOpen: !p.profOpen })), title: 'Perfil do aluno e análise de aprendizado' },
+    { icon: '🏆', label: 'Conquistas', active: panels.achOpen, onClick: () => setPanels(p => ({ ...p, achOpen: !p.achOpen })), title: 'Conquistas e sequências de estudo' },
     { icon: '👁', label: 'Olhar agora', active: false, onClick: screen.peekScreen, title: 'Captura rápida da tela atual' },
     { icon: '🎭', label: 'Modo palco', active: stage, onClick: () => setStage(true), title: 'Rosto em tela cheia' },
   ]
@@ -301,60 +218,23 @@ export default function Chat() {
         )}
 
         <Suspense fallback={<PanelFallback />}>
-          {exOpen && (
-            <div className="live-panel exercises-panel">
-              <div className="live-head"><strong>🎯 exercícios</strong><button className="btn-screen" onClick={() => setExOpen(false)}>✕</button></div>
-              <ExercisesPanel onMood={(m) => flashReaction(m as FaceState)} />
-            </div>
-          )}
-
-          {fcOpen && (
-            <div className="live-panel flashcards-panel">
-              <div className="live-head"><strong>🃏 flashcards</strong><button className="btn-screen" onClick={() => setFcOpen(false)}>✕</button></div>
-              <FlashcardsPanel onMood={(m) => flashReaction(m as FaceState)} />
-            </div>
-          )}
-
-          {spOpen && (
-            <div className="live-panel studyplan-panel">
-              <div className="live-head"><strong>📋 plano de estudo</strong><button className="btn-screen" onClick={() => setSpOpen(false)}>✕</button></div>
-              <StudyPlanPanel onMood={(m) => flashReaction(m as FaceState)} />
-            </div>
-          )}
-
-          {stOpen && (
-            <div className="live-panel stats-panel">
-              <div className="live-head"><strong>📊 progresso</strong><button className="btn-screen" onClick={() => setStOpen(false)}>✕</button></div>
-              <StatsPanel />
-            </div>
-          )}
-
-          {profOpen && (
-            <div className="live-panel profile-panel">
-              <div className="live-head"><strong>👤 perfil</strong><button className="btn-screen" onClick={() => setProfOpen(false)}>✕</button></div>
-              <ProfilePanel />
-            </div>
-          )}
-
-          {achOpen && (
-            <div className="live-panel achievements-panel">
-              <div className="live-head"><strong>🏆 conquistas</strong><button className="btn-screen" onClick={() => setAchOpen(false)}>✕</button></div>
-              <AchievementsPanel />
-            </div>
-          )}
+          <PanelManager 
+            panels={panels} 
+            setPanels={(id, val) => setPanels(p => ({ ...p, [`${id}Open` as keyof typeof panels]: val }))} 
+            onMood={flashReaction} 
+          />
         </Suspense>
 
         {camOpen && (
-            <div className="camera-panel">
-              <video ref={videoRef} autoPlay muted playsInline />
-              <div className="camera-actions">
-                <button className="btn-send" onClick={snapAndAsk} disabled={chatHook.loading}>📸 capturar e perguntar</button>
-                <button className="btn-screen" onClick={handleRecognize} disabled={faceBusy}>👤 reconhecer</button>
-                <button className="btn-screen" onClick={handleRegisterFace} disabled={faceBusy}>✍ cadastrar rosto</button>
-                <button className="btn-screen" onClick={closeCamera}>✕ fechar</button>
-              </div>
-              {faceMsg && <div className="camera-face-msg">{faceBusy ? '⏳ processando…' : faceMsg}</div>}
-            </div>
+          <CameraPanel 
+            isOpen={camOpen} 
+            onClose={() => setCamOpen(false)} 
+            loading={chatHook.loading}
+            onCapture={(b64, question) => {
+              setCamOpen(false)
+              void chatHook.sendText(question, { imageB64: b64 })
+            }}
+          />
         )}
 
         {(chatHook.lastEvidence || chatHook.lastToolsUsed.length > 0) && (

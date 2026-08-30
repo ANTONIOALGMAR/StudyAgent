@@ -4,12 +4,13 @@ from __future__ import annotations
 
 from fastapi import APIRouter, File, HTTPException, UploadFile
 from fastapi.concurrency import run_in_threadpool
-from fastapi.responses import Response
+from fastapi.responses import Response, StreamingResponse
 from pydantic import BaseModel
 
 from ..agent.agent import PermissionDeniedError
 from ..audio import speech_to_text, text_to_speech
 from ..security.permissions import PermissionManager
+from .audio_stream import audio_stream_generator
 
 router = APIRouter(prefix="/api")
 permissions = PermissionManager()
@@ -39,3 +40,20 @@ def speak(req: SpeakRequest):
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
     return Response(content=wav, media_type="audio/wav")
+
+
+@router.post("/audio/stream")
+async def speak_stream(messages: list, images: list[str] = None):
+    """
+    Endpoint de streaming de voz. 
+    Recebe a conversa, gera texto via LLM e retorna áudio em chunks.
+    """
+    try:
+        permissions.require("microphone")
+    except PermissionDeniedError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+        
+    return StreamingResponse(
+        audio_stream_generator(messages, images), 
+        media_type="audio/wav"
+    )

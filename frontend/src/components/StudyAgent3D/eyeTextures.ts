@@ -31,7 +31,7 @@ export function createIrisTexture(color = 'azul'): THREE.Texture {
 
   const hue =
     color === 'azul'
-      ? { base: '#4a7fd4', mid: '#3a66b8', dark: '#26427e', ring: '#1e355f' }
+      ? { base: '#7dd9ff', mid: '#38c3ff', dark: '#0095d9', ring: '#00cfff' }
       : color === 'verde'
         ? { base: '#5c8a4a', mid: '#4c743c', dark: '#335028', ring: '#263d1e' }
         : { base: '#6b4a2a', mid: '#54371d', dark: '#3a2410', ring: '#2a1a0a' }
@@ -74,6 +74,31 @@ export function createIrisTexture(color = 'azul'): THREE.Texture {
   ctx.beginPath()
   ctx.arc(c, c, limboR, 0, Math.PI * 2)
   ctx.stroke()
+
+  // anel interno tecnológico (junto à pupila, luminoso)
+  const ringR = pupilR * 1.45
+  ctx.save()
+  ctx.strokeStyle = `rgba(0,207,255,0.8)`
+  ctx.lineWidth = 5
+  ctx.shadowColor = '#00cfff'
+  ctx.shadowBlur = 22
+  ctx.beginPath()
+  ctx.arc(c, c, ringR, 0, Math.PI * 2)
+  ctx.stroke()
+  ctx.restore()
+
+  // leve emissão ciano no corpo da íris (efeito luminoso holográfico)
+  ctx.save()
+  ctx.globalCompositeOperation = 'lighter'
+  const glow = ctx.createRadialGradient(c, c, pupilR, c, c, irisOuter * 0.9)
+  glow.addColorStop(0, 'rgba(120,225,255,0.28)')
+  glow.addColorStop(0.5, 'rgba(60,200,255,0.10)')
+  glow.addColorStop(1, 'rgba(0,207,255,0)')
+  ctx.fillStyle = glow
+  ctx.beginPath()
+  ctx.arc(c, c, irisOuter, 0, Math.PI * 2)
+  ctx.fill()
+  ctx.restore()
 
   // pupila preta
   const pg = ctx.createRadialGradient(c, c, pupilR * 0.2, c, c, pupilR)
