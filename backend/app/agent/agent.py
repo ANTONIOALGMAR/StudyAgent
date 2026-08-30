@@ -72,7 +72,10 @@ class StudyAgent:
         )
         
         # ── Memória Cognitiva: Recuperação ──────────────────────────
-        user_facts = self.cognitive_memory.recall(message)
+        # Componente opcional de personalização; se ausente/indisponível,
+        # o chat segue sem lembrar fatos (não deve nunca quebrar a conversa).
+        cognitive_memory = getattr(self, "cognitive_memory", None)
+        user_facts = cognitive_memory.recall(message) if cognitive_memory else []
         # Guardamos os fatos para injetar no prompt e para a reflexão posterior
         cognitive_context = user_facts if user_facts else []
 
@@ -295,6 +298,46 @@ class StudyAgent:
             "tools_used": tools_used,
             "evidence": evidence.summary() if evidence else None,
         }
+
+    def _reflect_and_remember(self, message: str, response: str) -> None:
+        """Aprende com a interação em segundo plano (memória cognitiva épisódica).
+
+        Extrai fatos declarativos simples do que o aluno escreveu (heurística,
+        barato e sem bloquear) e os salva via CognitiveMemory. Nunca deve lançar
+        exceção — roda em thread daemon.
+        """
+        try:
+            if not message or not message.strip():
+                return
+            cognitive_memory = getattr(self, "cognitive_memory", None)
+            if cognitive_memory is None:
+                return
+            for chunk in self._candidate_facts(message):
+                try:
+                    cognitive_memory.remember(chunk)
+                except Exception:
+                    continue
+        except Exception as exc:
+            log.warning("[COGNITIVE] reflect_failed: %s", exc)
+
+    def _candidate_facts(self, message: str) -> list[str]:
+        """Pequena extração heurística de fatos sobre o aluno."""
+        patterns = [
+            "eu prefiro", "eu gosto", "eu adoro", "eu odeio", "eu detesto",
+            "meu nome é", "eu sou", "meu curso", "minha escola", "eu estudo",
+            "estou estudando", "preciso de ajuda com", "estou com dificuldade",
+            "tenho prova", "minha prova", "meu professor", "minha matéria",
+        ]
+        lowered = message.lower()
+        facts: list[str] = []
+        for punct in (".", "!", "?"):
+            for seg in message.split(punct):
+                seg_low = seg.lower().strip()
+                for p in patterns:
+                    if p in seg_low and len(seg.strip()) > 3:
+                        facts.append(seg.strip()[:220])
+                        break
+        return facts[:6]
 
     def _run_tool_loop(self, messages, images, tools_used, allow_tools=True):
         """Agent Loop V2: retry + circuit breaker + evidence por step.

@@ -99,11 +99,14 @@ def resolve(role: str) -> str:
     Retorna o nome EXATO disponível no Ollama (incluindo a tag,
     ex.: 'llama3.1:latest'), evitando erro 404 do modelo sem tag.
     """
-    # Hardware-aware selection: se não houver override no .env, sugere modelo por RAM
     wanted = model(role)
-    
-    # Se o modelo for o default e for de texto/visão, checamos a RAM
-    if wanted in [r[1] for r in MODEL_ROLES.values()] and role in HARDWARE_RECOMMENDATIONS:
+
+    # Hardware-aware selection: SÓ quando o usuário NÃO definiu a variável de
+    # ambiente. Detectar override pela presença da env (e não pelo valor, que
+    # pode coincidir com o default como 'qwen2.5vl:7b' em vision/synthesis).
+    env_name, _default = MODEL_ROLES[role]
+    override = os.environ.get(env_name) is not None
+    if not override and role in HARDWARE_RECOMMENDATIONS:
         ram_gb = psutil.virtual_memory().total / (1024**3)
         if ram_gb < 8:
             wanted = HARDWARE_RECOMMENDATIONS[role]["low"]
