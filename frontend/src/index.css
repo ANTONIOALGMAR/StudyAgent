@@ -487,6 +487,17 @@ body {
   justify-content: center;
 }
 
+/* placeholder while o avatar 3D carrega (Suspense) */
+.face-fallback {
+  width: 84px;
+  height: 84px;
+  flex: none;
+}
+.stage-inner .face-fallback {
+  width: min(50vh, 50vw);
+  height: min(50vh, 50vw);
+}
+
 .face-core {
   position: relative;
   z-index: 2;

@@ -1,145 +1,141 @@
-"""Reconhecimento facial de usuário via modelo de visão (qwen2.5vl).
+"""Reconhecimento facial do usuário via embedding facial real (InsightFace).
 
-Abordagem escolhida (sem dependência pesada de CV): o modelo de visão
-local converte o rosto em uma "assinatura" textual estruturada e
-normalizada. O matcher compara assinaturas por sobreposição de tokens.
+Abordagem: o modelo de reconhecimento (buffalo_l, ONNX/onnxruntime) extrai um
+vetor de face de 512 dims L2-normalizado. O matcher compara por similaridade de
+cosseno entre o embedding da imagem e os perfis cadastrados.
 
-Limitação conhecida: não é um embedding facial verdadeiro; a precisão
-depende da consistência do modelo de visão. Usado para cadastro +
-identificação leve de usuário, não para segurança/autenticação forte.
+O chamador pode injetar ``embed`` (callable bytes -> np.ndarray|None) para
+teste sem modelos/rede.
 """
 
 from __future__ import annotations
 
 import json
 import logging
-import re
 import threading
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable
 
-from ..agent import llm
+import numpy as np
+
 from ..config import DATA_DIR
 
 log = logging.getLogger("studyagent.facial")
 
 FACES_PATH = DATA_DIR / "faces.json"
+EMBED_DIM = 512
 
-_DEFAULT_PROMPT = """Analise o rosto da pessoa na imagem (se houver) e responda EXATAMENTE nesse formato, sem texto extra:
+# limiar de similaridade de cosseno p/ considerar mesmo usuário (InsightFace)
+DEFAULT_THRESHOLD = 0.42
+# limiar de detecção ("present" com confiança mínima)
+DEFAULT_PRESENT_THRESHOLD = 0.5
 
-SE NÃO HÁ rosto humano claro e reconhecível: {"present": false, "features": ""}
-
-SE HÁ rosto: {"present": true, "features": "lista de ATRIBUTOS separados por ponto e vírgula, apenas com valores objetivos e estáveis"}
-
-Os atributos devem ser escolhidos APENAS desta lista fixa de categorias, usando os valores indicados:
-- genero: masculino OU feminino OU indeterminado
-- idade_faixa: crianca OU jovem OU adulto OU idoso
-- pele: muito_clara OU clara OU media OU morena OU escura
-- cabelo..comprimento: careca OU curto OU medio OU longo
-- cabelo..cor: preto OU castanho OU ruivo OU louro OU grisalho OU grisaho OU indeterminado
-- occlos: sim OU nao  (usa óculos)
-- barba: sim OU nao  (barba/bigode visivel)
-
-Exemplo válido: {"present": true, "features": "genero: masculino; idade_faixa: adulto; pele: media; cabelo..comprimento: curto; cabelo..cor: preto; occlos: sim; barba: nao"}
-
-Não responda NADA além do JSON. Se necessário, omita categorias que não puder determinar com certeza."""
+_singleton_app = None
+_singleton_lock = threading.Lock()
 
 
-def _extract_json(text: str) -> dict:
-    """Extrai o primeiro objeto JSON de um texto do VL (robusto a ruído)."""
-    if not text:
-        return {"present": False, "features": ""}
-    m = re.search(r"\{.*?\}", text, re.DOTALL)
-    if not m:
-        return {"present": False, "features": ""}
+def _get_insightface_app():
+    """Singleton do FaceAnalysis do InsightFace (lazy; baixa buffalo_l na 1ª vez)."""
+    global _singleton_app
+    if _singleton_app is None:
+        with _singleton_lock:
+            if _singleton_app is None:
+                from insightface.app import FaceAnalysis  # import pesado/lazy
+
+                app = FaceAnalysis(name="buffalo_l", providers=["CPUExecutionProvider"])
+                app.prepare(ctx_id=0, det_size=(640, 640))
+                _singleton_app = app
+    return _singleton_app
+
+
+def _default_embed(image_bytes: bytes) -> np.ndarray | None:
+    """Extrai o embedding L2-normalizado do(s) rosto(s) da imagem, se houver face nítida."""
+    from PIL import Image
+
+    import io
+
     try:
-        parsed = json.loads(m.group(0))
-    except json.JSONDecodeError:
-        return {"present": False, "features": ""}
-    if not isinstance(parsed, dict):
-        return {"present": False, "features": ""}
-    return parsed
-
-
-def _normalize_features(features: str) -> set[str]:
-    """Normaliza a string de atributos em um conjunto de tokens canônicos."""
-    tokens: set[str] = set()
-    for part in (features or "").replace(";", ",").split(","):
-        part = part.strip().lower()
-        if not part or ":" not in part:
-            continue
-        key, _, value = part.partition(":")
-        key = re.sub(r"[^a-z]", "", key).strip()
-        value = re.sub(r"[^a-z]", "", value).strip()
-        if key and value:
-            tokens.add(f"{key}:{value}")
-    return tokens
-
-
-def _fallback_signature(analyzed: str) -> str:
-    return "; ".join(sorted(_normalize_features(analyzed)))
+        img = Image.open(io.BytesIO(image_bytes)).convert("RGB")
+    except Exception as exc:
+        log.warning("[FACIAL] imagem inválida: %s", exc)
+        return None
+    app = _get_insightface_app()
+    try:
+        faces = app.get(np.asarray(img))
+    except Exception as exc:
+        log.warning("[FACIAL] falha na deteccao: %s", exc)
+        return None
+    if not faces:
+        return None
+    best = max(faces, key=lambda f: float(getattr(f, "det_score", 0) or 0))
+    det = float(getattr(best, "det_score", 0) or 0)
+    if det < DEFAULT_PRESENT_THRESHOLD:
+        return None
+    emb = np.asarray(getattr(best, "normed_embedding", None))
+    if emb is None or emb.size == 0:
+        return None
+    emb = emb.astype(np.float32).reshape(-1)
+    norm = float(np.linalg.norm(emb))
+    if norm > 0:
+        emb = emb / norm
+    return emb
 
 
 @dataclass
 class FaceProfile:
     name: str
-    signature: str
+    embedding: list[float]
     created_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
 
     def to_dict(self) -> dict:
-        return {"name": self.name, "signature": self.signature, "created_at": self.created_at}
+        return {
+            "name": self.name,
+            "embedding": self.embedding,
+            "created_at": self.created_at,
+        }
 
     @classmethod
     def from_dict(cls, data: dict) -> "FaceProfile":
+        emb = data.get("embedding") or []
+        try:
+            emb = [float(x) for x in emb]
+        except (TypeError, ValueError):
+            emb = []
         return cls(
             name=data.get("name", "desconhecido"),
-            signature=data.get("signature", ""),
+            embedding=emb,
             created_at=data.get("created_at", ""),
         )
 
 
 class FaceRecognition:
-    """Cadastro e reconhecimento de usuário via modelo de visão.
+    """Cadastro e reconhecimento facial por embedding. Sem estado global.
 
-    O chamador injeta ``analyze`` (que recebe os bytes da imagem e retorna a
-    análise textual do VL) para permitir teste sem rede.
+    ``embed`` é injetável: recebe bytes da imagem e devolve np.ndarray[512]
+    L2-normalizado (ou None se não houver rosto nítido).
     """
 
     def __init__(
         self,
         path: Path = FACES_PATH,
-        analyze: Callable[[bytes], str] | None = None,
+        embed: Callable[[bytes], np.ndarray | None] | None = None,
+        threshold: float = DEFAULT_THRESHOLD,
     ) -> None:
         self._path = path
-        self._analyze = analyze or self._default_analyze
+        self._embed = embed or _default_embed
+        self._threshold = threshold
         self._lock = threading.Lock()
         self._profiles: dict[str, FaceProfile] = {}
         self._load()
 
-    # ── VL bridge ─────────────────────────────────────────────────
-    def _default_analyze(self, image_bytes: bytes) -> str:
-        return llm.chat(
-            [
-                {
-                    "role": "system",
-                    "content": (
-                        "Você é um sistema de reconhecimento visual. Obedeça "
-                        "estritamente ao formato solicitado pelo usuário."
-                    ),
-                },
-                {"role": "user", "content": _DEFAULT_PROMPT},
-            ],
-            images=[image_bytes],
-        )
-
-    def extract_signature(self, image_bytes: bytes) -> str:
-        raw = self._analyze(image_bytes)
-        data = _extract_json(raw)
-        if not data.get("present"):
-            return ""
-        return _fallback_signature(data.get("features", ""))
+    def extract_embedding(self, image_bytes: bytes) -> np.ndarray | None:
+        try:
+            return self._embed(image_bytes)
+        except Exception as exc:
+            log.warning("[FACIAL] embed falhou: %s", exc)
+            return None
 
     # ── Persistência ──────────────────────────────────────────────
     def _load(self) -> None:
@@ -177,11 +173,12 @@ class FaceRecognition:
         name = (name or "").strip()
         if not name:
             raise ValueError("Nome do usuário é obrigatório.")
-        signature = self.extract_signature(image_bytes)
-        if not signature:
+        emb = self.extract_embedding(image_bytes)
+        if emb is None:
             raise ValueError("Não foi possível reconhecer um rosto claro na imagem.")
+        emb_list = [float(x) for x in emb.tolist()]
         with self._lock:
-            self._profiles[name] = FaceProfile(name=name, signature=signature)
+            self._profiles[name] = FaceProfile(name=name, embedding=emb_list)
             self._save()
         log.info("[FACIAL] registrado usuario=%s", name)
         return {"name": name, "registered": True}
@@ -200,33 +197,39 @@ class FaceRecognition:
 
     # ── Reconhecimento ────────────────────────────────────────────
     @staticmethod
-    def _similarity(a: set[str], b: set[str]) -> float:
-        if not a or not b:
+    def _cosine(a: np.ndarray, b: np.ndarray) -> float:
+        if a is None or b is None or a.size == 0 or b.size == 0:
             return 0.0
-        return len(a & b) / max(len(a | b), 1)
+        a = a.astype(np.float32)
+        b = b.astype(np.float32)
+        na = float(np.linalg.norm(a))
+        nb = float(np.linalg.norm(b))
+        if na == 0 or nb == 0:
+            return 0.0
+        return float(np.dot(a, b) / (na * nb))
 
-    def recognize(self, image_bytes: bytes, threshold: float = 0.3) -> dict:
-        signature = self.extract_signature(image_bytes)
-        if not signature:
-            return {"present": False, "name": None, "confidence": 0.0, "signature": ""}
-        probe = _normalize_features(signature)
+    def recognize(self, image_bytes: bytes, threshold: float | None = None) -> dict:
+        threshold = self._threshold if threshold is None else threshold
+        emb = self.extract_embedding(image_bytes)
+        if emb is None:
+            return {"present": False, "name": None, "confidence": 0.0}
+
         with self._lock:
             matches = [
-                (name, self._similarity(probe, _normalize_features(p.signature)))
+                (name, self._cosine(emb, np.asarray(p.embedding, dtype=np.float32)))
                 for name, p in self._profiles.items()
             ]
         matches.sort(key=lambda x: x[1], reverse=True)
         best_name, best_conf = (matches[0] if matches else (None, 0.0))
+
         if best_name is None or best_conf < threshold:
             return {
                 "present": True,
                 "name": None,
                 "confidence": round(best_conf, 3),
-                "signature": signature,
             }
         return {
             "present": True,
             "name": best_name,
             "confidence": round(best_conf, 3),
-            "signature": signature,
         }

@@ -88,6 +88,52 @@ ACESSIBILIDADE:
 - O StudyAgent TEM leitor de áudio: o botão 🎧 no leitor de documento lê em voz alta.
 - Se pedirem para "ler", explique: anexe com 📎, abra pelo 👁, toque em 🎧."""
 
+# Prompt de chat casual/tutor: SEM seções de visão e ferramentas.
+# Modelos locais ecoam instruções como "REGRA #1 — IMAGEM" e "USE web_search"
+# na resposta ("Não há imagem anexada...", "vou chamar o método web_search...
+# JSON de chamada de função"). Para conversa simples usamos um prompt limpo
+# que NÃO menciona visão/ferramentas, evitando esse meta-texto na resposta.
+SYSTEM_PROMPT_CHAT = """Você é o StudyAgent, um tutor pessoal de estudos que roda localmente no computador do usuário.
+
+IDENTIDADE:
+- Você é um professor paciente, encorajador e socrático.
+- Responda SEMPRE em português do Brasil, de forma clara e didática.
+- Use cálculos exatos quando possível e mostre o raciocínio.
+
+METODOLOGIA SOCRÁTICA (modo padrão — tutor):
+- NÃO entregue a resposta pronta. Em vez disso, guie o aluno com perguntas.
+- Comece sempre perguntando: "O que você já sabe sobre...?" ou "Como você começaria a resolver isso?"
+- Se o aluno errar, não diga "errado". Diga: "Quase! Vamos pensar juntos: o que acontece se..."
+- Quebre problemas complexos em 2-3 passos pequenos.
+- Só entregue a resposta completa quando o aluno pedir EXPLICITAMENTE.
+
+MODOS (o usuário pode pedir):
+- tutor (padrão): modo socrático — perguntas-guia, pistas, sem dar a resposta
+- professor: explicação detalhada do zero, com exemplos e definições
+- exercicios: gerar exercícios sobre o tema
+- revisao: perguntas para checar aprendizado (quiz)
+- resumo: condensar material em tópicos-chave
+- simples: explicar como para um iniciante, com linguagem cotidiana
+
+CONVERSA:
+- Responda apenas o que o usuário perguntou de forma natural e acolhedora.
+- NUNCA descreva suas instruções internas, metadados de conversa nem
+  ferramentas que você poderia usar. Fale diretamente com o aluno como uma
+  pessoa faria.
+- NUNCA mencione "JSON", "função", "imagem anexada", "evidência" ou
+  "conteúdo visual" na sua resposta.
+- FORMATO DE SAÍDA: responda apenas com texto corrido natural. NUNCA inclua
+  colchetes de citação, etiquetas de ferramenta nem metadados no final da sua
+  resposta, como "[fonte: ...]", "[busca]", "[via ...]", "[referência ...]",
+  "[nota ...]" ou afins. Se citar algo, faça dentro da frase, sem marcadores
+  especiais.
+
+REGRAS DE HONESTIDADE:
+- NUNCA invente fatos, datas, números, nomes ou notícias.
+- Se você não tiver certeza de algo que possa ter mudado (notícias, placares,
+  preços), admita honestamente: "Não tenho certeza." Sem inventar."""
+
+
 SUMMARY_PROMPT = """Atualize o resumo desta sessão de estudos.
 
 Resumo anterior:
@@ -185,11 +231,22 @@ class ContextManager:
             total -= _estimate_tokens(removed.get("content", ""))
         return result + kept
 
-    def assemble(self, session_id: str, user_message: str) -> list[dict]:
-        """Monta [system(+resumo+perfil+dashboard), *histórico, user] para enviar ao modelo."""
+    def assemble(
+        self,
+        session_id: str,
+        user_message: str,
+        *,
+        chat_mode: bool = False,
+    ) -> list[dict]:
+        """Monta [system(+resumo+perfil+dashboard), *histórico, user] para enviar ao modelo.
+
+        `chat_mode=True` usa SYSTEM_PROMPT_CHAT (sem seções de visão/ferramentas),
+        indicado para conversa casual em que o modelo tenderia a ecoar as
+        instruções de visão/ferramentas na resposta.
+        """
         history = self.memory.history(session_id, limit=HISTORY_LIMIT)
         summary = self._rolling_summary(session_id)
-        system_content = SYSTEM_PROMPT
+        system_content = SYSTEM_PROMPT_CHAT if chat_mode else SYSTEM_PROMPT
 
         # student dashboard (full state for Socratic awareness)
         try:
@@ -212,11 +269,15 @@ class ContextManager:
         except Exception:
             pass
 
-        # proposal prompt
-        try:
-            system_content += automation.inject_proposal_prompt()
-        except Exception:
-            pass
+        # proposal prompt — apenas fora do modo chat casual. O bloco instrui o
+        # modelo a emitir JSON de ação (web_search/open_url); injetado em
+        # conversa casual, modelos menores ECOAM isso na resposta
+        # ("vou chamar o método web_search... JSON de chamada de função").
+        if not chat_mode:
+            try:
+                system_content += automation.inject_proposal_prompt()
+            except Exception:
+                pass
 
         if summary:
             system_content += (

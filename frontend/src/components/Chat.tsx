@@ -1,5 +1,5 @@
 import { Suspense, lazy, useEffect, useRef, useState } from 'react'
-import AgentFace, { type FaceState } from './AgentFace'
+import { AGENT3D_LABELS, type Agent3DState as FaceState } from './StudyAgent3D/agentStates'
 import ActionConfirm from './ActionConfirm'
 import ChatMessages from './ChatMessages'
 import ChatInput from './ChatInput'
@@ -22,21 +22,6 @@ const StudyAgentAvatar = lazy(() => import('./StudyAgent3D/StudyAgentAvatar'))
 
 function PanelFallback() {
   return <div style={{ padding: 20, textAlign: 'center', color: '#8b93a7' }}><span className="spinner" /> carregando…</div>
-}
-
-const FACE_LABELS: Record<FaceState, string> = {
-  idle: 'pronto para ajudar',
-  listening: 'ouvindo você…',
-  recording: 'gravando sua voz',
-  thinking: 'pensando…',
-  speaking: 'falando',
-  error: 'ops, algo deu errado',
-  happy: 'ficou feliz com você! 🎉',
-  concerned: 'quer te ajudar a melhorar',
-  curious: 'fez uma pergunta pra você',
-  excited: 'mal posso esperar! ⚡',
-  confused: 'deixa eu pensar melhor…',
-  sleeping: 'em repouso 😴',
 }
 
 export default function Chat() {
@@ -62,16 +47,11 @@ export default function Chat() {
   const [achOpen, setAchOpen] = useState(false)
   const [faceMsg, setFaceMsg] = useState<string | null>(null)
   const [faceBusy, setFaceBusy] = useState(false)
-  const [mode3D, setMode3D] = useState(() => localStorage.getItem('studyagent.3d') === '1')
 
   useEffect(() => {
     if (activeDoc) localStorage.setItem('studyagent.doc', JSON.stringify(activeDoc))
     else localStorage.removeItem('studyagent.doc')
   }, [activeDoc])
-
-  useEffect(() => {
-    localStorage.setItem('studyagent.3d', mode3D ? '1' : '0')
-  }, [mode3D])
 
   function flashReaction(mood: FaceState) {
     if (reactionTimerRef.current) window.clearTimeout(reactionTimerRef.current)
@@ -271,21 +251,14 @@ export default function Chat() {
       <Sidebar items={sidebarItems} />
       <div className="chat">
         <div className="chat-header">
-          {mode3D ? (
-            <Suspense fallback={<AgentFace state={faceState} size={84} />}>
-              <StudyAgentAvatar state={faceState} size={84} voice={voice.voiceOn} sensitivity={3.4} />
-            </Suspense>
-          ) : (
-            <AgentFace state={faceState} size={84} />
-          )}
+          <Suspense fallback={<div className="face-fallback" />}>
+            <StudyAgentAvatar state={faceState} size={84} voice={voice.voiceOn} sensitivity={3.4} />
+          </Suspense>
           <div className="face-label">
             <span className="face-title">StudyAgent</span>
-            <span className="face-status">{FACE_LABELS[faceState]}</span>
+            <span className="face-status">{AGENT3D_LABELS[faceState]}</span>
           </div>
           <div className="header-actions">
-            <button className="btn-screen btn-stage" onClick={() => setMode3D(!mode3D)} title={mode3D ? 'Usar rosto 2D' : 'Usar avatar 3D'}>
-              {mode3D ? '🧊' : '🎲'}
-            </button>
             <button className="btn-screen" onClick={() => setStage(true)} title="Ampliar o rosto (modo palco)">⤢</button>
           </div>
         </div>
@@ -420,20 +393,16 @@ export default function Chat() {
           <div className="stage-overlay" onClick={() => setStage(false)}>
             <button className="btn-screen stage-close" onClick={() => setStage(false)} title="Voltar (Esc)">✕</button>
             <div className="stage-inner" onClick={(e) => e.stopPropagation()}>
-              {mode3D ? (
-                <Suspense fallback={<AgentFace state={faceState} size={Math.min(window.innerWidth, window.innerHeight) * 0.62} />}>
-                  <StudyAgentAvatar
-                    state={faceState}
-                    size={Math.min(window.innerWidth, window.innerHeight) * 0.5}
-                    controls
-                    voice={voice.voiceOn}
-                    sensitivity={3.4}
-                  />
-                </Suspense>
-              ) : (
-                <AgentFace state={faceState} size={Math.min(window.innerWidth, window.innerHeight) * 0.62} />
-              )}
-              <p className="stage-label">{FACE_LABELS[faceState]}</p>
+              <Suspense fallback={<div className="face-fallback" />}>
+                <StudyAgentAvatar
+                  state={faceState}
+                  size={Math.min(window.innerWidth, window.innerHeight) * 0.5}
+                  controls
+                  voice={voice.voiceOn}
+                  sensitivity={3.4}
+                />
+              </Suspense>
+              <p className="stage-label">{AGENT3D_LABELS[faceState]}</p>
               <button className={`btn-screen ${voice.voiceOn ? 'active' : ''}`} onClick={() => voice.setVoiceOn(!voice.voiceOn)} title="Responder por voz">🔊</button>
             </div>
           </div>

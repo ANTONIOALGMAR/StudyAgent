@@ -12,3 +12,4 @@ pypdf
 python-multipart
 ddgs
 requests
+insightface

@@ -213,26 +213,46 @@ class StudyAgent:
 
         enriched_message = "\n\n".join(msg_parts)
 
-        # ── System prompt: visão ou tutor ───────────────────────────
+        # Conversa casual (categoria CHAT / saudação, sem doc/visão) usa chat
+        # simples sem tool-calling e system prompt de chat limpo, evitando que
+        # o modelo ecoe instruções de visão/ferramentas na resposta.
+        is_casual = (
+            not images
+            and not plan.wants_document
+            and (is_social_greeting(message) or plan.category.value == "CHAT")
+        )
+
+        # ── System prompt: visão, chat ou tutor ────────────────────
         if vision_ctx and vision_ctx.is_valid:
             messages = self.ctx.assemble_vision(session_id, enriched_message, vision_ctx)
         else:
-            messages = self.ctx.assemble(session_id, enriched_message)
+            messages = self.ctx.assemble(
+                session_id, enriched_message, chat_mode=is_casual
+            )
 
         # ── Resposta ────────────────────────────────────────────────
-        if (
-            not images
-            and not plan.wants_document
-            and is_social_greeting(message)
-        ):
-            # Fast-path anti-alucinação: saudações/conversa casual vão
-            # para chat de texto simples SEM tool-calling. Modelos de
-            # tool-calling confabulam "resposta de função JSON" em vez
-            # de apenas saudar.
-            response_text = chat(messages)
-        else:
+        # Fast-path anti-alucinação: saudações/conversa casual vão para chat de
+        # texto SIMPLES sem tool-calling. Modelos de tool-calling CONFABULAM
+        # "resposta de função JSON" em vez de apenas conversar — por isso
+        # evitamos tool-calling sempre que não há intenção real de ferramenta.
+        if is_casual:
+            try:
+                response_text = chat(messages)
+            except PermissionDeniedError:
+                raise
+            except Exception as exc:
+                log.warning("[CHAT] casual_chat_failed: %s", exc)
+                response_text = (
+                    "Não consegui processar agora (o modelo parece indisponível). "
+                    "Tente novamente em instantes."
+                )
+        elif plan.wants_document:
             response_text = self._run_tool_loop(
-                messages, images, tools_used, allow_tools=not plan.wants_document
+                messages, images, tools_used, allow_tools=False
+            )
+        else:
+            response_text = self._run_with_orchestration(
+                messages, images, tools_used, plan
             )
 
         # ── Validação da resposta (anti-alucinação) ────────────────
@@ -301,7 +321,11 @@ class StudyAgent:
                 return chat(current)
 
             if not reply["tool_calls"]:
-                return reply["content"] or chat(current)
+                # Nenhuma tool chamada: obter resposta limpa via chat simples.
+                # O `content` do chamada tool-trainada pode ser lixo
+                # ("Não há resposta JSON necessária..."), então preferimos
+                # gerar novamente sem o contexto de tool-calling.
+                return chat(current)
 
             current.append(
                 {"role": "assistant", "content": reply["content"], "tool_calls": reply["tool_calls"]}
@@ -377,6 +401,116 @@ class StudyAgent:
 
         log.warning("[LOOP] max_steps=%d reached", MAX_STEPS)
         return reply.get("content") or ""
+
+    def _run_with_orchestration(self, messages, images, tools_used, plan):
+        """Caminho de orquestração: uma pergunta vira um plano multi-step.
+
+        Usa o AgentOrchestrator/ToolExecutor (plano de execução com grafo de
+        dependências, retry/timeout por política e evidências) para distribuir
+        VÁRIAS ações encadeadas dentro de uma única resposta. Se nenhuma
+        ferramenta for necessária ou o plano for inválido, cai no loop
+        reativo tradicional (_run_tool_loop).
+        """
+        from ..core.orchestrator.execution_plan import ExecutionPlan
+        from ..core.orchestrator.executor import ToolExecutor
+        from ..core.orchestrator.orchestrator import AgentOrchestrator
+        from ..core.plan_builder import build_plan as build_tool_plan
+
+        # Caminho de visão / sem tools fica no loop tradicional
+        if images or (hasattr(plan, "category") and plan.category.value == "CHAT"):
+            return self._run_tool_loop(messages, images, tools_used)
+
+        last_user = next(
+            (m["content"] for m in reversed(messages) if m["role"] == "user"),
+            "",
+        )
+
+        # ── 1. Gera o plano (JSON) de ações ────────────────────────
+        build = build_tool_plan(
+            last_user,
+            llm_fn=lambda prompt: chat([{"role": "user", "content": prompt}]),
+        )
+        if not build.ok:
+            return self._run_tool_loop(messages, images, tools_used)
+
+        from ..core.tool_registry import get as registry_get
+
+        orch = AgentOrchestrator()
+        orch.set_permission_fn(lambda tool_name: self._tool_allowed(tool_name))
+
+        # ── 2. Monta ExecutionPlan com grafo de dependências ───────
+        execution = ExecutionPlan(goal=last_user, intent=plan.category.value)
+        id_by_index: dict[int, str] = {}
+        for idx, pstep in enumerate(build.steps):
+            dep_ids = [id_by_index[int(dep)] for dep in pstep.depends_on if dep.isdigit()]
+            step = execution.add_step(
+                tool=pstep.tool,
+                arguments=pstep.arguments,
+                depends_on=dep_ids,
+                required=pstep.required,
+            )
+            id_by_index[idx] = step.id
+
+        ctx = orch.create_context(last_user, session_id="")
+        ctx.plan = execution
+
+        # ── 3. Registra handlers (adapter dict -> kwargs) ─────────
+        for pstep in build.steps:
+            entry = registry_get(pstep.tool)
+            if entry:
+                orch.register_tool(
+                    pstep.tool,
+                    lambda _e=entry, **kw: _e.handler(kw),
+                )
+
+        # ── 4. Executa o plano ─────────────────────────────────────
+        try:
+            orch.execute(ctx)
+        except PermissionDeniedError as exc:
+            log.warning("[ORCH] permission_denied=%s", exc)
+            return {
+                "response": f"Permissão negada para executar essa ação: {exc}",
+                "tools_used": list(tools_used),
+            }
+
+        for step in execution.steps:
+            if step.status.value in ("SUCCESS", "FAILED") and step.tool not in tools_used:
+                tools_used.append(step.tool)
+
+        # ── 5. Síntese da resposta final ───────────────────────────
+        blocks = []
+        success = False
+        for step in execution.steps:
+            if step.status.value == "SUCCESS":
+                success = True
+                blocks.append(f"[{step.tool}] {step.result}")
+        if not success:
+            return self._run_tool_loop(messages, images, tools_used)
+
+        final_prompt = (
+            f"Pergunta do usuário: {last_user}\n\n"
+            "Resultados das ações executadas:\n" + "\n\n".join(blocks) +
+            "\n\nResponda em português com base exclusivamente nos resultados "
+            "acima. Se algo ficou sem resposta ou vago, diga claramente que "
+            "não encontrou. Não invente informações."
+        )
+        response_text = chat([{"role": "user", "content": final_prompt}])
+        log.info("[ORCH] steps=%d tools=%s exec_id=%s",
+                 len(execution.steps), tools_used, ctx.execution_id)
+        return response_text
+
+    def _tool_allowed(self, tool_name: str) -> bool:
+        """Verifica permissão de uma ferramenta (por nome no registry)."""
+        from ..core.tool_registry import get as registry_get
+
+        entry = registry_get(tool_name)
+        if not entry or not entry.permission:
+            return True
+        try:
+            self._require(entry.permission)
+            return True
+        except PermissionDeniedError:
+            return False
 
     def _vision_pipeline(
         self,

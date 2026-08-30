@@ -1,6 +1,6 @@
 import { Suspense, useEffect } from 'react'
 import { Canvas } from '@react-three/fiber'
-import { OrbitControls, Float, Environment } from '@react-three/drei'
+import { OrbitControls, Float } from '@react-three/drei'
 import AgentHead from './AgentHead'
 import AgentParticles from './AgentParticles'
 import type { Agent3DState } from './agentStates'
@@ -36,12 +36,16 @@ export default function StudyAgentAvatar({
 
   return (
     <div className={`studyagent-3d ${className ?? ''}`} style={divStyle}>
-      <Canvas camera={{ position: [0, 0, 5], fov: 45 }} dpr={[1, 2]}>
+      <Canvas
+        camera={{ position: [0, 0, 5], fov: 45 }}
+        dpr={[1, 1.5]}
+        gl={{ antialias: true, powerPreference: 'high-performance', alpha: true }}
+      >
         <Suspense fallback={null}>
-          <ambientLight intensity={0.45} />
-          <pointLight position={[5, 5, 5]} intensity={2} color="#5ba3f5" />
-          <pointLight position={[-5, 2, 3]} intensity={1} color="#ffffff" />
-          <pointLight position={[0, -3, 4]} intensity={0.8} color="#a78bfa" />
+          <ambientLight intensity={0.55} />
+          <directionalLight position={[4, 6, 6]} intensity={1.1} color="#ffffff" />
+          <pointLight position={[-4, 2, 4]} intensity={0.7} color="#5ba3f5" />
+          <pointLight position={[0, -2, 4]} intensity={0.5} color="#a78bfa" />
 
           <Float speed={1.4} rotationIntensity={0.25} floatIntensity={0.6}>
             <AgentHead state={state} voice={voice} />
@@ -57,7 +61,6 @@ export default function StudyAgentAvatar({
               makeDefault
             />
           )}
-          <Environment preset="city" />
         </Suspense>
       </Canvas>
     </div>

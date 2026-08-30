@@ -226,10 +226,17 @@ GREETING_RE = re.compile(
     r"bom\s+dia|boa\s+tarde|boa\s+noite|"
     r"hello|hi|hey|hem|hmm"
     r")\s*"
-    r"(tudo\s+bem|tudo\s+blz|blz|beleza|"
+    r"("
+    r"tudo\s+bem|tudo\s+blz|blz|beleza|"
     r"como\s+vai|como\s+voc[eê]\s+est[aá]|"
-    r"como\s+est[aá]|td\s+bem|est[aá]\s+a[ií]|"
-    r"[!.,;?]*)*"
+    r"como\s+est[aá]|td\s+bem|est[aá]\s+a[ií]|e\s*a[ií]|"
+    r"t[aá]\s+me\s+ouvind\w*|t[aá]\s+me\s+escutand\w*|"
+    r"consegue\s+me\s+(?:ouvir|escutar)|"
+    r"me\s+(?:ouve|escuta)|"
+    r"t[aá]\s+por\s+a[ií]|est[aá]\s+por\s+a[ií]|"
+    r"t[aá]\s+funcionand\w*|funcionand\w*|"
+    r"[.,;!?ç\s]*"
+    r")*"
     r"\s*$",
     re.IGNORECASE | re.UNICODE,
 )

@@ -6,7 +6,7 @@ import {
   uploadDocument,
   type UploadedDoc,
 } from '../api'
-import type { FaceState } from '../components/AgentFace'
+import type { Agent3DState as FaceState } from '../components/StudyAgent3D/agentStates'
 
 export interface Message {
   role: 'user' | 'assistant'
