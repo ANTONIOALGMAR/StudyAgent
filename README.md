@@ -272,13 +272,34 @@ npx vite build
 
 ## Instalação
 
-### Rápida (recomendado)
+O instalador **identifica o sistema operacional** automaticamente e baixa o projeto:
+
+| Sistema | Como instalar |
+|---|---|
+| **Linux / macOS** | `bash -c "$(curl -fsSL https://raw.githubusercontent.com/ANTONIOALGMAR/StudyAgent/main/setup.sh)"` |
+| **Windows (WSL/Ubuntu)** | configure o WSL (`wsl --install`) e rode o mesmo comando acima dentro do terminal WSL |
+| **Windows nativo (PowerShell)** | `iex ((New-Object System.Net.WebClient).DownloadString('https://raw.githubusercontent.com/ANTONIOALGMAR/StudyAgent/main/install.ps1'))` |
+
+O `setup.sh` (Linux/macOS/WSL) e o `install.ps1` (Windows nativo) detectam o SO, fazem o download
+do repositório do GitHub, instalam dependências (backend + frontend), baixam os modelos locais
+do Ollama e iniciam os serviços — tudo automaticamente.
+
+### Rápida (Linux/macOS/WSL)
 
 ```bash
 git clone https://github.com/ANTONIOALGMAR/StudyAgent.git ~/StudyAgent
 cd ~/StudyAgent
 ./install.sh
 ```
+
+### Windows nativo (PowerShell)
+
+```powershell
+powershell -ExecutionPolicy Bypass -File install.ps1
+```
+
+> No Windows, o script cria o backend/frontend, baixa o projeto (via `git` ou ZIP do GitHub)
+> e inicia tudo. Tesseract OCR e Ollama são opcionais — instaláveis depois.
 
 ### Manual
 
