@@ -3,6 +3,7 @@ import { useUserStore } from '../store/userStore'
 import {
   getEnhancedDashboard,
   getLeaderboard,
+  getProfile,
   getTimeAnalytics,
   getRecommendations,
   type EnhancedDashboard,
@@ -20,16 +21,17 @@ export default function StatsPanel() {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    void Promise.all([getEnhancedDashboard(), getTimeAnalytics(), getLeaderboard()])
-      .then(([d, t, l]) => { 
-        setData(d); 
-        setTimeData(t); 
+    void Promise.all([getEnhancedDashboard(), getTimeAnalytics(), getLeaderboard(), getProfile()])
+      .then(([d, t, l, p]) => {
+        setData(d);
+        setTimeData(t);
         setLb(l);
-        
-        // Sync with global store
+
+        // Sync with global store — o nome vem do perfil do aluno,
+        // não do leaderboard (que não tem campo "name").
         if (l) {
           setProfile({
-            name: l.name || 'Estudante',
+            name: p?.name || 'Estudante',
             level: l.level,
             xp: l.total_xp,
             streak: d.exercises.streak_days,

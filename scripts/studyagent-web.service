@@ -4,7 +4,7 @@ After=studyagent-api.service
 
 [Service]
 WorkingDirectory=%h/StudyAgent/frontend
-ExecStart=/bin/bash -lc 'exec npx vite --port 5173'
+ExecStart=/bin/bash -lc 'exec npx vite --host 127.0.0.1 --port 5173'
 Restart=always
 RestartSec=3
 
