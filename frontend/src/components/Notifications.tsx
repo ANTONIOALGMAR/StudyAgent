@@ -23,9 +23,39 @@ export default function Notifications() {
   }
 
   useEffect(() => {
+    // initial load
     void load()
+    // subscribe to SSE
+    let es: EventSource | null = null
+    try {
+      es = new EventSource(`${(window as any).__env?.API || 'http://localhost:8000'}/api/notifications/stream`)
+      es.onmessage = (ev) => {
+        try {
+          const parsed = JSON.parse(ev.data)
+          // prepend new notification
+          setItems((s) => [parsed, ...s.filter((i) => i.id !== parsed.id)].slice(0, 50))
+        } catch (e) {
+          // ignore parse errors
+        }
+      }
+      es.onerror = () => {
+        // if the stream fails, close and fall back to polling handled by load
+        try {
+          es?.close()
+        } catch (e) {}
+        es = null
+      }
+    } catch (e) {
+      es = null
+    }
+
     const t = setInterval(() => void load(), 10000)
-    return () => clearInterval(t)
+    return () => {
+      clearInterval(t)
+      try {
+        es?.close()
+      } catch (e) {}
+    }
   }, [])
 
   async function markRead(id: string) {

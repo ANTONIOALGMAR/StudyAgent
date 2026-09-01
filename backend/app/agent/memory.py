@@ -438,6 +438,31 @@ class Memory:
                 self._notify_frontend(title, body)
             except Exception:
                 pass
+            # publish via in-memory SSE publisher if available
+            try:
+                from ..core.notification_pub import publish
+
+                # best-effort: if publish is async, schedule it
+                import asyncio as _asyncio
+
+                _payload = {
+                    "id": existing_id,
+                    "title": title,
+                    "body": body,
+                    "created_at": now,
+                }
+                try:
+                    # if called inside sync context, create task in running loop
+                    loop = _asyncio.get_running_loop()
+                    loop.create_task(publish(_payload))
+                except RuntimeError:
+                    # no running loop (sync test env); call publish via new loop
+                    try:
+                        _asyncio.run(publish(_payload))
+                    except Exception:
+                        pass
+            except Exception:
+                pass
             return dict(existing)
         # Merge / atualização leve: atualiza last_seen_at e confidence
         merged_conf = max(existing_conf, det_conf)
