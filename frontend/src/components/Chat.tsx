@@ -98,6 +98,49 @@ export default function Chat() {
     return () => window.removeEventListener('keydown', onKey)
   }, [stage])
 
+  // Handle structured actions emitted by the backend (e.g., request_permission)
+  useEffect(() => {
+    async function onActions(ev: Event) {
+      try {
+        // @ts-ignore
+        const detail = ev.detail || {}
+        const actions = detail.actions || []
+        const original = detail.original || ''
+        for (const a of actions) {
+          if (a.type === 'request_permission' && a.permission === 'camera') {
+            // Ask user for consent via a simple confirm modal for now
+            const allow = window.confirm('O agente precisa usar a câmera para procurar este objeto. Permitir agora?')
+            if (!allow) continue
+            try {
+              const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' } })
+              const video = document.createElement('video') as HTMLVideoElement
+              video.srcObject = stream
+              await video.play().catch(() => {})
+              await new Promise((r) => setTimeout(r, 300))
+              const canvas = document.createElement('canvas')
+              canvas.width = video.videoWidth || 640
+              canvas.height = video.videoHeight || 480
+              const ctx = canvas.getContext('2d')
+              if (ctx) ctx.drawImage(video, 0, 0, canvas.width, canvas.height)
+              const b64 = canvas.toDataURL('image/jpeg', 0.85).split(',')[1]
+              // stop tracks
+              stream.getTracks().forEach((t) => t.stop())
+              // re-send the original message with image attached
+              void chatHook.sendText(original, { imageB64: b64 })
+            } catch (err) {
+              // failed to get camera
+              window.alert('Não foi possível acessar a câmera. Verifique as permissões do navegador.')
+            }
+          }
+        }
+      } catch (e) {
+        // ignore
+      }
+    }
+    window.addEventListener('studyagent:actions', onActions as EventListener)
+    return () => window.removeEventListener('studyagent:actions', onActions as EventListener)
+  }, [chatHook])
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.ctrlKey && e.shiftKey && e.key === 'E') { e.preventDefault(); setEvidenceOpen((v) => !v) }

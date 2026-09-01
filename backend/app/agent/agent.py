@@ -339,20 +339,43 @@ class StudyAgent:
 
         # ── Captura de tela via planner ─────────────────────────────
         if plan.capture_screen:
+            # Check permissions before attempting capture. If screen/camera
+            # permissions are not allowed, return a structured action requesting
+            # permission so the frontend can ask the user and resend with an image.
+            from ..security.permissions import PermissionManager
+            perm = PermissionManager()
+            if not perm.is_allowed('camera') and not perm.is_allowed('screen_capture'):
+               # return structured response instructing frontend to request camera
+               actions = [
+                   {
+                       "type": "request_permission",
+                       "permission": "camera",
+                       "reason": "Localizar objeto visualmente",
+                       "scope": "one_time",
+                       "original_message": message,
+                   }
+               ]
+               return {
+                   "session_id": session_id,
+                   "response": "Para localizar visualmente este objeto preciso acessar a câmera. Posso pedir sua permissão?",
+                   "tools_used": [],
+                   "evidence": None,
+                   "actions": actions,
+               }
             physical_name = None
             try:
-                monitors = ScreenManager.list_monitors()
-                if 0 <= effective_monitor < len(monitors):
-                    physical_name = monitors[effective_monitor].get("name")
+               monitors = ScreenManager.list_monitors()
+               if 0 <= effective_monitor < len(monitors):
+                   physical_name = monitors[effective_monitor].get("name")
             except Exception:
-                physical_name = None
+               physical_name = None
             vision_ctx = self._vision_pipeline(
-                message=message,
-                monitor=effective_monitor,
-                region=region,
-                intent=plan.vision_intent,
-                human_monitor=plan.human_monitor,
-                physical_monitor_name=physical_name,
+               message=message,
+               monitor=effective_monitor,
+               region=region,
+               intent=plan.vision_intent,
+               human_monitor=plan.human_monitor,
+               physical_monitor_name=physical_name,
             )
             if not vision_ctx.is_valid:
                 log.error("[VISION] pipeline_failed errors=%s", vision_ctx.errors)

@@ -85,7 +85,7 @@ export function useChat({ useScreen, liveOpen, monitorSel, activeDoc, onMood }: 
       ])
       setLoading(true)
       try {
-        const res: ChatResponse = await chat(
+        const res: ChatResponse & any = await chat(
           text,
           sessionIdRef.current,
           useScreenRef.current || liveOpenRef.current,
@@ -93,6 +93,12 @@ export function useChat({ useScreen, liveOpen, monitorSel, activeDoc, onMood }: 
           monitorSelRef.current,
           activeDoc?.id ?? null,
         )
+        // Dispatch structured actions (if any) for UI handling
+        if ((res as any).actions && (res as any).actions.length > 0) {
+          try {
+            window.dispatchEvent(new CustomEvent('studyagent:actions', { detail: { actions: (res as any).actions, original: text } }))
+          } catch (e) {}
+        }
         setSessionId(res.session_id)
         sessionIdRef.current = res.session_id
         const tools = res.tools_used.length > 0 ? ` [${res.tools_used.join(', ')}]` : ''
