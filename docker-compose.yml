@@ -10,8 +10,11 @@ services:
     volumes:
       - studyagent-data:/app/data
     environment:
-      - STUDYAGENT_LLM_MODEL=llama3.1:latest
-      - STUDYAGENT_EMBED_MODEL=nomic-embed-text
+      - STUDY_TEXT_MODEL=llama3.1:latest
+      - STUDY_EMBEDDING_MODEL=nomic-embed-text
+      - OLLAMA_HOST=http://host.docker.internal:11434
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health')"]
@@ -24,10 +27,15 @@ services:
       context: ./frontend
       dockerfile: Dockerfile
     ports:
-      - "5173:80"
+      - "127.0.0.1:5173:8080"
     depends_on:
       - backend
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "-", "http://localhost:8080/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
 
 volumes:
   studyagent-data:
