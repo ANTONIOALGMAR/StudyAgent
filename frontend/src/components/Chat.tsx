@@ -65,6 +65,10 @@ export default function Chat() {
 
   const voice = useVoice({
     onUserMessage: (text) => {
+      if (shouldAutoOrchestrateVisuals(text)) {
+        screen.setUseScreenCapture(true)
+        screen.setLiveOpen(true)
+      }
       void chatHook.sendText(text, { viaVoice: true, awaitSpeech: true, onSpeech: voice.playSpeechAwait })
     },
   })
@@ -116,14 +120,34 @@ export default function Chat() {
     return () => window.removeEventListener('keydown', onKey)
   }, [evidenceOpen, panels, screen])
 
+  function shouldAutoOrchestrateVisuals(text: string) {
+    const normalized = text.toLowerCase()
+    const envKeywords = [
+      'onde está', 'onde fica', 'localize', 'localizar', 'encontre', 'achar', 'procure',
+      'o que tem', 'o que há', 'o que ha', 'quais objetos', 'quais itens',
+      'me mostre o ambiente', 'observe o ambiente', 'veja o ambiente',
+      'qual objeto está', 'qual coisa está', 'what is in the room', 'where is the',
+    ]
+    return envKeywords.some((keyword) => normalized.includes(keyword))
+  }
+
+  function shouldAutoOpenCamera(text: string) {
+    const normalized = text.toLowerCase()
+    return /c[aâ]mera|camera|imagem|foto|ambiente|visualizar|vejo|o que tem na imagem|o que vê|o que ve|onde está|localize|procure/.test(normalized)
+  }
+
   function send() {
     const text = input.trim()
     setInput('')
+    if (shouldAutoOrchestrateVisuals(text) || shouldAutoOpenCamera(text)) {
+      screen.setUseScreenCapture(true)
+      screen.setLiveOpen(true)
+      setCamOpen(true)
+    }
     void chatHook.sendText(text)
   }
 
   const camStreamRef = useRef<MediaStream | null>(null)
-  const videoRef = useRef<HTMLVideoElement | null>(null)
 
   useEffect(() => {
     return () => {

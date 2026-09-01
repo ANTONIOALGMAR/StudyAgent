@@ -1,5 +1,6 @@
 import base64
 import logging
+import re
 
 from ..core.context_manager import (
     ContextManager,
@@ -47,6 +48,207 @@ class StudyAgent:
         self._digest_cache: dict[str, str] = {}
         self._session_docs: dict[str, str] = {}
 
+    def _remember_object_from_message(self, message: str) -> None:
+        if not message or not message.strip():
+            return
+
+        text = message.strip()
+        known_objects = [
+            "celular", "telefone", "chave", "mochila", "livro", "caderno",
+            "carregador", "mouse", "teclado", "notebook", "agenda", "fone",
+            "relógio", "garrafa", "caneta", "caderno", "laptop"
+        ]
+        lowered = text.lower()
+        rooms = [
+            "quarto", "sala", "cozinha", "banheiro", "escritório", "escritorio",
+            "garagem", "varanda", "biblioteca", "mesa", "estante", "prateleira",
+            "armário", "armario"
+        ]
+        room = None
+        for room_name in rooms:
+            if room_name in lowered:
+                room = room_name
+                break
+
+        for obj in known_objects:
+            patterns = [
+                rf"(?:meu|minha|o|a|um|uma)?\s*{re.escape(obj)}\s*(?:está|fica|está em|está na|está no|deixei|deixei em|deixei na|deixei no|coloquei|guardei|guardei em|guardei na|guardei no)\s*(?:em|na|no|sobre|sobre a|sobre o)?\s*(.+?)(?:[.!?]|$)",
+                rf"(?:deixei|guardei|coloquei)\s*(?:meu|minha|o|a|um|uma)?\s*{re.escape(obj)}\s*(?:em|na|no|sobre)\s*(.+?)(?:[.!?]|$)",
+            ]
+            for pattern in patterns:
+                match = re.search(pattern, lowered)
+                if match:
+                    location = match.group(1).strip()
+                    if len(location) > 2 and len(location) < 180:
+                        semantic_area = self._extract_semantic_area(location, room)
+                        self.memory.remember_object_location(
+                            obj,
+                            location,
+                            room=room,
+                            area=semantic_area or room or location,
+                            context=text,
+                        )
+                    return
+        return
+
+    def _extract_object_name(self, message: str) -> str | None:
+        lowered = (message or "").lower()
+        for obj in [
+            "celular", "telefone", "chave", "mochila", "livro", "caderno",
+            "carregador", "mouse", "teclado", "notebook", "agenda", "fone",
+            "relógio", "garrafa", "caneta", "laptop"
+        ]:
+            if obj in lowered:
+                return obj
+        return None
+
+    def _is_object_location_request(self, message: str) -> bool:
+        if not message or not message.strip():
+            return False
+        lowered = message.lower()
+        if not any(token in lowered for token in ["onde está", "onde fica", "localize", "localizar", "encontre", "achar", "procure", "procura", "onde está o", "onde está a", "onde fica o", "onde fica a"]):
+            return False
+        return self._extract_object_name(message) is not None
+
+    def _extract_room_hint(self, message: str) -> str | None:
+        lowered = (message or "").lower()
+        for room_name in [
+            "quarto", "sala", "cozinha", "banheiro", "escritório", "escritorio",
+            "garagem", "varanda", "biblioteca", "entrada", "escritório", "armário", "armario",
+            "mesa", "prateleira", "estante", "cômodo", "comodo"
+        ]:
+            if room_name in lowered:
+                return room_name
+        return None
+
+    def _extract_area_hint(self, message: str) -> str | None:
+        lowered = (message or "").lower()
+        for area_name in [
+            "mesa da direita", "mesa da esquerda", "mesa de canto", "prateleira da parede",
+            "prateleira da esquerda", "prateleira da direita", "armário da esquerda", "armario da esquerda",
+            "armário da direita", "armario da direita", "canto da sala", "canto do quarto",
+            "gaveta", "baia", "debaixo da mesa", "em cima da mesa"
+        ]:
+            if area_name in lowered:
+                return area_name
+        return None
+
+    def _extract_semantic_area(self, location: str, room: str | None = None) -> str:
+        text = (location or "").strip()
+        if not text:
+            return ""
+        lowered = text.lower()
+        semantic_matches = [
+            "mesa da direita", "mesa da esquerda", "mesa de canto",
+            "prateleira da direita", "prateleira da esquerda", "prateleira da parede",
+            "prateleira", "armário da direita", "armario da direita",
+            "armário da esquerda", "armario da esquerda", "canto da sala", "canto do quarto",
+            "gaveta", "baia", "debaixo da mesa", "embaixo da mesa", "em cima da mesa",
+            "sobre a mesa", "sobre o criado-mudo", "criado-mudo", "cadeira"
+        ]
+        for area_name in semantic_matches:
+            if area_name in lowered:
+                return area_name
+        if room and room.lower() not in lowered:
+            return text
+        # quando a descrição do local já é específica, preserva o nome do trecho sem repetir o cômodo
+        return text
+
+    def _build_visual_object_prompt(self, message: str) -> str:
+        obj = self._extract_object_name(message)
+        if not obj:
+            return ""
+        lowered = message.lower()
+        room_hint = self._extract_room_hint(message)
+        area_hint = self._extract_area_hint(message)
+        room_clause = f" O contexto sugerido é o cômodo {room_hint}." if room_hint else ""
+        area_clause = f" Também procure em {area_hint}." if area_hint else ""
+        return (
+            f"[LOCALIZAÇÃO DE OBJETO]\n"
+            f"Procure o objeto '{obj}' no ambiente visível. "
+            "Se ele estiver na imagem ou na tela, descreva o local exato. "
+            "Se não estiver visível, use a memória do ambiente como referência e diga que é a última posição conhecida."
+            f"{room_clause}{area_clause}"
+        )
+
+    def _build_visual_priority_prompt(self, message: str) -> str:
+        if not self._is_object_location_request(message):
+            return ""
+        return (
+            "[VISÃO ATIVA]\n"
+            "Use primeiro a visão do ambiente, da câmera ou da tela para confirmar o local. "
+            "Considere também áreas semânticas do cômodo, como mesa da direita, prateleira, canto, armário, gaveta. "
+            "Somente recorra à memória do ambiente como fallback quando não houver confirmação visual direta."
+        )
+
+    def _is_room_inventory_request(self, message: str) -> bool:
+        if not message or not message.strip():
+            return False
+        lowered = message.lower()
+        has_inventory = any(token in lowered for token in [
+            "o que tem", "o que há", "quais objetos", "quais itens", "qual objeto",
+            "me mostra", "me mostre", "existe", "há", "tem algo", "tem algum"
+        ])
+        if not has_inventory:
+            return False
+        return self._extract_room_hint(message) is not None or self._extract_area_hint(message) is not None
+
+    def _resolve_room_inventory(self, message: str) -> str | None:
+        if not message or not message.strip():
+            return None
+        if not self._is_room_inventory_request(message):
+            return None
+        room_hint = self._extract_room_hint(message)
+        area_hint = self._extract_area_hint(message)
+        rows = self.memory.find_objects_in_room(room=room_hint, area=area_hint, limit=10)
+        if not rows:
+            return None
+
+        items = []
+        for row in rows[:5]:
+            obj = row.get('object_name') or 'objeto'
+            loc = row.get('location') or 'local desconhecido'
+            room_label = row.get('room') or room_hint or 'ambiente'
+            area_label = row.get('area') or area_hint or ''
+            if area_label and area_label.lower() not in loc.lower():
+                items.append(f"- {obj}: {loc} ({area_label})")
+            else:
+                items.append(f"- {obj}: {loc} ({room_label})")
+
+        room_label = room_hint or area_hint or 'este ambiente'
+        return f"No {room_label}, lembro de: " + "; ".join(items) + "."
+
+    def _resolve_object_location(self, message: str) -> str | None:
+        if not message or not message.strip():
+            return None
+        lowered = message.lower()
+        if not self._is_object_location_request(message):
+            return None
+        obj = self._extract_object_name(message)
+        room_hint = None
+        for room_name in ["quarto", "sala", "cozinha", "banheiro", "escritório", "escritorio", "garagem", "varanda", "prateleira", "mesa"]:
+            if room_name in lowered:
+                room_hint = room_name
+                break
+        if obj:
+            record = self.memory.find_object_location(obj, room=room_hint)
+            if record and record.get("location"):
+                room_label = record.get("room") or record.get("area") or room_hint or "ambiente"
+                location = record.get("location")
+                area_token = record.get("area")
+                if area_token and area_token not in location.lower():
+                    return f"Última vez que vi o {obj} no {room_label}, em {area_token}, ele estava {location}."
+                room_part = f" no {room_label}" if room_label and room_label != "ambiente" else ""
+                return f"Última vez que vi o {obj}{room_part}, ele estava {location}."
+        for candidate in self.memory.find_related_objects(lowered, limit=5):
+            location = candidate.get("location")
+            if location:
+                room_label = candidate.get("room") or candidate.get("area") or "ambiente"
+                if candidate.get("area") and candidate.get("area") not in location.lower():
+                    return f"Última vez que vi o {candidate['object_name']} no {room_label}, em {candidate['area']}, ele estava {location}."
+                return f"Última vez que vi o {candidate['object_name']} no {room_label}, ele estava {location}."
+        return None
+
     def process(
         self,
         message,
@@ -58,6 +260,37 @@ class StudyAgent:
         doc_id=None,
     ):
         session_id = self.memory.get_or_create_session(session_id)
+        auto_visual_context = bool(
+            re.search(
+                r"\b(?:onde\s+est[aá]|onde\s+fica|localiz\w+|encontre|achar|procure|procura|veja\s+o\s+ambiente|observe\s+o\s+ambiente|me\s+mostre\s+o\s+ambiente|qual\s+(?:objeto|coisa|item)\s+est[aá])\b",
+                (message or "").lower(),
+                re.IGNORECASE | re.UNICODE,
+            )
+        )
+        effective_use_screen = bool(use_screen or auto_visual_context)
+
+        self._remember_object_from_message(message)
+        location_hint = self._resolve_object_location(message)
+        room_inventory_hint = self._resolve_room_inventory(message)
+        if location_hint and not (camera_image is not None or effective_use_screen):
+            self.memory.add_message(session_id, "user", message)
+            self.memory.add_message(session_id, "assistant", location_hint)
+            return {
+                "session_id": session_id,
+                "response": location_hint,
+                "tools_used": [],
+                "evidence": None,
+            }
+        if room_inventory_hint and not (camera_image is not None or effective_use_screen):
+            self.memory.add_message(session_id, "user", message)
+            self.memory.add_message(session_id, "assistant", room_inventory_hint)
+            return {
+                "session_id": session_id,
+                "response": room_inventory_hint,
+                "tools_used": [],
+                "evidence": None,
+            }
+
         tools_used = []
         images = []
         evidence = EvidenceStore()
@@ -65,7 +298,7 @@ class StudyAgent:
         # ── Planner: decisões centralizadas ─────────────────────────
         plan = build_plan(
             message,
-            use_screen_requested=bool(use_screen),
+            use_screen_requested=bool(effective_use_screen),
             camera_image=camera_image is not None,
             requested_doc_id=doc_id,
             session_doc_id=self._session_docs.get(session_id),
@@ -81,7 +314,7 @@ class StudyAgent:
 
 
         # ── Resolução de monitor: plano > parâmetro > default ───────
-        effective_monitor = monitor or 1
+        effective_monitor = monitor if monitor is not None else 0
         if plan.monitor is not None:
             effective_monitor = plan.monitor
 
@@ -123,6 +356,16 @@ class StudyAgent:
             )
             if not vision_ctx.is_valid:
                 log.error("[VISION] pipeline_failed errors=%s", vision_ctx.errors)
+                fallback_response = self._resolve_object_location(message)
+                if fallback_response and self._is_object_location_request(message):
+                    self.memory.add_message(session_id, "user", message)
+                    self.memory.add_message(session_id, "assistant", fallback_response)
+                    return {
+                        "session_id": session_id,
+                        "response": fallback_response,
+                        "tools_used": [],
+                        "evidence": None,
+                    }
                 return {
                     "session_id": session_id,
                     "response": (
@@ -147,6 +390,29 @@ class StudyAgent:
             if vision_ctx.window_app:
                 evidence.add_window(vision_ctx.window_app, vision_ctx.window_title)
 
+            # Ingestão de detecções estruturadas (se o engine fornecer)
+            try:
+                detections = None
+                if getattr(vision_ctx, "metadata", None):
+                    detections = vision_ctx.metadata.get("detections")
+                if detections:
+                    # gravamos cada detecção estruturada na memória do ambiente
+                    for d in detections:
+                        try:
+                            label = d.get("label") or d.get("name")
+                            bbox = d.get("bbox") if isinstance(d.get("bbox"), dict) else None
+                            conf = float(d.get("confidence", 0.0))
+                            ctx_text = f"detecção estruturada: {label}"
+                            # room/area não são conhecidos pelo detector — ficam vazios
+                            try:
+                            self.memory.reconcile_detection(label, bbox, monitor=effective_monitor, context=ctx_text, confidence=conf)
+                            except Exception:
+                            log.exception("failed to reconcile detection for %s", label)
+                        except Exception:
+                            log.exception("failed processing single detection")
+            except Exception:
+                log.exception("failed ingesting detections from vision_ctx")
+
         # ── Imagem da câmera (camera_image explícito) ───────────────
         if camera_image is not None:
             vision_source = "camera"
@@ -159,7 +425,22 @@ class StudyAgent:
 
         # ── Montagem da mensagem ────────────────────────────────────
         msg_parts = [message]
-        
+
+        obj_name = self._extract_object_name(message)
+        if obj_name and (camera_image is not None or use_screen):
+            msg_parts.append(self._build_visual_object_prompt(message))
+            visual_priority = self._build_visual_priority_prompt(message)
+            if visual_priority:
+                msg_parts.append(visual_priority)
+
+        env_memory = self.memory.find_related_objects(message, limit=5)
+        if env_memory:
+            env_str = "\n".join([f"- {item['object_name']}: {item['location']}" for item in env_memory])
+            msg_parts.insert(0, f"[MEMÓRIA DO AMBIENTE]\n{env_str}\n")
+
+        if location_hint:
+            msg_parts.insert(0, f"[MEMÓRIA DE LOCALIZAÇÃO]\n{location_hint}\n")
+
         if cognitive_context:
             facts_str = "\n".join([f"- {f}" for f in cognitive_context])
             msg_parts.insert(0, f"[MEMÓRIA DO ALUNO]\n{facts_str}\n")
@@ -253,25 +534,31 @@ class StudyAgent:
         # texto SIMPLES sem tool-calling. Modelos de tool-calling CONFABULAM
         # "resposta de função JSON" em vez de apenas conversar — por isso
         # evitamos tool-calling sempre que não há intenção real de ferramenta.
-        if is_casual:
-            try:
-                response_text = chat(messages)
-            except PermissionDeniedError:
-                raise
-            except Exception as exc:
-                log.warning("[CHAT] casual_chat_failed: %s", exc)
-                response_text = (
-                    "Não consegui processar agora (o modelo parece indisponível). "
-                    "Tente novamente em instantes."
+        try:
+            if is_casual:
+                try:
+                    response_text = chat(messages)
+                except PermissionDeniedError:
+                    raise
+                except Exception as exc:
+                    log.warning("[CHAT] casual_chat_failed: %s", exc)
+                    response_text = (
+                        "Não consegui processar agora (o modelo parece indisponível). "
+                        "Tente novamente em instantes."
+                    )
+            elif plan.wants_document:
+                response_text = self._run_tool_loop(
+                    messages, images, tools_used, allow_tools=False
                 )
-        elif plan.wants_document:
-            response_text = self._run_tool_loop(
-                messages, images, tools_used, allow_tools=False
-            )
-        else:
-            response_text = self._run_with_orchestration(
-                messages, images, tools_used, plan
-            )
+            else:
+                response_text = self._run_with_orchestration(
+                    messages, images, tools_used, plan
+                )
+        except PermissionDeniedError:
+            raise
+        except Exception as exc:
+            log.warning("[VISION] fallback_after_chat_error: %s", exc)
+            response_text = self._fallback_visual_response(message, location_hint, room_inventory_hint, session_id)
 
         # ── Validação da resposta (anti-alucinação) ────────────────
         if evidence.has_screen:
@@ -279,6 +566,13 @@ class StudyAgent:
             issues = validator.validate(response_text)
             if issues:
                 log.warning("[VALIDATOR] response_issues=%s", issues)
+
+        # Atualiza memória com observações da resposta do assistente quando a visão estava ativa
+        try:
+            if vision_source in ("camera", "screen") and response_text:
+                self._remember_object_from_assistant(response_text, vision_source)
+        except Exception:
+            log.exception("falha ao armazenar observação visual na memória")
 
         self.memory.add_message(session_id, "user", message)
         self.memory.add_message(session_id, "assistant", response_text)
@@ -298,6 +592,26 @@ class StudyAgent:
             "tools_used": tools_used,
             "evidence": evidence.summary() if evidence else None,
         }
+
+    def _fallback_visual_response(
+        self,
+        message: str,
+        location_hint: str | None,
+        room_inventory_hint: str | None,
+        session_id: str,
+    ) -> str:
+        """Fallback robusto quando o modelo de visão não responde."""
+        lowered = (message or "").lower()
+        if location_hint:
+            return location_hint
+        if room_inventory_hint:
+            return room_inventory_hint
+        if any(token in lowered for token in ["o que você vê", "o que ve", "quais objetos", "o que tem", "o que há", "o que ha", "descreva a imagem", "descreva a foto"]):
+            return (
+                "Não consegui analisar a imagem recebida no momento, mas posso tentar pela memória do ambiente "
+                "ou pela próxima captura. Se quiser, repita a pergunta ou envie uma imagem mais clara."
+            )
+        return "Não consegui analisar a imagem recebida no momento. Tente novamente em instantes."
 
     def _reflect_and_remember(self, message: str, response: str) -> None:
         """Aprende com a interação em segundo plano (memória cognitiva épisódica).
@@ -338,6 +652,46 @@ class StudyAgent:
                         facts.append(seg.strip()[:220])
                         break
         return facts[:6]
+
+    def _remember_object_from_assistant(self, assistant_text: str, vision_source: str = "camera") -> None:
+        """Tenta extrair frases de localização da resposta do assistente e grava na memória.
+
+        Procura frases simples do tipo "o <objeto> está <local>" ou "vejo <objeto> em <local>".
+        Usa confiança alta (0.95) quando a origem foi visão (camera/screen).
+        """
+        try:
+            if not assistant_text or not assistant_text.strip():
+                return
+            text = assistant_text.strip()
+            lowered = text.lower()
+            import re as _re
+            objs = [
+                "celular", "telefone", "chave", "mochila", "livro", "caderno",
+                "carregador", "mouse", "teclado", "notebook", "agenda", "fone",
+                "relógio", "garrafa", "caneta", "laptop"
+            ]
+            for obj in objs:
+                patterns = [
+                    rf"(?:vejo|encontrei|encontra-se|está|esta|o|a|um|uma)?\s*{_re.escape(obj)}\s*(?:está|esta|em|na|no|sobre|no canto|na mesa|na prateleira)?\s*(.+?)(?:[.!?]|$)",
+                    rf"(?:{_re.escape(obj)})\s*(?:está|esta|em|na|no|sobre)\s*(.+?)(?:[.!?]|$)",
+                ]
+                for pattern in patterns:
+                    m = _re.search(pattern, lowered)
+                    if m:
+                        loc = m.group(1).strip()
+                        if len(loc) > 1 and len(loc) < 180 and not any(token in loc for token in ["não", "nao", "não vejo", "nao vejo"]):
+                            room_hint = self._extract_room_hint(text)
+                            semantic_area = self._extract_semantic_area(loc, room_hint)
+                            confidence = 0.95 if vision_source in ("camera", "screen") else 0.6
+                            try:
+                                self.memory.remember_object_location(obj, loc, room=room_hint, area=semantic_area or room_hint or loc, context=f"observado pelo agente: {text}", confidence=confidence)
+                            except Exception:
+                                log.exception("falha ao gravar observação visual")
+                            finally:
+                                return
+        except Exception:
+            log.exception("_remember_object_from_assistant falhou")
+        return
 
     def _run_tool_loop(self, messages, images, tools_used, allow_tools=True):
         """Agent Loop V2: retry + circuit breaker + evidence por step.

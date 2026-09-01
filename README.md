@@ -238,6 +238,15 @@ frontend/src/
 
 426 testes (408 backend + 18 frontend):
 
+## Novidades recentes (autenticação facial e visão ambiente)
+
+- Autenticação facial obrigatória na inicialização: o StudyAgent usa a câmera para identificar o aluno antes de permitir o uso do agente. Isto garante que permissões sensíveis só são liberadas após confirmação da identidade.
+- Permissões sensíveis (câmera e captura de tela) são liberadas apenas após reconhecimento bem-sucedido do usuário. Antes disso, essas permissões ficam desativadas por padrão.
+- Integração visão ↔ memória: quando a visão (câmera ou captura de tela) confirma a presença de um objeto e o assistente descreve sua localização, o agente grava essa observação na memória de ambiente com maior confiança (campo `confidence` em `environment_objects`).
+- Mapeamento semântico de áreas: o agente extrai automaticamente áreas semânticas (ex.: "mesa da direita", "prateleira", "gaveta") de frases do usuário ou de observações do assistente e salva como `area` no banco.
+
+Essas mudanças melhoram a privacidade (não habilita câmera sem identificação) e aumentam a acurácia do inventário do ambiente ao combinar observações visuais com memória persistente.
+
 ```bash
 # Backend
 cd backend

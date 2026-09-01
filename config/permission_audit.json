@@ -634,5 +634,196 @@
     "action": "set",
     "permission": "internet",
     "value": false
+  },
+  {
+    "timestamp": "2026-08-31T02:51:25.740846",
+    "action": "set",
+    "permission": "internet",
+    "value": true
+  },
+  {
+    "timestamp": "2026-08-31T02:51:25.741495",
+    "action": "set",
+    "permission": "internet",
+    "value": false
+  },
+  {
+    "timestamp": "2026-08-31T02:51:54.803319",
+    "action": "set",
+    "permission": "internet",
+    "value": true
+  },
+  {
+    "timestamp": "2026-08-31T02:51:54.803952",
+    "action": "set",
+    "permission": "internet",
+    "value": false
+  },
+  {
+    "timestamp": "2026-08-31T02:55:14.629546",
+    "action": "set",
+    "permission": "internet",
+    "value": true
+  },
+  {
+    "timestamp": "2026-08-31T02:55:14.630693",
+    "action": "set",
+    "permission": "internet",
+    "value": false
+  },
+  {
+    "timestamp": "2026-08-31T04:10:34.385449",
+    "action": "set",
+    "permission": "internet",
+    "value": true
+  },
+  {
+    "timestamp": "2026-08-31T04:10:34.386192",
+    "action": "set",
+    "permission": "internet",
+    "value": false
+  },
+  {
+    "timestamp": "2026-08-31T04:10:34.388030",
+    "action": "forced",
+    "permission": "camera",
+    "value": true,
+    "reason": "permissão fixa para reconhecimento visual"
+  },
+  {
+    "timestamp": "2026-08-31T04:10:34.388448",
+    "action": "forced",
+    "permission": "screen_capture",
+    "value": true,
+    "reason": "permissão fixa para reconhecimento visual"
+  },
+  {
+    "timestamp": "2026-08-31T04:15:10.541828",
+    "action": "set",
+    "permission": "internet",
+    "value": true
+  },
+  {
+    "timestamp": "2026-08-31T04:15:10.543656",
+    "action": "set",
+    "permission": "internet",
+    "value": false
+  },
+  {
+    "timestamp": "2026-08-31T04:15:10.545652",
+    "action": "set",
+    "permission": "camera",
+    "value": false
+  },
+  {
+    "timestamp": "2026-08-31T04:15:10.546190",
+    "action": "set",
+    "permission": "screen_capture",
+    "value": false
+  },
+  {
+    "timestamp": "2026-08-31T04:15:10.546720",
+    "action": "set",
+    "permission": "camera",
+    "value": true
+  },
+  {
+    "timestamp": "2026-08-31T04:15:10.547141",
+    "action": "hierarchy",
+    "permission": "screen_capture",
+    "value": true,
+    "reason": "ativado por camera"
+  },
+  {
+    "timestamp": "2026-08-31T04:15:10.547546",
+    "action": "set",
+    "permission": "screen_capture",
+    "value": true
+  },
+  {
+    "timestamp": "2026-08-31T04:15:45.305245",
+    "action": "set",
+    "permission": "internet",
+    "value": true
+  },
+  {
+    "timestamp": "2026-08-31T04:15:45.306123",
+    "action": "set",
+    "permission": "internet",
+    "value": false
+  },
+  {
+    "timestamp": "2026-08-31T04:15:45.308768",
+    "action": "set",
+    "permission": "camera",
+    "value": false
+  },
+  {
+    "timestamp": "2026-08-31T04:15:45.309586",
+    "action": "set",
+    "permission": "screen_capture",
+    "value": false
+  },
+  {
+    "timestamp": "2026-08-31T04:15:45.310294",
+    "action": "set",
+    "permission": "camera",
+    "value": true
+  },
+  {
+    "timestamp": "2026-08-31T04:15:45.310915",
+    "action": "hierarchy",
+    "permission": "screen_capture",
+    "value": true,
+    "reason": "ativado por camera"
+  },
+  {
+    "timestamp": "2026-08-31T04:15:45.311607",
+    "action": "set",
+    "permission": "screen_capture",
+    "value": true
+  },
+  {
+    "timestamp": "2026-09-01T08:11:15.701994",
+    "action": "set",
+    "permission": "internet",
+    "value": true
+  },
+  {
+    "timestamp": "2026-09-01T08:11:15.702789",
+    "action": "set",
+    "permission": "internet",
+    "value": false
+  },
+  {
+    "timestamp": "2026-09-01T08:11:15.704322",
+    "action": "set",
+    "permission": "camera",
+    "value": false
+  },
+  {
+    "timestamp": "2026-09-01T08:11:15.704756",
+    "action": "set",
+    "permission": "screen_capture",
+    "value": false
+  },
+  {
+    "timestamp": "2026-09-01T08:11:15.705205",
+    "action": "set",
+    "permission": "camera",
+    "value": true
+  },
+  {
+    "timestamp": "2026-09-01T08:11:15.705564",
+    "action": "hierarchy",
+    "permission": "screen_capture",
+    "value": true,
+    "reason": "ativado por camera"
+  },
+  {
+    "timestamp": "2026-09-01T08:11:15.706010",
+    "action": "set",
+    "permission": "screen_capture",
+    "value": true
   }
 ]

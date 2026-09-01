@@ -22,14 +22,16 @@ class PermissionDeniedError(Exception):
 
 DEFAULT_PERMISSIONS = {
     "microphone": True,
-    "camera": True,
-    "screen_capture": True,
+    "camera": False,
+    "screen_capture": False,
     "file_access": True,
     "internet": True,
     "mouse_control": False,
     "keyboard_control": False,
     "command_execution": False,
 }
+
+FORCED_PERMISSIONS: dict[str, bool] = {}
 
 # Grupos de permissão (uma ação pode exigir múltiplas)
 PERMISSION_GROUPS = {
@@ -118,7 +120,6 @@ class PermissionManager:
         with self._lock:
             if name not in self._permissions:
                 raise KeyError(f"permissão desconhecida: {name}")
-            old = self._permissions[name]
             self._permissions[name] = bool(value)
             self._save()
             self._audit("set", name, value, reason)

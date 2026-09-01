@@ -127,6 +127,32 @@ def process_capture(
         vision_confidence=1.0 if image_bytes else 0.0,
     )
 
+    # Tentativa de executar um detector de objetos estruturado, se disponível.
+    # Não é obrigatório: o projeto pode não fornecer um detector local — nesse
+    # caso a import falhará e a execução prossegue normalmente.
+    try:
+        # detect_image(shot) deve retornar uma lista de detecções com:
+        # [{"label": "celular", "confidence": 0.88, "bbox": {"left": 10, "top": 20, "width": 100, "height": 80}}, ...]
+        from ..vision import detector as _detector  # type: ignore
+
+        detections = None
+        try:
+            detections = _detector.detect_image(shot)
+        except Exception as _exc:
+            # se o detector falhar internamente, logamos em debug e seguimos
+            log.debug("[VISION] detector execution failed: %s", _exc)
+            detections = None
+
+        if detections:
+            # guardamos na metadata para que o orquestrador/agent possam
+            # optar por consumir as detecções estruturadas.
+            ctx.metadata["detections"] = detections
+            ctx.add_stage("DETECTIONS")
+            log.info("[VISION] detections=%d", len(detections))
+    except Exception as exc:
+        # ImportError ou outros — detector ausente ou não compatível.
+        log.debug("[VISION] detector unavailable or failed to import: %s", exc)
+
     if ctx.is_valid:
         stages.append("CONTEXT_BUILT")
         log.info("[VISION] context_built monitor=%s image_bytes=%d ocr=%s",

@@ -23,6 +23,20 @@ CREATE TABLE IF NOT EXISTS documents (
     id TEXT PRIMARY KEY, name TEXT NOT NULL, path TEXT NOT NULL,
     pages INTEGER DEFAULT 0, chars INTEGER DEFAULT 0, created_at TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS environment_objects (
+    id TEXT PRIMARY KEY,
+    object_name TEXT NOT NULL,
+    location TEXT NOT NULL,
+    room TEXT NOT NULL DEFAULT '',
+    area TEXT NOT NULL DEFAULT '',
+    context TEXT NOT NULL DEFAULT '',
+    confidence REAL NOT NULL DEFAULT 1.0,
+    last_seen_at TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_environment_objects_name
+    ON environment_objects(object_name, last_seen_at DESC);
 CREATE TABLE IF NOT EXISTS exercise_history (
     id INTEGER PRIMARY KEY AUTOINCREMENT, exercise_id TEXT NOT NULL,
     topic TEXT NOT NULL, score INTEGER NOT NULL, total INTEGER NOT NULL,

@@ -205,6 +205,19 @@ export function screenPreviewUrl(monitor: number): string {
   return `${API}/api/screen/preview?monitor=${monitor}`
 }
 
+export async function getNotifications(limit = 20): Promise<any[]> {
+  const res = await fetch(`${API}/api/notifications?limit=${limit}`)
+  if (!res.ok) throw new Error('Failed to fetch notifications')
+  return res.json()
+}
+
+export async function markNotificationRead(id: string): Promise<void> {
+  const res = await fetch(`${API}/api/notifications/${encodeURIComponent(id)}/read`, {
+    method: 'POST',
+  })
+  if (!res.ok) throw new Error('Failed to mark notification read')
+}
+
 export interface ExerciseQuestion {
   id: string
   q: string

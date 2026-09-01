@@ -12,3 +12,7 @@ pypdf
 python-multipart
 ddgs
 requests
+psutil
+slowapi
+chromadb
+insightface

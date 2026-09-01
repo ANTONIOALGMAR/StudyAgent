@@ -8,8 +8,8 @@ import logging
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
-from ..agent.agent import PermissionDeniedError
 from ..security.permissions import PermissionManager
+from ..tutor import profile as student_profile
 from ..vision.facial import FaceRecognition
 
 router = APIRouter(prefix="/api/face")
@@ -39,10 +39,6 @@ def _decode_image(image_b64: str) -> bytes:
 @router.post("/present")
 def face_present(req: FaceImageRequest):
     """Detecta se há rosto claro na imagem (sem casar com identidade)."""
-    try:
-        permissions.require("camera")
-    except PermissionDeniedError as exc:
-        raise HTTPException(status_code=403, detail=str(exc)) from exc
     data = _decode_image(req.image_b64)
     try:
         return recognition.recognize(data, threshold=2.0)
@@ -54,13 +50,13 @@ def face_present(req: FaceImageRequest):
 @router.post("/register")
 def face_register(req: FaceRegisterRequest):
     """Cadastra o rosto atual da câmera como identidade do usuário."""
-    try:
-        permissions.require("camera")
-    except PermissionDeniedError as exc:
-        raise HTTPException(status_code=403, detail=str(exc)) from exc
     data = _decode_image(req.image_b64)
     try:
-        return recognition.register(req.name, data)
+        result = recognition.register(req.name, data)
+        student_profile.sync_profile_name(req.name)
+        permissions.set("camera", True, reason="usuário identificado com sucesso")
+        permissions.set("screen_capture", True, reason="usuário identificado com sucesso")
+        return result
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:
@@ -71,13 +67,14 @@ def face_register(req: FaceRegisterRequest):
 @router.post("/recognize")
 def face_recognize(req: FaceImageRequest):
     """Identifica o usuário comparando com as faces cadastradas."""
-    try:
-        permissions.require("camera")
-    except PermissionDeniedError as exc:
-        raise HTTPException(status_code=403, detail=str(exc)) from exc
     data = _decode_image(req.image_b64)
     try:
-        return recognition.recognize(data)
+        result = recognition.recognize(data)
+        if result.get("name"):
+            student_profile.sync_profile_name(result["name"])
+            permissions.set("camera", True, reason="usuário identificado com sucesso")
+            permissions.set("screen_capture", True, reason="usuário identificado com sucesso")
+        return result
     except Exception as exc:
         log.exception("[FACIAL] recognize falhou")
         raise HTTPException(status_code=500, detail=str(exc)) from exc
