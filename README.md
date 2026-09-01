@@ -241,12 +241,12 @@ frontend/src/
 
 ### Testes
 
-426 testes (408 backend + 18 frontend):
+487 testes (469 backend + 18 frontend):
 
 ```bash
 # Backend
 cd backend
-.venv/bin/pytest tests/ -v       # 408 testes
+.venv/bin/pytest tests/ -v       # 469 testes
 .venv/bin/ruff check app tests
 
 # Frontend
@@ -255,6 +255,9 @@ npx vitest run                   # 18 testes
 npx tsc --noEmit
 npx vite build
 ```
+
+> O pytest gera artefatos em `config/permissions.json` e `config/permission_audit.json`
+> durante os testes de permissões — restaure com `git checkout config` após rodar a suíte.
 
 ## Variáveis de ambiente
 
@@ -485,4 +488,4 @@ Abra **http://localhost:5173**
 - [x] RAG V2: embedding cache, reranking, metadata, page_range filter
 - [x] Frontend Decomposition: Chat.tsx 993→357 lines, 3 hooks, 4 components
 - [x] Performance: JPEG compression (~5x smaller), lazy loading panels
-- [x] Tests: 408 backend + 18 frontend = 426 total
+- [x] Tests: 469 backend + 18 frontend = 487 total
