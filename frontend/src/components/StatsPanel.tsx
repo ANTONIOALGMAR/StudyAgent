@@ -12,7 +12,7 @@ import {
 } from '../api'
 
 export default function StatsPanel() {
-  const { profile, setProfile } = useUserStore()
+  const { setProfile } = useUserStore()
   const [data, setData] = useState<EnhancedDashboard | null>(null)
   const [timeData, setTimeData] = useState<TimeAnalytics | null>(null)
   const [lb, setLb] = useState<Leaderboard | null>(null)

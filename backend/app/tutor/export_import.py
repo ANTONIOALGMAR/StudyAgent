@@ -17,6 +17,17 @@ from ..db import get_connection
 # ── Flashcard Export ────────────────────────────────────────────────────────────
 
 
+# Prefixos que podem disparar execução de macro/fórmula em planilhas (CSV injection).
+_CSV_INJECTION_PREFIXES = ("=", "+", "-", "@", "\t", "\r")
+
+
+def _sanitize_csv(value: str) -> str:
+    """Previne injeção de fórmula ao exportar CSV (mitigação de CSV injection)."""
+    if value and value.lstrip()[:1] in _CSV_INJECTION_PREFIXES:
+        return "'" + value
+    return value
+
+
 def export_deck_csv(deck_id: str) -> str:
     conn = get_connection()
     deck = conn.execute("SELECT * FROM flashcard_decks WHERE id = ?", (deck_id,)).fetchone()
@@ -29,10 +40,10 @@ def export_deck_csv(deck_id: str) -> str:
     output = io.StringIO()
     output.write("#separator:tab\n")
     output.write("#html:false\n")
-    output.write("#deck:" + dict(deck)["topic"] + "\n")
+    output.write("#deck:" + _sanitize_csv(dict(deck)["topic"]) + "\n")
     for card in cards:
         c = dict(card)
-        output.write(f"{c['front']}\t{c['back']}\n")
+        output.write(f"{_sanitize_csv(c['front'])}\t{_sanitize_csv(c['back'])}\n")
     return output.getvalue()
 
 

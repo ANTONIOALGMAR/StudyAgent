@@ -123,7 +123,6 @@ export default function Chat() {
   }
 
   const camStreamRef = useRef<MediaStream | null>(null)
-  const videoRef = useRef<HTMLVideoElement | null>(null)
 
   useEffect(() => {
     return () => {

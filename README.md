@@ -114,8 +114,11 @@ Tutor de estudos multimodal que roda **100% local** no seu computador (Linux): c
 - **Perfil completo**: exportar/importar todos os dados (perfil, mastery, decks, planos)
 
 ### 🔒 Segurança
-- **Rate limiting**: chat 15/min, exercícios 5/min, correção 30/min (slowapi)
+- **Rate limiting**: chat 15/min, exercícios 5/min e correção 30/min (slowapi) + flashcards 10/min, planos 10/min, áudio 20-30/min e reconhecimento facial 10-30/min
 - **Permissões explícitas**: nenhum módulo acessa microfone, câmera, tela, arquivos ou internet sem checar
+- **PIN local (`STUDYAGENT_PIN`)**: ativar permissões perigosas (controle do mouse/teclado, execução de comandos) exige o PIN no header `X-StudyAgent-Pin` — impedindo que uma página/processo local malicioso conceda controle total sem consentimento
+- **Escuta só no localhost**: a API faz bind em `127.0.0.1` (start.sh, install.sh, systemd); o Docker publica a porta apenas no host (`127.0.0.1:8000`) e não na rede
+- **Proteção CSV**: exportação de flashcards escapa células que começam com `=`, `+`, `-`, `@` (anti CSV injection) e nomes de arquivo são sanitizados no Content-Disposition
 - **Global exception handler**: erros internos retornam 500 seguro sem vazar detalhes
 
 ### 🛠 Infraestrutura
@@ -176,7 +179,9 @@ backend/app/
 │   ├── documents.py        Extração PDF, digest map-reduce, narração (audiobook)
 │   ├── rag.py              Busca semântica (nomic-embed-text + numpy cosine)
 │   └── web_search.py       DDG→Bing→Wikipédia, fetch, destilação
-└── security/permissions.py Portão de permissões
+└── security/
+    ├── permissions.py Portão de permissões
+    └── local_auth.py   PIN local (STUDYAGENT_PIN + X-StudyAgent-Pin) p/ permissões perigosas
 
 frontend/src/
 ├── App.tsx                 Layout: sidebar permissões + chat
@@ -262,6 +267,13 @@ npx vite build
 | `STUDY_NUM_PREDICT` | `2048` | Limite de tokens na resposta |
 | `STUDY_VAD_THRESHOLD` | `500` | Sensibilidade do microfone (listener) |
 | `OLLAMA_HOST` | `http://localhost:11434` | Host do Ollama |
+| `STUDYAGENT_HOST` | `127.0.0.1` | Interface de rede da API (localhost) |
+| `STUDYAGENT_PIN` | _(vazio)_ | PIN para ativar permissões perigosas (ver **Segurança**) |
+
+> **Configurando o PIN:** gere um PIN forte com `openssl rand -hex 12` e adicione
+> `STUDYAGENT_PIN=<valor>` ao arquivo `backend/.env` (ele não é commitado). Com o PIN
+> definido, ativar permissões perigosas passa a exigir `X-StudyAgent-Pin` no header;
+> sem PIN definido, essas permissões ficam bloqueadas (fail-closed, HTTP 401).
 
 ## Requisitos
 
@@ -433,7 +445,7 @@ Abra **http://localhost:5173**
 | GET | `/api/profile/export` | Export perfil completo |
 | POST | `/api/profile/import` | Import perfil completo |
 | GET | `/api/sessions` | Lista sessões |
-| GET/PUT | `/api/permissions[/{name}]` | Permissões |
+| GET/PUT | `/api/permissions[/{name}]` | Permissões (ativar permissões perigosas requer PIN) |
 
 ## Roadmap
 

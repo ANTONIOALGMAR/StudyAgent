@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, File, HTTPException, UploadFile
+from fastapi import APIRouter, File, HTTPException, Request, UploadFile
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import Response, StreamingResponse
 from pydantic import BaseModel
+from slowapi import Limiter
+from slowapi.util import get_remote_address
 
 from ..agent.agent import PermissionDeniedError
 from ..audio import speech_to_text, text_to_speech
@@ -13,6 +15,7 @@ from ..security.permissions import PermissionManager
 from .audio_stream import audio_stream_generator
 
 router = APIRouter(prefix="/api")
+limiter = Limiter(key_func=get_remote_address)
 permissions = PermissionManager()
 
 
@@ -21,7 +24,8 @@ class SpeakRequest(BaseModel):
 
 
 @router.post("/audio/transcribe")
-async def transcribe(file: UploadFile = File(...)):  # noqa: B008
+@limiter.limit("30/minute")
+async def transcribe(request: Request, file: UploadFile = File(...)):  # noqa: B008
     try:
         permissions.require("microphone")
     except PermissionDeniedError as exc:
@@ -34,7 +38,8 @@ async def transcribe(file: UploadFile = File(...)):  # noqa: B008
 
 
 @router.post("/audio/speak")
-def speak(req: SpeakRequest):
+@limiter.limit("30/minute")
+def speak(request: Request, req: SpeakRequest):
     try:
         wav = text_to_speech.synthesize(req.text)
     except Exception as exc:
@@ -43,7 +48,8 @@ def speak(req: SpeakRequest):
 
 
 @router.post("/audio/stream")
-async def speak_stream(messages: list, images: list[str] = None):
+@limiter.limit("20/minute")
+async def speak_stream(request: Request, messages: list, images: list[str] = None):
     """
     Endpoint de streaming de voz. 
     Recebe a conversa, gera texto via LLM e retorna áudio em chunks.

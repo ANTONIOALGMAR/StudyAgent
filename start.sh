@@ -26,7 +26,7 @@ log "Iniciando API (backend)..."
 systemctl --user start studyagent-api 2>/dev/null || {
     warn "systemd não disponível, iniciando diretamente..."
     cd "$SCRIPT_DIR/backend"
-    .venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 8000 &
+    .venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000 &
     echo $! > "$SCRIPT_DIR/.api.pid"
     log "API iniciada com PID $(cat "$SCRIPT_DIR/.api.pid")"
 }

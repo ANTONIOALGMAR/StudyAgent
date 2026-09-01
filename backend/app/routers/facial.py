@@ -5,14 +5,17 @@ from __future__ import annotations
 import base64
 import logging
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
+from slowapi import Limiter
+from slowapi.util import get_remote_address
 
 from ..agent.agent import PermissionDeniedError
 from ..security.permissions import PermissionManager
 from ..vision.facial import FaceRecognition
 
 router = APIRouter(prefix="/api/face")
+limiter = Limiter(key_func=get_remote_address)
 permissions = PermissionManager()
 recognition = FaceRecognition()
 log = logging.getLogger("studyagent.router.facial")
@@ -37,7 +40,8 @@ def _decode_image(image_b64: str) -> bytes:
 
 
 @router.post("/present")
-def face_present(req: FaceImageRequest):
+@limiter.limit("30/minute")
+def face_present(request: Request, req: FaceImageRequest):
     """Detecta se há rosto claro na imagem (sem casar com identidade)."""
     try:
         permissions.require("camera")
@@ -52,7 +56,8 @@ def face_present(req: FaceImageRequest):
 
 
 @router.post("/register")
-def face_register(req: FaceRegisterRequest):
+@limiter.limit("10/minute")
+def face_register(request: Request, req: FaceRegisterRequest):
     """Cadastra o rosto atual da câmera como identidade do usuário."""
     try:
         permissions.require("camera")
@@ -69,7 +74,8 @@ def face_register(req: FaceRegisterRequest):
 
 
 @router.post("/recognize")
-def face_recognize(req: FaceImageRequest):
+@limiter.limit("30/minute")
+def face_recognize(request: Request, req: FaceImageRequest):
     """Identifica o usuário comparando com as faces cadastradas."""
     try:
         permissions.require("camera")
@@ -85,11 +91,19 @@ def face_recognize(req: FaceImageRequest):
 
 @router.get("/list")
 def face_list():
+    try:
+        permissions.require("camera")
+    except PermissionDeniedError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
     return {"faces": recognition.list_faces()}
 
 
 @router.delete("/{name}")
 def face_delete(name: str):
+    try:
+        permissions.require("camera")
+    except PermissionDeniedError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
     if not recognition.delete(name):
         raise HTTPException(status_code=404, detail="Usuário não encontrado.")
     return {"deleted": name}

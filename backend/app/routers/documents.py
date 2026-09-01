@@ -52,17 +52,21 @@ async def upload_document(file: UploadFile = File(...)):  # noqa: B008
 
 @router.get("/documents/{doc_id}/file")
 def document_file(doc_id: str):
+    import re
+
     doc = agent.memory.get_document(doc_id)
     if not doc:
         raise HTTPException(status_code=404, detail="documento não encontrado")
     path = Path(doc["path"])
     if not path.exists():
         raise HTTPException(status_code=404, detail="arquivo não encontrado no disco")
+    name = doc["name"] or "documento"
+    name = re.sub(r'[\\";\r\n]', "", name)
     return FileResponse(
         path,
         media_type="application/pdf",
         headers={
-            "Content-Disposition": f'inline; filename="{doc["name"]}"',
+            "Content-Disposition": f'inline; filename="{name}"',
             "Cache-Control": "private, max-age=3600",
         },
     )

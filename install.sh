@@ -115,7 +115,7 @@ After=network.target
 [Service]
 Type=simple
 WorkingDirectory=$SCRIPT_DIR/backend
-ExecStart=$SCRIPT_DIR/backend/.venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 8000
+ExecStart=$SCRIPT_DIR/backend/.venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000
 Restart=on-failure
 RestartSec=5
 

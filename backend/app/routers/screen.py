@@ -63,7 +63,7 @@ def screen_analyze(req: AnalyzeScreenRequest):
 
 @router.get("/screen/diagnostics")
 def screen_diagnostics():
-    import os
+    import shutil
     import time
 
     from ..core.model_manager import resolve
@@ -131,7 +131,7 @@ def screen_diagnostics():
         "ocr_available": ocr_avail,
         "ocr_test": ocr_test,
         "ocr_time_ms": ocr_test_time_ms,
-        "tesseract_path": os.popen("which tesseract 2>/dev/null").read().strip() or None,
+        "tesseract_path": shutil.which("tesseract"),
         "vision_model": vision_model,
         "ollama_available": ollama_ok,
         "vision_test": vision_test,

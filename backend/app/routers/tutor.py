@@ -4,13 +4,16 @@ from __future__ import annotations
 
 import json
 
-from fastapi import APIRouter, File, HTTPException, UploadFile
+from fastapi import APIRouter, File, HTTPException, Request, UploadFile
 from pydantic import BaseModel
+from slowapi import Limiter
+from slowapi.util import get_remote_address
 
 from ..tutor import advanced_profile, automation, export_import, flashcards, gamification, profile, study_plan
 from ..tutor import stats as tutor_stats
 
 router = APIRouter(prefix="/api")
+limiter = Limiter(key_func=get_remote_address)
 
 
 # ── Flashcards ─────────────────────────────────────────────────────────────────
@@ -33,7 +36,8 @@ class FlashcardGenerateRequest(BaseModel):
 
 
 @router.post("/flashcards/generate")
-def flashcard_generate(req: FlashcardGenerateRequest):
+@limiter.limit("10/minute")
+def flashcard_generate(request: Request, req: FlashcardGenerateRequest):
     try:
         return flashcards.generate_deck(topic=req.topic, n=req.n, level=req.level)
     except ValueError as exc:
@@ -116,7 +120,8 @@ class StudyPlanRequest(BaseModel):
 
 
 @router.post("/study-plans/generate")
-def study_plan_generate(req: StudyPlanRequest):
+@limiter.limit("10/minute")
+def study_plan_generate(request: Request, req: StudyPlanRequest):
     try:
         return study_plan.generate_plan(topic=req.topic, level=req.level)
     except ValueError as exc:
@@ -281,7 +286,8 @@ def action_propose(req: ActionProposalRequest):
 
 
 @router.post("/actions/{proposal_id}/approve")
-def action_approve(proposal_id: str):
+@limiter.limit("20/minute")
+def action_approve(request: Request, proposal_id: str):
     try:
         return automation.approve(proposal_id)
     except KeyError as exc:
@@ -289,8 +295,12 @@ def action_approve(proposal_id: str):
 
 
 @router.post("/actions/{proposal_id}/reject")
-def action_reject(proposal_id: str, body: ProposalRejectRequest | None = None):  # noqa: B008
-    return automation.reject(proposal_id, reason=body.reason if body else "")
+@limiter.limit("20/minute")
+def action_reject(request: Request, proposal_id: str, body: ProposalRejectRequest | None = None):  # noqa: B008
+    try:
+        return automation.reject(proposal_id, reason=body.reason if body else "")
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
 @router.get("/actions/pending")
@@ -384,7 +394,10 @@ def get_permissions():
 
 
 @router.put("/permissions/{name}")
-def set_permission(name: str, body: PermissionUpdate):
+def set_permission(request: Request, name: str, body: PermissionUpdate):
+    from ..security.local_auth import DANGEROUS_PERMISSIONS, require_pin
+    if body.value and name in DANGEROUS_PERMISSIONS:
+        require_pin(request)
     from ..security.permissions import PermissionManager
     try:
         PermissionManager().set(name, body.value, reason=body.reason)
@@ -394,16 +407,22 @@ def set_permission(name: str, body: PermissionUpdate):
 
 
 @router.put("/permissions/group/{group}")
-def set_permission_group(group: str, body: PermissionGroupUpdate):
+def set_permission_group(request: Request, group: str, body: PermissionGroupUpdate):
+    from ..security.local_auth import DANGEROUS_PERMISSIONS, require_pin
     from ..security.permissions import PERMISSION_GROUPS, PermissionManager
     if group not in PERMISSION_GROUPS:
         raise HTTPException(status_code=404, detail=f"grupo desconhecido: {group}")
+    if body.value and any(p in DANGEROUS_PERMISSIONS for p in PERMISSION_GROUPS[group]):
+        require_pin(request)
     PermissionManager().set_group(group, body.value, reason=body.reason)
     return {"group": group, "value": body.value, "permissions": PERMISSION_GROUPS[group]}
 
 
 @router.post("/permissions/{name}/temporary")
-def grant_temporary_permission(name: str, body: TemporaryPermission):
+def grant_temporary_permission(request: Request, name: str, body: TemporaryPermission):
+    from ..security.local_auth import DANGEROUS_PERMISSIONS, require_pin
+    if name in DANGEROUS_PERMISSIONS:
+        require_pin(request)
     from ..security.permissions import PermissionManager
     try:
         PermissionManager().grant_temporary(name, body.duration_seconds, reason=body.reason)

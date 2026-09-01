@@ -75,6 +75,9 @@ def approve(proposal_id: str) -> dict:
 
 def reject(proposal_id: str, reason: str = "") -> dict:
     conn = get_connection()
+    row = conn.execute("SELECT * FROM action_proposals WHERE id = ?", (proposal_id,)).fetchone()
+    if not row:
+        raise KeyError(f"Proposta {proposal_id} não encontrada")
     conn.execute(
         "UPDATE action_proposals SET status = 'rejected', resolved_at = ?, rejection_reason = ? WHERE id = ?",
         (datetime.now().isoformat(), reason, proposal_id),

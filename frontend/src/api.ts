@@ -1,5 +1,24 @@
 const API = 'http://localhost:8000'
 
+const PIN_STORAGE_KEY = 'studyagent.local_pin'
+
+export function getLocalPin(): string {
+  return sessionStorage.getItem(PIN_STORAGE_KEY) || ''
+}
+
+export function setLocalPin(pin: string): void {
+  sessionStorage.setItem(PIN_STORAGE_KEY, pin)
+}
+
+export function clearLocalPin(): void {
+  sessionStorage.removeItem(PIN_STORAGE_KEY)
+}
+
+function localPinHeaders(): Record<string, string> {
+  const pin = getLocalPin()
+  return pin ? { 'X-StudyAgent-Pin': pin } : {}
+}
+
 export interface ChatResponse {
   session_id: string
   response: string
@@ -94,11 +113,15 @@ export async function getPermissions(): Promise<PermissionMap> {
 }
 
 export async function setPermission(name: string, value: boolean): Promise<void> {
-  await fetch(`${API}/api/permissions/${name}`, {
+  const res = await fetch(`${API}/api/permissions/${name}`, {
     method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...localPinHeaders() },
     body: JSON.stringify({ value }),
   })
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: res.statusText }))
+    throw new Error(err.detail ?? `Erro ${res.status}`)
+  }
 }
 
 export async function captureScreen(): Promise<{ image_b64: string; text: string }> {
