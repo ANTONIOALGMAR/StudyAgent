@@ -32,11 +32,25 @@ log "Parando serviços..."
 
 # Pull
 log "Baixando atualizações..."
-git stash 2>/dev/null || true
+# Guarda alterações locais de forma restauravel (evita perda silenciosa de
+# trabalho de devs paralelos). Sem stash silencioso descartado.
+if [ -n "$(git status --porcelain 2>/dev/null)" ]; then
+    warn "Alterações locais detectadas. Movidas para stash e serão restauradas após o pull."
+    git stash push -m "update.sh auto $(date +%Y%m%d_%H%M%S)" 2>/dev/null || true
+    STASHED=1
+else
+    STASHED=0
+fi
 git pull origin main || {
     err "Falha ao fazer pull. Verifique a conexão."
+    if [ "$STASHED" = "1" ]; then
+        git stash pop 2>/dev/null || warn "Falha ao restaurar stash (resolva manualmente: git stash list)"
+    fi
     exit 1
 }
+if [ "$STASHED" = "1" ]; then
+    git stash pop 2>/dev/null || warn "Conflito ao restaurar alterações locais. Resolva e rode: git stash list / git stash pop"
+fi
 
 # Atualizar dependências
 log "Atualizando dependências do backend..."

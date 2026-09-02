@@ -148,3 +148,22 @@ def test_health_ok():
     resp = client.get("/api/health")
     assert resp.status_code == 200
     assert resp.json()["status"] == "ok"
+
+
+# ── Áudio: permissão de microfone (R18) ───────────────────────────────────────
+
+
+def test_speak_sem_microfone_retorna_403(tmp_permissions, monkeypatch):
+    # /audio/speak exige a permissão "microphone" (antes não verificava — R18).
+    # O router instancia permissions no module-level; apontamos para instância
+    # isolada com microphone=false (default do código é true).
+    import json
+
+    import app.routers.audio as audio_mod
+    import app.security.permissions as perm_mod
+
+    perms_file, _ = tmp_permissions
+    perms_file.write_text(json.dumps({"microphone": False}))
+    monkeypatch.setattr(audio_mod, "permissions", perm_mod.PermissionManager(perms_file))
+    resp = client.post("/api/audio/speak", json={"text": "olá"})
+    assert resp.status_code == 403

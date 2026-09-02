@@ -41,6 +41,10 @@ async def transcribe(request: Request, file: UploadFile = File(...)):  # noqa: B
 @limiter.limit("30/minute")
 def speak(request: Request, req: SpeakRequest):
     try:
+        permissions.require("microphone")
+    except PermissionDeniedError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    try:
         wav = text_to_speech.synthesize(req.text)
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
@@ -51,15 +55,15 @@ def speak(request: Request, req: SpeakRequest):
 @limiter.limit("20/minute")
 async def speak_stream(request: Request, messages: list, images: list[str] = None):
     """
-    Endpoint de streaming de voz. 
+    Endpoint de streaming de voz.
     Recebe a conversa, gera texto via LLM e retorna áudio em chunks.
     """
     try:
         permissions.require("microphone")
     except PermissionDeniedError as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
-        
+
     return StreamingResponse(
-        audio_stream_generator(messages, images), 
+        audio_stream_generator(messages, images),
         media_type="audio/wav"
     )

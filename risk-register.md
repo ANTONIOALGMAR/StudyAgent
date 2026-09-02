@@ -59,7 +59,7 @@ P1 = alta prioridade (confiança/dados); P2 = importante; P3 = melhoria futura.
 ## Tranqueiras de tratamento
 
 - **P0 (rodadas atuais):** R1, R2, R3 → permissões perigosas off no arquivo versionado; bind `127.0.0.1` + non-root + HEALTHCHECK; suíte de testes de segurança (PIN/rate-limit/CORS/routers). ✅ concluído.
-- **P0 (9162 round corrente):** R12 → `backup.sh` agora usa `$SCRIPT_DIR/data/{memory,rag}` (caminho real) e `$SCRIPT_DIR/backups`; DB/`*.npz`/config de fato incluídos no backup. ✅ concluído (último P0 pendente).
-- **P1 (próximas):** R5 `.gitignore` agora cobre `backups/`/`backages/`/`*.pid` ✅; R11 serviços inline (api/web/ollama/listener) alinhados + hardening `--host 127.0.0.1`. ✅ parcial (instalação live ainda não reaplicada). R20 teste de integração com banco real (`app.db.get_connection` sem mock, WAL/FK/persistência) ✅ — **P1 completo**.
-- **P2:** R6, R7, R9, R10, R13, R14, R15, R16, R18, R19, R21, R22.
+- **P0 (rodada corrente):** R12 → `backup.sh` agora usa `$SCRIPT_DIR/data/{memory,rag}` (caminho real) e `$SCRIPT_DIR/backups`; DB/`*.npz`/config de fato incluídos no backup. ✅ concluído (último P0 pendente).
+- **P1:** R5 `.gitignore` cobre `backups/`/`backages/`/`*.pid` ✅; R6 `update.sh` usa `git stash push` com mensagem + `stash pop` guardado (não mais stash silencioso perdido) ✅; R11 serviços inline (api/web/ollama/listener) alinhados + hardening `--host 127.0.0.1` ✅ parcial; R20 teste de integração com banco real ✅ — **P1 completo**.
+- **P2:** R7 `stop.sh` restringe `pgrep` ao caminho deste projeto (não mata uvicorn de outros projetos) ✅; R18 `/audio/speak` agora exige permissão `microphone` (+ teste 403) ✅; R19 `requirements.txt` com versões pinadas (reproduzível) ✅. Pendentes: R9 (feito FASE 2-a), R10, R13, R14, R15, R16, R21, R22.
 - **P3:** R17, R23.

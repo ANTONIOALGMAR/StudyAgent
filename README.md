@@ -241,12 +241,12 @@ frontend/src/
 
 ### Testes
 
-505 testes (487 backend + 18 frontend):
+506 testes (488 backend + 18 frontend):
 
 ```bash
 # Backend
 cd backend
-.venv/bin/pytest tests/ -v       # 487 testes
+.venv/bin/pytest tests/ -v       # 488 testes
 .venv/bin/ruff check app tests
 
 # Frontend
@@ -488,4 +488,4 @@ Abra **http://localhost:5173**
 - [x] RAG V2: embedding cache, reranking, metadata, page_range filter
 - [x] Frontend Decomposition: Chat.tsx 993→357 lines, 3 hooks, 4 components
 - [x] Performance: JPEG compression (~5x smaller), lazy loading panels
-- [x] Tests: 487 backend + 18 frontend = 505 total
+- [x] Tests: 488 backend + 18 frontend = 506 total

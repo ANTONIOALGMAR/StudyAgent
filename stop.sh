@@ -35,10 +35,11 @@ for pidfile in "$SCRIPT_DIR/.api.pid" "$SCRIPT_DIR/.web.pid"; do
     fi
 done
 
-# Verificar se há processos uvicorn restantes
-UVICORN_PIDS=$(pgrep -f "uvicorn app.main:app" 2>/dev/null || true)
+# Verificar se há processos uvicorn restantes (restrito a este projeto para
+# não derrubar instâncias de outros projetos na mesma máquina)
+UVICORN_PIDS=$(pgrep -f "$SCRIPT_DIR/backend/.*uvicorn app.main:app" 2>/dev/null || true)
 if [ -n "$UVICORN_PIDS" ]; then
-    warn "Encontrados processos uvicorn restantes: $UVICORN_PIDS"
+    warn "Encontrados processos uvicorn restantes (estudo): $UVICORN_PIDS"
     echo "$UVICORN_PIDS" | xargs kill 2>/dev/null || true
     log "✓ Processos uvicorn parados"
 fi
