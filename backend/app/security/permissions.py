@@ -88,9 +88,10 @@ class PermissionManager:
             json.dumps(self._audit_log, indent=2, ensure_ascii=False),
             encoding="utf-8",
         )
-
-    def _audit(self, action: str, name: str, value: bool | None = None, reason: str = "") -> None:
-        entry = {
+ 
+    def _audit(self, action: str, name: str, value: bool | None = None, reason: str = "", actor: str | None = None) -> None:
+        """Registra um evento de auditoria com campo actor separado para análise estruturada."""
+        entry: dict = {
             "timestamp": datetime.now().isoformat(),
             "action": action,
             "permission": name,
@@ -99,6 +100,8 @@ class PermissionManager:
             entry["value"] = value
         if reason:
             entry["reason"] = reason
+        if actor:
+            entry["actor"] = actor
         self._audit_log.append(entry)
         self._save_audit()
 
@@ -116,35 +119,35 @@ class PermissionManager:
                     del self._temporary[name]
             return bool(self._permissions.get(name, False))
 
-    def set(self, name: str, value: bool, reason: str = "") -> None:
+    def set(self, name: str, value: bool, reason: str = "", actor: str | None = None) -> None:
         with self._lock:
             if name not in self._permissions:
                 raise KeyError(f"permissão desconhecida: {name}")
             self._permissions[name] = bool(value)
             self._save()
-            self._audit("set", name, value, reason)
-
+            self._audit("set", name, value, reason, actor)
+ 
             # Aplicar hierarquia: ativar X ativa Y
             if value and name in PERMISSION_HIERARCHY:
                 for dep in PERMISSION_HIERARCHY[name]:
                     if not self._permissions.get(dep):
                         self._permissions[dep] = True
-                        self._audit("hierarchy", dep, True, f"ativado por {name}")
+                        self._audit("hierarchy", dep, True, f"ativado por {name}", actor)
 
-    def set_group(self, group: str, value: bool, reason: str = "") -> None:
+    def set_group(self, group: str, value: bool, reason: str = "", actor: str | None = None) -> None:
         """Ativa/desativa todas as permissões de um grupo."""
         perms = PERMISSION_GROUPS.get(group, [])
         for name in perms:
             if name in self._permissions:
-                self.set(name, value, reason=reason)
+                self.set(name, value, reason=reason, actor=actor)
 
-    def grant_temporary(self, name: str, duration_seconds: float, reason: str = "") -> None:
+    def grant_temporary(self, name: str, duration_seconds: float, reason: str = "", actor: str | None = None) -> None:
         """Concede permissão temporária."""
         with self._lock:
             if name not in self._permissions:
                 raise KeyError(f"permissão desconhecida: {name}")
             self._temporary[name] = time.time() + duration_seconds
-            self._audit("temporary", name, True, f"{duration_seconds}s — {reason}")
+            self._audit("temporary", name, True, f"{duration_seconds}s — {reason}", actor)
 
     def require(self, name: str) -> None:
         if not self.is_allowed(name):

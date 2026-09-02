@@ -5,7 +5,7 @@ from __future__ import annotations
 import uuid as uuid_mod
 from pathlib import Path
 
-from fastapi import APIRouter, File, HTTPException, UploadFile
+from fastapi import APIRouter, File, HTTPException, UploadFile, Request
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import FileResponse, Response
 
@@ -18,8 +18,11 @@ agent = StudyAgent()
 permissions = PermissionManager()
 
 
+from fastapi import Depends
+from ..auth import get_current_user
+
 @router.post("/documents/upload")
-async def upload_document(file: UploadFile = File(...)):  # noqa: B008
+async def upload_document(request: Request, file: UploadFile = File(...), owner_user_id: str = Depends(get_current_user)):  # noqa: B008
     try:
         permissions.require("file_access")
     except PermissionDeniedError as exc:
@@ -46,15 +49,25 @@ async def upload_document(file: UploadFile = File(...)):  # noqa: B008
     else:
         pages = 1
         text = raw.decode("utf-8", errors="ignore")
-    doc_id = agent.memory.add_document(name, str(save_path), pages, len(text))
-    return {"id": doc_id, "name": name, "pages": pages, "chars": len(text)}
+    doc_id = agent.memory.add_document(name, str(save_path), pages, len(text), owner_user_id=owner_user_id)
+    return {"id": doc_id, "name": name, "pages": pages, "chars": len(text), "owner_user_id": owner_user_id or "default"}
 
 
 @router.get("/documents/{doc_id}/file")
-def document_file(doc_id: str):
+def document_file(doc_id: str, requester: str = Depends(get_current_user)):
+    try:
+        permissions.require("file_access")
+    except PermissionDeniedError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
     doc = agent.memory.get_document(doc_id)
     if not doc:
         raise HTTPException(status_code=404, detail="documento não encontrado")
+    # ownership check: requester provided by dependency; allow access if owner_user_id is 'default' (public)
+    owner = doc.get("owner_user_id") or "default"
+    if owner != "default" and (not requester or requester.strip() == ""):
+        raise HTTPException(status_code=403, detail="acesso negado ao documento")
+    if owner != "default" and requester and requester.strip() != owner:
+        raise HTTPException(status_code=403, detail="acesso negado ao documento")
     path = Path(doc["path"])
     if not path.exists():
         raise HTTPException(status_code=404, detail="arquivo não encontrado no disco")
@@ -83,11 +96,20 @@ def _doc_parts(doc_id: str):
 
 
 @router.get("/documents/{doc_id}/audio/plan")
-def document_audio_plan(doc_id: str):
+def document_audio_plan(doc_id: str, requester: str = Depends(get_current_user)):
     try:
         permissions.require("file_access")
     except PermissionDeniedError as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
+    doc = agent.memory.get_document(doc_id)
+    if not doc:
+        raise HTTPException(status_code=404, detail="documento não encontrado")
+    # ownership check
+    owner = doc.get("owner_user_id") or "default"
+    if owner != "default" and (not requester or requester.strip() == ""):
+        raise HTTPException(status_code=403, detail="acesso negado ao documento")
+    if owner != "default" and requester and requester.strip() != owner:
+        raise HTTPException(status_code=403, detail="acesso negado ao documento")
     doc, partes = _doc_parts(doc_id)
     if not partes:
         raise HTTPException(status_code=400, detail="documento sem texto legível")
@@ -96,11 +118,20 @@ def document_audio_plan(doc_id: str):
 
 
 @router.get("/documents/{doc_id}/audio")
-async def document_audio(doc_id: str, idx: int = 0):
+async def document_audio(doc_id: str, idx: int = 0, requester: str = Depends(get_current_user)):
     try:
         permissions.require("file_access")
     except PermissionDeniedError as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
+    # ownership check similar to document_file
+    doc = agent.memory.get_document(doc_id)
+    if not doc:
+        raise HTTPException(status_code=404, detail="documento não encontrado")
+    owner = doc.get("owner_user_id") or "default"
+    if owner != "default" and (not requester or requester.strip() == ""):
+        raise HTTPException(status_code=403, detail="acesso negado ao documento")
+    if owner != "default" and requester and requester.strip() != owner:
+        raise HTTPException(status_code=403, detail="acesso negado ao documento")
     _, partes = _doc_parts(doc_id)
     if not 0 <= idx < len(partes):
         raise HTTPException(status_code=404, detail=f"parte {idx} fora do alcance")

@@ -25,20 +25,28 @@ export default function LivePanel({
         <select
           value={monitorSel}
           onChange={(e) => setMonitorSel(Number(e.target.value))}
+          aria-label="Selecionar monitor"
         >
-          {monitors.length === 0 && <option value={0}>Todas as telas</option>}
-          {monitors.map((m) =>
-            m.index === 0 ? (
-              <option key={m.index} value={m.index}>
-                Todas as telas
-              </option>
-            ) : (
-              <option key={m.index} value={m.index}>
-                Tela {m.index} · {m.width}×{m.height}
-              </option>
-            ),
-          )}
+          {/* Always present explicit "Todas as telas" option mapped to monitor 0 (virtual desktop) */}
+          <option value={0} title="Captura do desktop virtual que combina todas as telas conectadas">Todas as telas (desktop virtual)</option>
+
+          {/* Render physical monitors (skip index 0 which represents the virtual desktop) */}
+          {monitors.filter((m) => m.index !== 0).map((m) => (
+            <option key={m.index} value={m.index} title={`Tela ${m.index}: ${m.width}×${m.height}`}>
+              Tela {m.index} · {m.width}×{m.height}
+            </option>
+          ))}
         </select>
+
+        {/* Small inline tooltip icon explaining the virtual desktop option */}
+        <span
+          role="img"
+          aria-label="Informação sobre todas as telas"
+          title="'Todas as telas (desktop virtual)' captura o desktop combinado (uma única imagem que cobre todo o espaço virtual). Use esta opção para analisar o conteúdo que pode estar distribuído em múltiplos monitores."
+          style={{ marginLeft: 8, color: '#94a3b8', cursor: 'default' }}
+        >
+          ℹ️
+        </span>
         <button className="btn-screen" onClick={onMinimize} title="Minimizar">—</button>
         <button className="btn-screen" onClick={onClose}>✕</button>
       </div>

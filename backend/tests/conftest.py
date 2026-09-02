@@ -123,6 +123,7 @@ CREATE TABLE IF NOT EXISTS student_level (
 """
 
 _MODULES_USING_DB = [
+    "app.db",
     "app.tutor.profile",
     "app.tutor.flashcards",
     "app.tutor.advanced_profile",

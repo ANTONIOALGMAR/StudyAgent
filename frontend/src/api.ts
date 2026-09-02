@@ -101,6 +101,34 @@ export async function setPermission(name: string, value: boolean): Promise<void>
   })
 }
 
+export interface PermissionAuditEntry {
+  action: string
+  permission: string
+  value?: boolean
+  actor?: string
+  reason?: string
+  timestamp?: string
+}
+
+export async function getPermissionAudit(limit = 10): Promise<PermissionAuditEntry[]> {
+  const res = await fetch(`${API}/api/permissions/audit?limit=${limit}`)
+  if (!res.ok) return []
+  return res.json()
+}
+
+export async function clearEnvironmentMemory(params: { userId?: string; userName?: string; all?: boolean } = {}): Promise<{ deleted: number; user_id?: string; user_name?: string; all: boolean }> {
+  const res = await fetch(`${API}/api/memory/clear`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(params),
+  })
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: res.statusText }))
+    throw new Error(err.detail ?? `Erro ${res.status}`)
+  }
+  return res.json()
+}
+
 export async function captureScreen(): Promise<{ image_b64: string; text: string }> {
   const res = await fetch(`${API}/api/screen/capture`, { method: 'POST' })
   if (!res.ok) throw new Error('Falha ao capturar tela')

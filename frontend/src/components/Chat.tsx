@@ -12,6 +12,8 @@ import { type UploadedDoc } from '../api'
 import { useChat } from '../hooks/useChat'
 import { useVoice } from '../hooks/useVoice'
 import { useScreen } from '../hooks/useScreen'
+import PermissionModal from './PermissionModal'
+import { setPermission } from '../api'
 
 const PdfViewer = lazy(() => import('./PdfViewer'))
 const StudyAgentAvatar = lazy(() => import('./StudyAgent3D/StudyAgentAvatar'))
@@ -99,8 +101,10 @@ export default function Chat() {
   }, [stage])
 
   // Handle structured actions emitted by the backend (e.g., request_permission)
+  const [permissionRequest, setPermissionRequest] = useState<{ permission: string; reason?: string; original?: string } | null>(null)
+
   useEffect(() => {
-    async function onActions(ev: Event) {
+    function onActions(ev: Event) {
       try {
         // @ts-ignore
         const detail = ev.detail || {}
@@ -108,29 +112,8 @@ export default function Chat() {
         const original = detail.original || ''
         for (const a of actions) {
           if (a.type === 'request_permission' && a.permission === 'camera') {
-            // Ask user for consent via a simple confirm modal for now
-            const allow = window.confirm('O agente precisa usar a câmera para procurar este objeto. Permitir agora?')
-            if (!allow) continue
-            try {
-              const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' } })
-              const video = document.createElement('video') as HTMLVideoElement
-              video.srcObject = stream
-              await video.play().catch(() => {})
-              await new Promise((r) => setTimeout(r, 300))
-              const canvas = document.createElement('canvas')
-              canvas.width = video.videoWidth || 640
-              canvas.height = video.videoHeight || 480
-              const ctx = canvas.getContext('2d')
-              if (ctx) ctx.drawImage(video, 0, 0, canvas.width, canvas.height)
-              const b64 = canvas.toDataURL('image/jpeg', 0.85).split(',')[1]
-              // stop tracks
-              stream.getTracks().forEach((t) => t.stop())
-              // re-send the original message with image attached
-              void chatHook.sendText(original, { imageB64: b64 })
-            } catch (err) {
-              // failed to get camera
-              window.alert('Não foi possível acessar a câmera. Verifique as permissões do navegador.')
-            }
+            setPermissionRequest({ permission: a.permission, reason: a.reason, original })
+            return
           }
         }
       } catch (e) {
@@ -140,6 +123,47 @@ export default function Chat() {
     window.addEventListener('studyagent:actions', onActions as EventListener)
     return () => window.removeEventListener('studyagent:actions', onActions as EventListener)
   }, [chatHook])
+
+  async function handleAllowPermission(remember = false) {
+    const req = permissionRequest
+    if (!req) return
+    const original = req.original || ''
+    setPermissionRequest(null)
+
+    if (remember) {
+      try {
+        await setPermission('camera', true)
+      } catch (e) {
+        // ignore permission persistence failures
+        console.warn('Failed to persist permission', e)
+      }
+    }
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' } })
+      const video = document.createElement('video') as HTMLVideoElement
+      video.srcObject = stream
+      await video.play().catch(() => {})
+      await new Promise((r) => setTimeout(r, 300))
+      const canvas = document.createElement('canvas')
+      canvas.width = video.videoWidth || 640
+      canvas.height = video.videoHeight || 480
+      const ctx = canvas.getContext('2d')
+      if (ctx) ctx.drawImage(video, 0, 0, canvas.width, canvas.height)
+      const b64 = canvas.toDataURL('image/jpeg', 0.85).split(',')[1]
+      // stop tracks
+      stream.getTracks().forEach((t) => t.stop())
+      // re-send the original message with image attached
+      void chatHook.sendText(original, { imageB64: b64 })
+    } catch (err) {
+      // failed to get camera
+      try { window.alert('Não foi possível acessar a câmera. Verifique as permissões do navegador.') } catch (e) {}
+    }
+  }
+
+  function handleDenyPermission() {
+    setPermissionRequest(null)
+  }
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -303,6 +327,14 @@ export default function Chat() {
             }}
           />
         )}
+
+        <PermissionModal
+          open={!!permissionRequest}
+          permission={permissionRequest?.permission || 'camera'}
+          reason={permissionRequest?.reason}
+          onAllow={handleAllowPermission}
+          onDeny={handleDenyPermission}
+        />
 
         {(chatHook.lastEvidence || chatHook.lastToolsUsed.length > 0) && (
           <button
