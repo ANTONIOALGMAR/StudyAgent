@@ -1,0 +1,47 @@
+Metadata-Version: 2.4
+Name: piper
+Version: 0.15.1
+Summary: A lightweight python toolkit for gluing together restartable, robust command line pipelines
+Project-URL: Homepage, https://github.com/databio/pypiper/
+Author: Nathan Sheffield, Johanna Klughammer, Andre Rendeiro
+License-Expression: BSD-2-Clause
+License-File: LICENSE.txt
+Keywords: command-runner,pipeline,restartable,shell,workflow
+Classifier: Development Status :: 4 - Beta
+Classifier: License :: OSI Approved :: BSD License
+Classifier: Programming Language :: Python :: 3.10
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Programming Language :: Python :: 3.12
+Classifier: Programming Language :: Python :: 3.13
+Classifier: Programming Language :: Python :: 3.14
+Classifier: Topic :: Scientific/Engineering :: Bio-Informatics
+Classifier: Topic :: Software Development :: Libraries :: Python Modules
+Classifier: Topic :: System :: Systems Administration
+Requires-Python: >=3.10
+Requires-Dist: logmuse>=0.3.0
+Requires-Dist: pipestat>=0.13.1
+Requires-Dist: psutil
+Requires-Dist: ubiquerg>=0.9.1
+Requires-Dist: yacman>=1.0.0
+Provides-Extra: ngstk
+Requires-Dist: numpy; extra == 'ngstk'
+Requires-Dist: pysam; extra == 'ngstk'
+Provides-Extra: plot
+Requires-Dist: matplotlib; extra == 'plot'
+Requires-Dist: scipy; extra == 'plot'
+Requires-Dist: seaborn; extra == 'plot'
+Provides-Extra: test
+Requires-Dist: hypothesis; extra == 'test'
+Requires-Dist: pytest-cov>=2.8.1; extra == 'test'
+Requires-Dist: pytest-remotedata; extra == 'test'
+Requires-Dist: pytest>=4.6.9; extra == 'test'
+Description-Content-Type: text/markdown
+
+<img src="https://raw.githubusercontent.com/databio/pypiper/master/logo_pypiper.svg?sanitize=true" alt="Pypiper logo" height="70" align="left"/>
+
+# Pypiper
+
+[![Build Status](https://github.com/databio/pypiper/actions/workflows/run-pytest.yml/badge.svg)](https://github.com/databio/pypiper/actions/workflows/run-pytest.yml)
+[![pypi-badge](https://img.shields.io/pypi/v/piper)](https://pypi.org/project/piper)
+
+A lightweight Python toolkit for gluing together restartable, robust shell pipelines. Pypiper manages shell command execution with automatic restartability, file integrity protection, resource monitoring, and detailed logging -- useful for any multi-step workflow that calls command-line tools. Learn more in the [documentation](https://pep.databio.org/pypiper/).

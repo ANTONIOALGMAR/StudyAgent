@@ -14,12 +14,37 @@ export default function AchievementsPanel() {
   const [streaks, setStreaks] = useState<TopicStreak[]>([])
   const [loading, setLoading] = useState(true)
 
+  async function loadAll() {
+    setLoading(true)
+    try {
+      const [a, p, s] = await Promise.all([getAchievements(), getAchievementProgress(), getTopicStreaks()])
+      setAchievements(a)
+      setProgress(p)
+      setStreaks(s)
+    } catch (err) {
+      // ignore failures but keep UI responsive
+      console.warn('Failed to load achievements', err)
+    } finally {
+      setLoading(false)
+    }
+  }
+
   useEffect(() => {
-    void Promise.all([getAchievements(), getAchievementProgress(), getTopicStreaks()])
-      .then(([a, p, s]) => { setAchievements(a); setProgress(p); setStreaks(s) })
-      .catch(() => {})
-      .finally(() => setLoading(false))
+    void loadAll()
   }, [])
+
+  async function handleCheckNew() {
+    setLoading(true)
+    try {
+      await checkAchievements()
+      // refresh lists after check
+      await loadAll()
+    } catch (err) {
+      console.warn('Failed to check achievements', err)
+    } finally {
+      setLoading(false)
+    }
+  }
 
   if (loading) return <div className="achievements"><p className="ach-loading">carregando…</p></div>
 
@@ -29,6 +54,11 @@ export default function AchievementsPanel() {
   return (
     <div className="achievements">
       <h3>🏆 Conquistas</h3>
+
+      <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
+        <button className="btn" onClick={() => void loadAll()}>Atualizar</button>
+        <button className="btn btn-primary" onClick={() => void handleCheckNew()}>Verificar novas</button>
+      </div>
 
       {progress && (
         <div className="ach-summary">

@@ -1,0 +1,428 @@
+"""Abstraction of a parse of a schema definition"""
+
+import copy
+import logging
+from collections.abc import Mapping
+from pathlib import Path
+from typing import Any
+
+import yacman
+
+from .const import (
+    CANONICAL_TYPES,
+    CLASSES_BY_TYPE,
+    RECORD_IDENTIFIER,
+    SCHEMA_DESC_KEY,
+    SCHEMA_ITEMS_KEY,
+    SCHEMA_PROP_KEY,
+    SCHEMA_TYPE_KEY,
+)
+from .exceptions import SchemaError
+
+_LOGGER = logging.getLogger(__name__)
+
+SCHEMA_TEMPLATE = """\
+pipeline_name: my_pipeline
+samples:
+  my_result:
+    type: string
+    description: "A string result reported by the pipeline"
+  my_numeric_result:
+    type: number
+    description: "A numeric result reported by the pipeline"
+"""
+
+NULL_MAPPING_VALUE = {}
+SCHEMA_PIPELINE_NAME_KEY = "pipeline_name"
+
+
+# The columns associated with the file and image types
+PATH_COL_SPEC = (Path, ...)
+
+
+def _safe_pop_one_mapping(
+    mappingkey: str,
+    data: dict[str, Any],
+    info_name: str,
+    subkeys: list[str] | None = None,
+) -> Any:
+    """Pop a mapping from nested dictionary data.
+
+    Args:
+        mappingkey (str): The dict key where the sample, project or status values are stored,
+            e.g. data["mappingkey"].
+        data (Dict[str, Any]): Source dictionary.
+        info_name (str): Name for error messages.
+        subkeys (List[str], optional): If using JSON schema, the dict is nested further,
+            e.g. data["properties"]["samples"]["mappingkey"]. Defaults to None.
+
+    Returns:
+        Any: The extracted mapping value.
+    """
+    if subkeys:
+        try:
+            value = data[subkeys[0]].pop(mappingkey, NULL_MAPPING_VALUE)
+        except KeyError:
+            value = {}
+        if isinstance(value, Mapping):
+            return value
+    else:
+        value = data.pop(mappingkey, NULL_MAPPING_VALUE)
+        if isinstance(value, Mapping):
+            return value
+        raise SchemaError(
+            f"{info_name} info in schema definition has invalid type: {type(value).__name__}"
+        )
+
+
+class ParsedSchema(object):
+    """Parse and validate a pipestat schema configuration file.
+
+    Minimal schema example::
+
+        pipeline_name: my_pipeline
+        samples:
+          my_result:
+            type: string
+            description: "A string result"
+
+    To generate a schema from existing results, use ``pipestat infer-schema``.
+    """
+
+    _PROJECT_KEY = "project"
+    _SAMPLES_KEY = "samples"
+    _STATUS_KEY = "status"
+
+    def __init__(self, data: dict[str, Any] | Path | str) -> None:
+        # initial validation and parse
+        if not isinstance(data, dict):
+            data = yacman.load_yaml(data)
+
+        # Keep a copy of the original schema
+        self.original_schema = copy.deepcopy(data)
+        # Create a copy of a resolved schema
+        if "$defs" in data.keys():
+            self.resolved_schema = replace_JSON_refs(copy.deepcopy(data), data)
+            self.resolved_schema.pop("$defs")
+        else:
+            self.resolved_schema = copy.deepcopy(data)
+
+        data = copy.deepcopy(data)
+
+        # Initialize additionalProperties settings (default True per JSON Schema spec)
+        self._sample_additional_properties = True
+        self._project_additional_properties = True
+
+        # Currently supporting backwards compatibility with old output schema while now also supporting a JSON schema:
+        if "properties" in list(data.keys()):
+            # Assume top-level properties key implies proper JSON schema.
+
+            self._pipeline_name = data["properties"].pop(SCHEMA_PIPELINE_NAME_KEY, None)
+
+            # Two passes for sample-data as it is now nested under items per #204
+            sample_data = _safe_pop_one_mapping(
+                subkeys=["samples"],
+                data=data["properties"],
+                info_name="sample-level",
+                mappingkey="items",
+            )
+            sample_data = _safe_pop_one_mapping(
+                data=sample_data,
+                info_name="sample-level",
+                mappingkey="properties",
+            )
+
+            prj_data = _safe_pop_one_mapping(
+                subkeys=["project"],
+                data=data["properties"],
+                info_name="project-level",
+                mappingkey="properties",
+            )
+
+            # Parse additionalProperties from samples and project sections (JSON Schema format)
+            if "samples" in self.original_schema.get("properties", {}):
+                samples_section = self.original_schema["properties"]["samples"]
+                if "items" in samples_section:
+                    self._sample_additional_properties = samples_section["items"].get(
+                        "additionalProperties", True
+                    )
+            if "project" in self.original_schema.get("properties", {}):
+                self._project_additional_properties = self.original_schema["properties"][
+                    "project"
+                ].get("additionalProperties", True)
+
+            self._status_data = _safe_pop_one_mapping(
+                subkeys=["status"],
+                data=data["properties"],
+                info_name="status",
+                mappingkey="properties",
+            )
+            # TODO We should add the ability to look at an external source beyond the source schema (data)
+            self._sample_level_data = replace_JSON_refs(sample_data, data)
+
+            self._project_level_data = replace_JSON_refs(prj_data, data)
+
+        else:
+            self._pipeline_name = data.pop(SCHEMA_PIPELINE_NAME_KEY, None)
+            # Parse additionalProperties from old-style schema format (only if it's a dict)
+            if self._SAMPLES_KEY in self.original_schema and isinstance(
+                self.original_schema[self._SAMPLES_KEY], dict
+            ):
+                self._sample_additional_properties = self.original_schema[self._SAMPLES_KEY].get(
+                    "additionalProperties", True
+                )
+            if self._PROJECT_KEY in self.original_schema and isinstance(
+                self.original_schema[self._PROJECT_KEY], dict
+            ):
+                self._project_additional_properties = self.original_schema[self._PROJECT_KEY].get(
+                    "additionalProperties", True
+                )
+
+            sample_data = _safe_pop_one_mapping(
+                mappingkey=self._SAMPLES_KEY, data=data, info_name="sample-level"
+            )
+            prj_data = _safe_pop_one_mapping(
+                mappingkey=self._PROJECT_KEY, data=data, info_name="project-level"
+            )
+            # Parse custom status declaration if present.
+            self._status_data = _safe_pop_one_mapping(
+                mappingkey=self._STATUS_KEY, data=data, info_name="status"
+            )
+            # Remove additionalProperties before processing (it's metadata, not a result)
+            sample_data.pop("additionalProperties", None)
+            prj_data.pop("additionalProperties", None)
+            self._sample_level_data = _recursively_replace_custom_types(sample_data)
+
+            self._project_level_data = _recursively_replace_custom_types(prj_data)
+
+        if not isinstance(self._pipeline_name, str):
+            # Detect common mistake: using 'pipeline_id' instead of 'pipeline_name'
+            has_pipeline_id = "pipeline_id" in self.original_schema or (
+                "properties" in self.original_schema
+                and "pipeline_id" in self.original_schema.get("properties", {})
+            )
+            if has_pipeline_id:
+                hint = (
+                    "Found 'pipeline_id' in schema -- did you mean 'pipeline_name'? "
+                    "The key was renamed from 'pipeline_id' to 'pipeline_name'."
+                )
+            else:
+                hint = f"Every pipestat schema must include a top-level '{SCHEMA_PIPELINE_NAME_KEY}' key."
+            raise SchemaError(f"{hint}\n\nMinimal working schema:\n\n{SCHEMA_TEMPLATE}")
+
+        # Sample- and/or project-level data must be declared.
+        if not self._sample_level_data and not self._project_level_data:
+            raise SchemaError("Neither sample-level nor project-level data items are declared.")
+
+        # Check that no reserved keywords were used as data items.
+        resv_kwds = {"id", RECORD_IDENTIFIER}
+        reserved_keywords_used = set()
+        for data in [self.project_level_data, self.sample_level_data, self.status_data]:
+            reserved_keywords_used |= set(data.keys()) & resv_kwds
+        if reserved_keywords_used:
+            raise SchemaError(
+                f"{len(reserved_keywords_used)} reserved keyword(s) used: {', '.join(reserved_keywords_used)}"
+            )
+
+    def __str__(self):
+        """Generate string representation of the object.
+
+        Returns:
+            str: String representation of the object.
+        """
+        res = f"{self.__class__.__name__} ({self._pipeline_name})"
+
+        def add_props(props):
+            res = ""
+            if len(props) == 0:
+                res += "\n - None"
+            else:
+                for k, v in props:
+                    res += f"\n - {k} : {v}"
+            return res
+
+        if self._project_level_data is not None:
+            res += "\n Project-level properties:"
+            res += add_props(self._project_level_data.items())
+        if self._sample_level_data is not None:
+            res += "\n Sample-level properties:"
+            res += add_props(self._sample_level_data.items())
+        if self._status_data is not None:
+            res += "\n Status properties:"
+            res += add_props(self._status_data.items())
+        return res
+
+    def __repr__(self):
+        """Generate string representation of the object.
+
+        Returns:
+            str: String representation of the object.
+        """
+        return self.__str__()
+
+    @property
+    def pipeline_name(self):
+        """Return the declared name for the pipeline for which this schema's written."""
+        return self._pipeline_name
+
+    @property
+    def project_level_data(self):
+        """Return information relevant for a project-level pipeline."""
+        return copy.deepcopy(self._project_level_data)
+
+    @property
+    def results_data(self):
+        """Return union of sample- and project-level information."""
+        return {**self.project_level_data, **self.sample_level_data}
+
+    @property
+    def sample_level_data(self):
+        """Return information relevant for a sample-level pipeline."""
+        return copy.deepcopy(self._sample_level_data)
+
+    @property
+    def status_data(self):
+        """Return information relevant to pipeline status."""
+        return copy.deepcopy(self._status_data)
+
+    @property
+    def sample_additional_properties(self) -> bool:
+        """Return whether sample-level results allow additional properties.
+
+        Per JSON Schema, additionalProperties defaults to True if not specified.
+        """
+        return self._sample_additional_properties
+
+    @property
+    def project_additional_properties(self) -> bool:
+        """Return whether project-level results allow additional properties.
+
+        Per JSON Schema, additionalProperties defaults to True if not specified.
+        """
+        return self._project_additional_properties
+
+    def additional_properties_for_level(self, level: str) -> bool:
+        """Return additionalProperties setting for specified level.
+
+        Args:
+            level: "sample" or "project"
+
+        Returns:
+            bool: Whether additional properties are allowed for that level.
+        """
+        if level == "project":
+            return self._project_additional_properties
+        return self._sample_additional_properties
+
+    @property
+    def project_table_name(self) -> str:
+        """Return the name of the database table for project-level information."""
+        return self._table_name("project")
+
+    @property
+    def sample_table_name(self) -> str:
+        """Return the name of the database table for sample-level information."""
+        return self._table_name("sample")
+
+    @staticmethod
+    def _get_data_type(type_name: str) -> type:
+        t = CLASSES_BY_TYPE[type_name]
+        # return ARRAY if t == list else t
+        return t
+
+    @property
+    def file_like_table_name(self) -> str:
+        return self._table_name("files")
+
+    def to_dict(self) -> dict[str, Any]:
+        """Create simple dictionary representation of this instance.
+
+        Returns:
+            Dict[str, Any]: Dictionary representation of the parsed schema.
+        """
+        data = {SCHEMA_PIPELINE_NAME_KEY: self.pipeline_name}
+        for key, values in [
+            (self._PROJECT_KEY, self.project_level_data),
+            (self._SAMPLES_KEY, self.sample_level_data),
+            (self._STATUS_KEY, self.status_data),
+        ]:
+            if values:
+                data[key] = values
+        return data
+
+    def _table_name(self, suffix: str) -> str:
+        return f"{self.pipeline_name}__{suffix}"
+
+
+def _recursively_replace_custom_types(s: dict[str, Any]) -> dict[str, Any]:
+    """Replace the custom types in pipestat schema with canonical types.
+
+    Args:
+        s (dict): Schema to replace types in.
+
+    Returns:
+        dict: Schema with types replaced.
+    """
+    for k, v in s.items():
+        missing_req_keys = [req for req in [SCHEMA_TYPE_KEY, SCHEMA_DESC_KEY] if req not in v]
+        if missing_req_keys:
+            example = f'  {k}:\n    type: string\n    description: "Description of {k}"'
+            raise SchemaError(
+                f"Result '{k}' is missing required key(s): {', '.join(missing_req_keys)}.\n"
+                f"Every result must have both 'type' and 'description'. Example:\n\n{example}"
+            )
+        curr_type_name = v[SCHEMA_TYPE_KEY]
+        if curr_type_name == "object" and SCHEMA_PROP_KEY in s[k]:
+            _recursively_replace_custom_types(s[k][SCHEMA_PROP_KEY])
+        if curr_type_name == "array" and SCHEMA_ITEMS_KEY in s[k]:
+            _recursively_replace_custom_types(s[k][SCHEMA_ITEMS_KEY][SCHEMA_PROP_KEY])
+        try:
+            curr_type_spec = CANONICAL_TYPES[curr_type_name]
+        except KeyError:
+            continue
+        spec = s.setdefault(k, {})
+        spec.setdefault(SCHEMA_PROP_KEY, {}).update(curr_type_spec[SCHEMA_PROP_KEY])
+        spec.setdefault("required", []).extend(curr_type_spec["required"])
+        spec[SCHEMA_TYPE_KEY] = curr_type_spec[SCHEMA_TYPE_KEY]
+    return s
+
+
+def replace_JSON_refs(
+    target_schema: dict[str, Any], source_schema: dict[str, Any]
+) -> dict[str, Any]:
+    """Recursively search and replace the $refs if they exist in schema.
+
+    If their corresponding $defs exist in source schema, source_schema. If $defs exist in the target
+    schema and target_schema is the same as source_schema then deepcopy should be used such that
+    target_schema = copy.deepcopy(source_schema).
+
+    Args:
+        target_schema (dict): Schema to replace types in.
+        source_schema (dict): Source schema containing $defs.
+
+    Returns:
+        dict: Schema with $refs replaced.
+    """
+
+    for k, v in list(target_schema.items()):
+        if isinstance(v, dict):
+            replace_JSON_refs(target_schema[k], source_schema)
+        if "$ref" == k:
+            split_value = v.split("/")
+            if len(split_value) != 3:
+                raise SchemaError(
+                    msg=f"$ref exists in source schema but path,{v} ,not valid, e.g. '#/$defs/file' "
+                )
+            if split_value[1] in source_schema and split_value[2] in source_schema[split_value[1]]:
+                result = source_schema[split_value[1]][split_value[2]]
+            else:
+                result = None
+            if result is not None:
+                for key, value in result.items():
+                    target_schema.update({key: value})
+                del target_schema["$ref"]
+            else:
+                raise SchemaError(
+                    msg=f"Could not find {split_value[1]} and {split_value[2]} in $def"
+                )
+    return target_schema

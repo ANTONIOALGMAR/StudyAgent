@@ -140,4 +140,14 @@ def toggle_item(item_id: int) -> dict:
         (total, done, plan_id),
     )
     conn.commit()
+
+    # If the plan just reached completion, award plan XP and trigger achievements
+    try:
+        if done == total and new_done == 1:
+            from .gamification import award_plan_xp
+            award_plan_xp(True)
+    except Exception:
+        # best-effort: don't crash on gamification errors
+        pass
+
     return {"item_id": item_id, "done": bool(new_done), "plan_id": plan_id, "done_items": done, "total_items": total}

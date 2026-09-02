@@ -383,11 +383,59 @@ def get_permissions():
     return PermissionManager().all()
 
 
+@router.post("/memory/clear")
+def clear_environment_memory(body: dict | None = None):
+    from ..agent.memory import Memory
+    payload = body or {}
+    user_id = (payload.get("user_id") or payload.get("userId") or None)
+    user_name = payload.get("user_name") or payload.get("userName") or None
+    if user_id is None and user_name is None and payload.get("all") is False:
+        raise HTTPException(status_code=400, detail="Informe user_id/user_name ou defina all=true")
+    deleted = Memory().clear_user_memory(user_id=user_id, user_name=user_name) if (user_id or user_name or payload.get("all") is not True) else Memory().clear_user_memory()
+    return {"deleted": deleted, "user_id": user_id, "user_name": user_name, "all": payload.get("all") is True}
+
+
+@router.get('/graph/room/{room_name}')
+def graph_room_contents(room_name: str, user_id: str | None = None, user_name: str | None = None, limit: int = 50):
+    """Return objects known in a room (scoped to user optionally)."""
+    from ..agent.memory import Memory
+    mem = Memory()
+    items = mem.find_objects_in_room(room=room_name, limit=limit, user_id=user_id, user_name=user_name)
+    return {"room": room_name, "items": items}
+
+
+@router.get('/graph/object/{object_name}')
+def graph_find_object(object_name: str, user_id: str | None = None, user_name: str | None = None):
+    """Return memory and graph node info for an object (scoped to user)."""
+    from ..agent.memory import Memory
+    mem = Memory()
+    loc = mem.find_object_location(object_name, user_id=user_id, user_name=user_name)
+    # attempt to return graph node if exists
+    conn = mem._db_path
+    from ..db import get_connection
+    c = get_connection(mem._db_path)
+    node = c.execute("SELECT * FROM graph_nodes WHERE label = ? AND user_id = ?", (object_name, mem._normalize_user_id(user_id, user_name))).fetchone()
+    node_dict = dict(node) if node else None
+    return {"object": object_name, "memory": loc, "node": node_dict}
+
+
+from fastapi import Depends
+from ..auth import get_current_user
+
+
 @router.put("/permissions/{name}")
-def set_permission(name: str, body: PermissionUpdate):
+def set_permission(name: str, body: PermissionUpdate, user: str = Depends(get_current_user)):
     from ..security.permissions import PermissionManager
+    # actor comes from dependency (header/cookie/client IP fallback)
+    actor = user
+    reason = body.reason or ""
+    if actor:
+        if reason:
+            reason = f"{reason} (actor={actor})"
+        else:
+            reason = f"actor={actor}"
     try:
-        PermissionManager().set(name, body.value, reason=body.reason)
+        PermissionManager().set(name, body.value, reason=reason, actor=actor)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=f"permissão desconhecida: {name}") from exc
     return {name: body.value}

@@ -428,9 +428,9 @@ class StudyAgent:
                             ctx_text = f"detecção estruturada: {label}"
                             # room/area não são conhecidos pelo detector — ficam vazios
                             try:
-                            self.memory.reconcile_detection(label, bbox, monitor=effective_monitor, context=ctx_text, confidence=conf)
+                                self.memory.reconcile_detection(label, bbox, monitor=effective_monitor, context=ctx_text, confidence=conf)
                             except Exception:
-                            log.exception("failed to reconcile detection for %s", label)
+                                log.exception("failed to reconcile detection for %s", label)
                         except Exception:
                             log.exception("failed processing single detection")
             except Exception:
