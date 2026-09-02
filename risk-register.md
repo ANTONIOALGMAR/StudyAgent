@@ -60,6 +60,6 @@ P1 = alta prioridade (confiança/dados); P2 = importante; P3 = melhoria futura.
 
 - **P0 (rodadas atuais):** R1, R2, R3 → permissões perigosas off no arquivo versionado; bind `127.0.0.1` + non-root + HEALTHCHECK; suíte de testes de segurança (PIN/rate-limit/CORS/routers). ✅ concluído.
 - **P0 (9162 round corrente):** R12 → `backup.sh` agora usa `$SCRIPT_DIR/data/{memory,rag}` (caminho real) e `$SCRIPT_DIR/backups`; DB/`*.npz`/config de fato incluídos no backup. ✅ concluído (último P0 pendente).
-- **P1 (próximas):** R5 `.gitignore` agora cobre `backups/`/`backages/`/`*.pid` ✅; R11 serviços inline (api/web/ollama/listener) alinhados + hardening `--host 127.0.0.1`. ✅ parcial (instalação live ainda não reaplicada). Pendente: R20.
+- **P1 (próximas):** R5 `.gitignore` agora cobre `backups/`/`backages/`/`*.pid` ✅; R11 serviços inline (api/web/ollama/listener) alinhados + hardening `--host 127.0.0.1`. ✅ parcial (instalação live ainda não reaplicada). R20 teste de integração com banco real (`app.db.get_connection` sem mock, WAL/FK/persistência) ✅ — **P1 completo**.
 - **P2:** R6, R7, R9, R10, R13, R14, R15, R16, R18, R19, R21, R22.
 - **P3:** R17, R23.
