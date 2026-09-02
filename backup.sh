@@ -3,7 +3,7 @@
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-BACKUP_DIR="$SCRIPT_DIR/backages"
+BACKUP_DIR="$SCRIPT_DIR/backups"
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 NC='\033[0m'
@@ -20,9 +20,9 @@ mkdir -p "$BACKUP_DIR"
 log "Criando backup: $BACKUP_NAME"
 
 # Backup do banco de dados
-if [ -f "$SCRIPT_DIR/backend/data/memory/studyagent.db" ]; then
+if [ -f "$SCRIPT_DIR/data/memory/studyagent.db" ]; then
     mkdir -p "$BACKUP_PATH/data"
-    cp "$SCRIPT_DIR/backend/data/memory/studyagent.db" "$BACKUP_PATH/data/studyagent.db"
+    cp "$SCRIPT_DIR/data/memory/studyagent.db" "$BACKUP_PATH/data/studyagent.db"
     log "✓ Banco de dados copiado"
 else
     warn "Banco de dados não encontrado"
@@ -36,9 +36,9 @@ if [ -f "$SCRIPT_DIR/config/permissions.json" ]; then
 fi
 
 # Backup de índices RAG
-if [ -d "$SCRIPT_DIR/backend/data/rag" ]; then
+if [ -d "$SCRIPT_DIR/data/rag" ]; then
     mkdir -p "$BACKUP_PATH/rag"
-    cp -r "$SCRIPT_DIR/backend/data/rag/"*.npz "$BACKUP_PATH/rag/" 2>/dev/null || true
+    cp -r "$SCRIPT_DIR/data/rag/"*.npz "$BACKUP_PATH/rag/" 2>/dev/null || true
     log "✓ Índices RAG copiados"
 fi
 
@@ -48,7 +48,7 @@ cat > "$BACKUP_PATH/metadata.json" <<EOF
   "timestamp": "$TIMESTAMP",
   "version": "$(cd "$SCRIPT_DIR" && git describe --tags --always 2>/dev/null || echo 'unknown')",
   "commit": "$(cd "$SCRIPT_DIR" && git rev-parse --short HEAD 2>/dev/null || echo 'unknown')",
-  "tables": $(cd "$SCRIPT_DIR/backend" && python3.12 -c "import sqlite3; c=sqlite3.connect('data/memory/studyagent.db'); print(len([r[0] for r in c.execute(\"SELECT name FROM sqlite_master WHERE type='table'\").fetchall()]))" 2>/dev/null || echo 0)
+  "tables": $(cd "$SCRIPT_DIR" && python3.12 -c "import sqlite3; c=sqlite3.connect('data/memory/studyagent.db'); print(len([r[0] for r in c.execute(\"SELECT name FROM sqlite_master WHERE type='table'\").fetchall()]))" 2>/dev/null || echo 0)
 }
 EOF
 log "✓ Metadados salvos"

@@ -100,8 +100,8 @@ if command -v ollama &>/dev/null; then
 fi
 
 # Criar diretórios de dados
-mkdir -p "$SCRIPT_DIR/backend/data/memory"
-mkdir -p "$SCRIPT_DIR/backend/data/rag"
+mkdir -p "$SCRIPT_DIR/data/memory"
+mkdir -p "$SCRIPT_DIR/data/rag"
 log "✓ Diretórios de dados criados"
 
 # systemd user services
@@ -110,7 +110,8 @@ if [ ! -f "$HOME/.config/systemd/user/studyagent-api.service" ]; then
     cat > "$HOME/.config/systemd/user/studyagent-api.service" <<EOF
 [Unit]
 Description=StudyAgent API
-After=network.target
+After=network.target studyagent-ollama.service
+Wants=studyagent-ollama.service
 
 [Service]
 Type=simple
@@ -142,6 +143,44 @@ RestartSec=5
 WantedBy=default.target
 EOF
     log "✓ Serviço studyagent-web criado"
+fi
+
+if [ ! -f "$HOME/.config/systemd/user/studyagent-ollama.service" ]; then
+    cat > "$HOME/.config/systemd/user/studyagent-ollama.service" <<EOF
+[Unit]
+Description=Ollama Server
+
+[Service]
+Type=simple
+ExecStart=$SCRIPT_DIR/ollama/bin/ollama serve
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=default.target
+EOF
+    log "✓ Serviço studyagent-ollama criado"
+fi
+
+if [ ! -f "$HOME/.config/systemd/user/studyagent-listener.service" ]; then
+    cat > "$HOME/.config/systemd/user/studyagent-listener.service" <<EOF
+[Unit]
+Description=StudyAgent - modo viva-voz
+After=studyagent-api.service
+Wants=studyagent-api.service
+
+[Service]
+Type=simple
+WorkingDirectory=$SCRIPT_DIR/backend
+ExecStart=$SCRIPT_DIR/backend/.venv/bin/python -m app.audio.listener
+Restart=on-failure
+RestartSec=5
+Environment=STUDY_VAD_THRESHOLD=500
+
+[Install]
+WantedBy=default.target
+EOF
+    log "✓ Serviço studyagent-listener criado"
 fi
 
 systemctl --user daemon-reload 2>/dev/null || true
