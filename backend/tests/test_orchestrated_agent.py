@@ -109,10 +109,12 @@ class TestOrchestratedMultiStep:
         assert result["response"] == "fallback"
 
     @patch("app.agent.agent.chat_with_tools")
-    @patch("app.agent.agent.chat")
-    def test_greeting_goes_through_simple_chat(self, mock_chat, mock_ct):
-        """'Oi, tá me ouvindo?' deve usar chat simples (sem tool-calling)."""
-        mock_chat.return_value = "Oi! Sim, estou te ouvindo. Como posso ajudar?"
+    @patch("app.agent.agent.chat_stream")
+    def test_greeting_goes_through_simple_chat(self, mock_stream, mock_ct):
+        """'Oi, tá me ouvindo?' deve usar chat simples (sem tool-calling), via streaming."""
+        mock_stream.return_value = iter(
+            ["Oi! Sim, ", "estou te ouvindo. Como posso ajudar?"]
+        )
 
         agent = _make_agent()
         result = agent.process("Oi, tá me ouvindo?")
@@ -121,14 +123,14 @@ class TestOrchestratedMultiStep:
         assert result["response"] == "Oi! Sim, estou te ouvindo. Como posso ajudar?"
 
     @patch("app.agent.agent.chat_with_tools")
-    @patch("app.agent.agent.chat")
-    def test_casual_question_uses_simple_chat(self, mock_chat, mock_ct):
-        """Pergunta casual CHAT (não-saudação) NÃO usa tool-calling.
+    @patch("app.agent.agent.chat_stream")
+    def test_casual_question_uses_simple_chat(self, mock_stream, mock_ct):
+        """Pergunta casual CHAT (não-saudação) NÃO usa tool-calling (via streaming).
 
         Regressão: 'O que está faltando para você falar comigo?' confabulava
         'Não há resposta JSON necessária...' no modelo tool-calling.
         """
-        mock_chat.return_value = "Tudo pronto! Fale o que precisar."
+        mock_stream.return_value = iter(["Tudo ", "pronto! Fale o que precisar."])
 
         agent = _make_agent()
         result = agent.process("O que está faltando para você falar comigo?")
@@ -137,10 +139,10 @@ class TestOrchestratedMultiStep:
         assert result["response"] == "Tudo pronto! Fale o que precisar."
 
     @patch("app.agent.agent.chat_with_tools")
-    @patch("app.agent.agent.chat")
-    def test_named_greeting_uses_simple_chat(self, mock_chat, mock_ct):
-        """'Estude, tá me ouvindo?' (nome + checagem) usa chat simples."""
-        mock_chat.return_value = "Sim, estou ouvindo!"
+    @patch("app.agent.agent.chat_stream")
+    def test_named_greeting_uses_simple_chat(self, mock_stream, mock_ct):
+        """'Estude, tá me ouvindo?' (nome + checagem) usa chat simples (via streaming)."""
+        mock_stream.return_value = iter(["Sim, ", "estou ouvindo!"])
 
         agent = _make_agent()
         result = agent.process("Estude, tá me ouvindo?")

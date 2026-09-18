@@ -5,6 +5,7 @@ import ChatMessages from './ChatMessages'
 import ChatInput from './ChatInput'
 import LivePanel from './LivePanel'
 import Sidebar from './Sidebar'
+import PermissionsPanel from './PermissionsPanel'
 import EvidencePanel from './EvidencePanel'
 import CameraPanel from './CameraPanel'
 import PanelManager from './PanelManager'
@@ -164,7 +165,9 @@ export default function Chat() {
 
   return (
     <div className="app-shell">
-      <Sidebar items={sidebarItems} />
+      <Sidebar items={sidebarItems}>
+        <PermissionsPanel />
+      </Sidebar>
       <div className="chat">
         <div className="chat-header">
           <Suspense fallback={<div className="face-fallback" />}>

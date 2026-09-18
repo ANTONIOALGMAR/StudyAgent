@@ -37,8 +37,10 @@ def real_db(tmp_path):
 
 def test_conn_reutilizada_no_mesmo_thread(real_db):
     path, conn = real_db
-    # Mesmo caminho dentro do mesmo thread devolve a mesma conexão (pool local).
-    assert get_connection(path) is conn
+    # Mesmo caminho dentro do mesmo thread reutiliza a MESMA conexão real (sticky).
+    # A pool v2 devolve um proxy novo por chamada, mas a conexão subjacente é a mesma.
+    again = get_connection(path)
+    assert again._conn is conn._conn
 
 
 def test_wal_mode_ativado(real_db):

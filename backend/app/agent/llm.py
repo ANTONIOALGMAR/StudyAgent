@@ -59,6 +59,43 @@ def chat(messages, images=None, stream=False):
         raise
 
 
+def chat_stream(messages, images=None):
+    """Streaming token-a-token (gerador de strings).
+
+    Mesma resolução de modelo/options de `chat`, mas entrega cada fragmento
+    de conteúdo assim que o Ollama produz. Usado pelo endpoint SSE
+    `/api/chat/stream` para respostas com time-to-first-token menor.
+    """
+    if images:
+        messages = _attach_images(messages, images)
+        role = "vision"
+    else:
+        role = "text"
+    model = resolve(role)
+    log.info("[VISION] model=%s images=%d stream=True", model, len(images or []))
+    options = {"num_ctx": context_tokens(role), "num_predict": num_predict()}
+    if role == "vision":
+        options["temperature"] = vision_temperature()
+    try:
+        for chunk in _client.chat(
+            model=model,
+            messages=messages,
+            options=options,
+            stream=True,
+        ):
+            piece = (chunk.get("message") or {}).get("content") or ""
+            if piece:
+                yield piece
+    except Exception as exc:
+        msg = str(exc)
+        if "context size" in msg or "exceed" in msg.lower():
+            raise RuntimeError(
+                "A conversa ficou longa demais para a memória do modelo. "
+                "Inicie uma nova sessão ou continue com mensagens mais curtas."
+            ) from exc
+        raise
+
+
 def chat_with_tools(messages, tools):
     response = _client.chat(
         model=resolve("text"),

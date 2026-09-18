@@ -88,15 +88,10 @@ async def on_startup():
 @app.on_event("shutdown")
 async def on_shutdown():
     log.info("[SHUTDOWN] StudyAgent shutting down gracefully...")
-    # Flush any pending writes
+    # Encerra o pool de conexões SQLite (flush + liberação de file handles)
     try:
-        from .db import _local
-        for conn in _local.conns.values():
-            try:
-                conn.close()
-            except Exception:
-                pass
-        _local.conns.clear()
+        from .db import close_all
+        close_all()
     except Exception:
         pass
     log.info("[SHUTDOWN] Cleanup complete.")

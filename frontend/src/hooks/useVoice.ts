@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { transcribeAudio, speak } from '../api'
 import { registerVoiceAnalyser } from '../lib/audioReactive'
 
@@ -6,8 +6,9 @@ export type HandsFreeState = 'off' | 'listening' | 'recording' | 'processing' | 
 
 const SILENCE_MS = 1500
 const MIN_UTTERANCE_MS = 600
-const START_THRESHOLD = 0.035
-const RESUME_THRESHOLD = 0.02
+const START_THRESHOLD = 0.06
+const RESUME_THRESHOLD = 0.04
+const WARMUP_FRAMES = 3
 const SPEAK_CAP_MS = 45000
 const POLL_MS = 100
 
@@ -44,6 +45,24 @@ export function useVoice({ onUserMessage }: UseVoiceOptions) {
   const speechSourceRef = useRef<MediaElementAudioSourceNode | null>(null)
   const speechCtxRef = useRef<AudioContext | null>(null)
 
+  // Safety net de autoplay: se um AudioContext foi criado fora de um gesto de
+  // usuário, retomá-lo na primeira interação para o som/análise não saírem mudo.
+  useEffect(() => {
+    const unlock = () => {
+      for (const ctx of [audioCtxRef.current, speechCtxRef.current]) {
+        if (ctx && ctx.state !== 'running') void ctx.resume().catch(() => {})
+      }
+    }
+    window.addEventListener('pointerdown', unlock)
+    window.addEventListener('keydown', unlock)
+    window.addEventListener('touchend', unlock)
+    return () => {
+      window.removeEventListener('pointerdown', unlock)
+      window.removeEventListener('keydown', unlock)
+      window.removeEventListener('touchend', unlock)
+    }
+  }, [])
+
   const teardownSpeechGraph = useCallback(() => {
     registerVoiceAnalyser(null)
     speechSourceRef.current?.disconnect()
@@ -64,19 +83,27 @@ export function useVoice({ onUserMessage }: UseVoiceOptions) {
         const player = new Audio(URL.createObjectURL(blob))
         playerRef.current = player
 
-        // Wire the playing speech into an analyser for real-time mouth sync
+        // Wire the playing speech into an analyser para o mouth-sync.
+        // ATENÇÃO: o áudio do <audio> é roteado por este AudioContext; se o
+        // contexto ficar "suspended" (padrão em navegadores), o som sai MUDO.
         teardownSpeechGraph()
+        let speechCtx: AudioContext | null = null
         try {
-          const ctx = new AudioContext()
-          const source = ctx.createMediaElementSource(player)
-          const talkAnalyser = ctx.createAnalyser()
+          speechCtx = new AudioContext()
+          const source = speechCtx.createMediaElementSource(player)
+          const talkAnalyser = speechCtx.createAnalyser()
           source.connect(talkAnalyser)
-          talkAnalyser.connect(ctx.destination)
+          talkAnalyser.connect(speechCtx.destination)
           registerVoiceAnalyser(talkAnalyser)
-          speechCtxRef.current = ctx
+          speechCtxRef.current = speechCtx
           speechSourceRef.current = source
         } catch (e) {
           console.error('Não foi possível analisar o áudio da fala:', e)
+        }
+
+        // Garante que o contexto esteja "running" antes de tocar (senão: silêncio).
+        if (speechCtx && speechCtx.state !== 'running') {
+          try { await speechCtx.resume() } catch { /* segue tentando tocar */ }
         }
 
         setHfState('speaking')
@@ -108,6 +135,7 @@ export function useVoice({ onUserMessage }: UseVoiceOptions) {
       const buf = new Float32Array(analyser.fftSize)
       const blobChunks: Blob[] = []
       let isRecording = false
+      let warmFrames = 0
       let lastLoud = performance.now()
       let startedAt = 0
 
@@ -130,11 +158,16 @@ export function useVoice({ onUserMessage }: UseVoiceOptions) {
 
         if (!isRecording) {
           if (level > START_THRESHOLD) {
-            isRecording = true
-            startedAt = now
-            lastLoud = now
-            recorder.start()
-            setHfState('recording')
+            warmFrames += 1
+            if (warmFrames >= WARMUP_FRAMES) {
+              isRecording = true
+              startedAt = now
+              lastLoud = now
+              recorder.start()
+              setHfState('recording')
+            }
+          } else {
+            warmFrames = 0
           }
         } else {
           if (level > RESUME_THRESHOLD) lastLoud = now
@@ -168,6 +201,7 @@ export function useVoice({ onUserMessage }: UseVoiceOptions) {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
       const ctx = new AudioContext()
+      if (ctx.state !== 'running') void ctx.resume().catch(() => {})
       const source = ctx.createMediaStreamSource(stream)
       const analyser = ctx.createAnalyser()
       analyser.fftSize = 1024

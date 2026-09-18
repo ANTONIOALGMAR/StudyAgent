@@ -30,7 +30,7 @@ from ..security.permissions import PermissionDeniedError
 from ..vision import ocr, screen, window
 from ..vision.engine import process_capture
 from ..vision.screen import ScreenManager
-from .llm import chat, chat_with_tools
+from .llm import chat, chat_stream, chat_with_tools
 from .memory import Memory
 
 log = logging.getLogger("studyagent.vision")
@@ -57,10 +57,51 @@ class StudyAgent:
         camera_image=None,
         doc_id=None,
     ):
+        """Processa a mensagem e devolve a resposta COMPLETA (API clássica).
+
+        Wrapper fino sobre `process_events` (gerador) — o mesmo motor usado
+        pelo streaming SSE (`POST /api/chat/stream`).
+        """
+        for event in self.process_events(
+            message,
+            session_id=session_id,
+            use_screen=use_screen,
+            region=region,
+            monitor=monitor,
+            camera_image=camera_image,
+            doc_id=doc_id,
+        ):
+            if event["type"] == "done":
+                return event["result"]
+            if event["type"] == "error":
+                raise RuntimeError(event.get("detail", "erro desconhecido"))
+        raise RuntimeError("process_events terminou sem evento 'done'")
+
+    def process_events(
+        self,
+        message,
+        session_id=None,
+        use_screen=False,
+        region=None,
+        monitor=None,
+        camera_image=None,
+        doc_id=None,
+    ):
+        """Gerador de eventos do pipeline de chat (fonte única da lógica).
+
+        Eventos yieldados (ordem):
+        - {"type": "start", "session_id": str}
+        - {"type": "token", "text": str}          (fragmentos da resposta)
+        - {"type": "done", "result": dict}        (mesmo shape do `process`)
+
+        Exceções de negócio (ex.: PermissionDeniedError) continuam
+        propagando para o chamador.
+        """
         session_id = self.memory.get_or_create_session(session_id)
         tools_used = []
         images = []
         evidence = EvidenceStore()
+        yield {"type": "start", "session_id": session_id}
 
         # ── Planner: decisões centralizadas ─────────────────────────
         plan = build_plan(
@@ -91,14 +132,18 @@ class StudyAgent:
         if plan.capture_screen:
             monitors = ScreenManager.list_monitors()
             if effective_monitor < 0 or effective_monitor >= len(monitors):
-                return {
-                    "session_id": session_id,
-                    "response": (
-                        f"Monitor {effective_monitor} não existe. "
-                        f"Existem {len(monitors)} monitores (0 a {len(monitors) - 1})."
-                    ),
-                    "tools_used": [],
+                yield {
+                    "type": "done",
+                    "result": {
+                        "session_id": session_id,
+                        "response": (
+                            f"Monitor {effective_monitor} não existe. "
+                            f"Existem {len(monitors)} monitores (0 a {len(monitors) - 1})."
+                        ),
+                        "tools_used": [],
+                    },
                 }
+                return
 
         ocr_text = None
         vision_ctx = None
@@ -123,14 +168,18 @@ class StudyAgent:
             )
             if not vision_ctx.is_valid:
                 log.error("[VISION] pipeline_failed errors=%s", vision_ctx.errors)
-                return {
-                    "session_id": session_id,
-                    "response": (
-                        "Não consegui capturar ou analisar a tela. "
-                        + "; ".join(vision_ctx.errors)
-                    ),
-                    "tools_used": [],
+                yield {
+                    "type": "done",
+                    "result": {
+                        "session_id": session_id,
+                        "response": (
+                            "Não consegui capturar ou analisar a tela. "
+                            + "; ".join(vision_ctx.errors)
+                        ),
+                        "tools_used": [],
+                    },
                 }
+                return
             vision_source = "screen"
             tools_used.append("screen_capture")
             images.append(vision_ctx.image_bytes)
@@ -248,30 +297,40 @@ class StudyAgent:
                 session_id, enriched_message, chat_mode=is_casual
             )
 
-        # ── Resposta ────────────────────────────────────────────────
+        # ── Resposta (streaming token-a-token) ──────────────────────
         # Fast-path anti-alucinação: saudações/conversa casual vão para chat de
         # texto SIMPLES sem tool-calling. Modelos de tool-calling CONFABULAM
         # "resposta de função JSON" em vez de apenas conversar — por isso
         # evitamos tool-calling sempre que não há intenção real de ferramenta.
+        #
+        # Streaming: chat casual e perguntas sobre documento entregam tokens ao
+        # vivo; o caminho de orquestração de tools termina em uma geração final
+        # única (as ferramentas em si não produzem texto streamável) e é
+        # entregue em um único evento "token".
         if is_casual:
-            try:
-                response_text = chat(messages)
-            except PermissionDeniedError:
-                raise
-            except Exception as exc:
-                log.warning("[CHAT] casual_chat_failed: %s", exc)
-                response_text = (
-                    "Não consegui processar agora (o modelo parece indisponível). "
-                    "Tente novamente em instantes."
-                )
+            tokens = self._guarded_chat_stream(messages)
         elif plan.wants_document:
-            response_text = self._run_tool_loop(
-                messages, images, tools_used, allow_tools=False
-            )
+            if images:
+                tokens = iter(
+                    [
+                        self._run_tool_loop(
+                            messages, images, tools_used, allow_tools=False
+                        )
+                    ]
+                )
+            else:
+                tokens = chat_stream(messages)
         else:
-            response_text = self._run_with_orchestration(
-                messages, images, tools_used, plan
+            tokens = iter(
+                [self._run_with_orchestration(messages, images, tools_used, plan)]
             )
+
+        response_parts: list[str] = []
+        for piece in tokens:
+            if piece:
+                response_parts.append(piece)
+                yield {"type": "token", "text": piece}
+        response_text = "".join(response_parts)
 
         # ── Validação da resposta (anti-alucinação) ────────────────
         if evidence.has_screen:
@@ -292,12 +351,34 @@ class StudyAgent:
             daemon=True
         ).start()
 
-        return {
-            "session_id": session_id,
-            "response": response_text,
-            "tools_used": tools_used,
-            "evidence": evidence.summary() if evidence else None,
+        yield {
+            "type": "done",
+            "result": {
+                "session_id": session_id,
+                "response": response_text,
+                "tools_used": tools_used,
+                "evidence": evidence.summary() if evidence else None,
+            },
         }
+
+    def _guarded_chat_stream(self, messages):
+        """Streaming do fast-path casual com fallback de indisponibilidade.
+
+        Mantém a semântica original: qualquer erro do modelo vira mensagem
+        amigável; PermissionDeniedError continua propagando.
+        """
+        fallback = (
+            "Não consegui processar agora (o modelo parece indisponível). "
+            "Tente novamente em instantes."
+        )
+        try:
+            for piece in chat_stream(messages):
+                yield piece
+        except PermissionDeniedError:
+            raise
+        except Exception as exc:
+            log.warning("[CHAT] casual_chat_failed: %s", exc)
+            yield fallback
 
     def _reflect_and_remember(self, message: str, response: str) -> None:
         """Aprende com a interação em segundo plano (memória cognitiva épisódica).

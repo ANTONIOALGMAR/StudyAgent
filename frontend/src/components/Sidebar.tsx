@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { type ReactNode, useState } from 'react'
 
 interface Item {
   icon: string
@@ -10,9 +10,10 @@ interface Item {
 
 interface Props {
   items: Item[]
+  children?: ReactNode
 }
 
-export default function Sidebar({ items }: Props) {
+export default function Sidebar({ items, children }: Props) {
   const [open, setOpen] = useState(true)
 
   return (
@@ -43,6 +44,7 @@ export default function Sidebar({ items }: Props) {
           </li>
         ))}
       </ul>
+      {open && children && <div className="sb-extra">{children}</div>}
     </nav>
   )
 }
