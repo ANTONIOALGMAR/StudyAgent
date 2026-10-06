@@ -168,14 +168,20 @@ if [ ! -f "$HOME/.config/systemd/user/studyagent-listener.service" ]; then
 Description=StudyAgent - modo viva-voz
 After=studyagent-api.service
 Wants=studyagent-api.service
+StartLimitIntervalSec=60
+StartLimitBurst=3
 
 [Service]
 Type=simple
 WorkingDirectory=$SCRIPT_DIR/backend
 ExecStart=$SCRIPT_DIR/backend/.venv/bin/python -m app.audio.listener
-Restart=on-failure
+# always + StartLimitBurst: o listener sai sozinho quando o microfone some e
+# ainda precisa voltar; o burst evita restart infinito se o problema persistir.
+Restart=always
 RestartSec=5
 Environment=STUDY_VAD_THRESHOLD=500
+Environment=STUDY_AUDIO_TIMEOUT=5
+Environment=STUDY_TTS_TIMEOUT=120
 
 [Install]
 WantedBy=default.target

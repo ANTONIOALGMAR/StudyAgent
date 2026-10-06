@@ -12,39 +12,39 @@ P1 = alta prioridade (confiança/dados); P2 = importante; P3 = melhoria futura.
 
 | # | Risco | Evidência | Severidade | Estado |
 |---|---|---|---|---|
-| R1 | `config/permissions.json` versionado com `mouse_control`, `keyboard_control`, `command_execution` iguais a `true` → um clone nasce com execução de comandos liberada (merge em `permissions.py:66-68` sobrescreve o fail-closed do código) | `config/permissions.json:7-9` | **P0** | 🔧 corrigir |
-| R2 | Frontend Docker publicado em todas as interfaces (`5173:80`) sem bind localhost, contradizendo "local only"; sem autenticação nem proxy reverso no host | `docker-compose.yml:27` | **P0** | 🔧 corrigir |
-| R3 | Sem testes automatizados de segurança (PIN, rate limiting, CORS, autorização nos routers, prompt injection) | testes analisados (nenhum `TestClient`/`httpx`) | **P0** | 🔧 corrigir |
+| R1 | `config/permissions.json` versionado com `mouse_control`, `keyboard_control`, `command_execution` iguais a `true` → um clone nasce com execução de comandos liberada (merge em `permissions.py:66-68` sobrescreve o fail-closed do código) | `config/permissions.json:7-9` | **P0** | ✅ corrigido — perigosas `false` no arquivo versionado |
+| R2 | Frontend Docker publicado em todas as interfaces (`5173:80`) sem bind localhost, contradizendo "local only"; sem autenticação nem proxy reverso no host | `docker-compose.yml:27` | **P0** | ✅ corrigido — `127.0.0.1:8000:8000` e `127.0.0.1:5173:8080` |
+| R3 | Sem testes automatizados de segurança (PIN, rate limiting, CORS, autorização nos routers, prompt injection) | testes analisados (nenhum `TestClient`/`httpx`) | **P0** | ✅ corrigido — suíte de segurança com `TestClient` |
 | R4 | `backend/.env` (gitignored) com `STUDYAGENT_PIN` no working tree; backup/inclusão inadvertida expõe o segredo | `backend/.env:4`, `.gitignore:17` | P0 | contido p/ git, risco residual. Manter fora de `git add -A` e de backup |
-| R5 | `backup.sh` grava em `backages/` (typo) que **não está no `.gitignore`**; `.api.pid`/`.web.pid` também não → `git add .` captura DB de alunos + segredos | `backup.sh:6`, `.gitignore` | P1 | pendente |
-| R6 | `update.sh:35` faz `git stash` silencioso → pode esconder/pender alterações locais e segredos | `update.sh` | P1 | pendente |
-| R7 | `stop.sh:39-44` mata **qualquer** `uvicorn app.main:app` do sistema (pode derrubar processos de outros projetos) | `stop.sh` | P2 | pendente |
+| R5 | `backup.sh` grava em `backages/` (typo) que **não está no `.gitignore`**; `.api.pid`/`.web.pid` também não → `git add .` captura DB de alunos + segredos | `backup.sh:6`, `.gitignore` | P1 | ✅ corrigido — `.gitignore` cobre `backups/`, `backages/`, `*.pid` |
+| R6 | `update.sh:35` faz `git stash` silencioso → pode esconder/pender alterações locais e segredos | `update.sh` | P1 | ✅ corrigido — `git stash push -m` + `stash pop` guardado com aviso |
+| R7 | `stop.sh:39-44` mata **qualquer** `uvicorn app.main:app` do sistema (pode derrubar processos de outros projetos) | `stop.sh` | P2 | ✅ corrigido — `pgrep` restrito a `$SCRIPT_DIR/backend/` |
 | R8 | Bootstraps executam código remoto (`curl \| sh`, `iex`) sem pin/checksum (supply-chain) | `setup.sh:188`, `install.ps1:13-14` | P2 | aceito/documentar |
-| R9 | Docker sem usuário não-root; sem HEALTHCHECK no frontend | Dockerfile, frontend/Dockerfile | P2 | 🔧 corrigir (FASE 2-a) |
-| R10 | Listener (`viva-voz`) sem healthcheck/watchdog; hang de áudio não reinicia | `scripts/studyagent-listener.service:10` | P2 | pendente |
-| R11 | `scripts/*.service` não são instalados pelo `install.sh` (divergência entre referência e instalado) → doctor reporta serviço ausente | `install.sh:109-145` vs `scripts/*.service` | P1 | pendente |
+| R9 | Docker sem usuário não-root; sem HEALTHCHECK no frontend | Dockerfile, frontend/Dockerfile | P2 | ✅ corrigido — `USER studyagent`/`USER nginx` + HEALTHCHECK nos dois containers (front valida via proxy `/api/health`) |
+| R10 | Listener (`viva-voz`) sem healthcheck/watchdog; hang de áudio não reinicia | `listener.py` (loop de leitura), `scripts/studyagent-listener.service` | P2 | ✅ corrigido — leitura do `arecord` com `select` + timeout, EOF e frame parcial tratados; `aplay` com timeout; 3 falhas de microfone encerram o processo para o systemd reiniciar; `Restart=always` com `StartLimitBurst=3` |
+| R11 | `scripts/*.service` não são instalados pelo `install.sh` (divergência entre referência e instalado) → doctor reporta serviço ausente | `install.sh:109-145` vs `scripts/*.service` | P1 | ✅ parcial — serviços inline (api/web/ollama/listener) alinhados + hardening `--host 127.0.0.1` |
 
 ## Riscos técnicos / de dados
 
 | # | Risco | Evidência | Severidade | Estado |
 |---|---|---|---|---|
-| R12 | `backup.sh` copia o banco do caminho **errado** (`$ROOT/backend/data/...` vs real `$ROOT/data/memory/studyagent.db` em `config.py:10`) → **o backup nunca contém o banco** (só permissions.json + rag/*.npz) | `backup.sh:23-25,51` | **P0*** | pendente (P1 executar) |
-| R13 | XP/conquistas concedidos "oportunisticamente" no frontend (não sincronizados com `/api/level`); `addXp` depende de StatsPanel ter aberto o store | `userStore.ts:26`, `useChat.ts:105` | P2 | pendente |
-| R14 | `ActionConfirm` busca ações pendentes só no mount; novas propostas do agente só aparecem após reload | `ActionConfirm.tsx:13-15` | P2 | pendente |
-| R15 | Polling agressivo: preview de tela 2s + watch loop `/api/chat` ~25s sem abort | `useScreen.ts:28,51`, `LivePanel.tsx:45-50` | P2 | pendente |
-| R16 | Erros não tratados: `getPermissions` sem `.catch` no panel; `getMonitors`/recs sem tratamento → rejeição não capturada | `api.ts:110-113`, `useScreen.ts:27`, `StatsPanel.tsx:46-51` | P2 | pendente |
+| R12 | `backup.sh` copia o banco do caminho **errado** (`$ROOT/backend/data/...` vs real `$ROOT/data/memory/studyagent.db` em `config.py:10`) → **o backup nunca contém o banco** (só permissions.json + rag/*.npz) | `backup.sh:23-25,51` | **P0*** | ✅ corrigido — usa `$SCRIPT_DIR/data/{memory,rag}` e `$SCRIPT_DIR/backups` |
+| R13 | XP/conquistas concedidos "oportunisticamente" no frontend (não sincronizados com `/api/level`); `addXp` depende de StatsPanel ter aberto o store | `userStore.ts:26`, `useChat.ts:105` | P2 | ✅ corrigido — `addXp(2)` por turno removido (XP é do backend, via `/api/level` + gamificação); o store perde a escrita client-side divergente |
+| R14 | `ActionConfirm` busca ações pendentes só no mount; novas propostas do agente só aparecem após reload | `ActionConfirm.tsx` | P2 | ✅ corrigido — poll de 5 s com guarda de unmount |
+| R15 | Polling agressivo: preview de tela 2s + watch loop `/api/chat` ~25s sem abort | `useScreen.ts`, `api.ts` | P2 | ✅ corrigido — cada chamada do watch loop com `AbortSignal`, abortada no cleanup; `getMonitors` abortável; preview pausa em aba oculta |
+| R16 | Erros não tratados: `getPermissions` sem `.catch` no panel; `getMonitors`/recs sem tratamento → rejeição não capturada | `PermissionsPanel.tsx`, `useScreen.ts`, `StatsPanel.tsx` | P2 | ✅ corrigido — `.catch` em permissões/monitores/recs (rejeição abortada não vira unhandled) |
 | R17 | Duplicidade de `StudyAgent()` (chat/documents/screen) — instâncias separadas do agente sem estado compartilhado proposital | `chat.py:19`, `documents.py:17`, `screen.py:16` | P3 | aceito (design atual) |
-| R18 | `/api/audio/speak` não verifica permissão de microfone (só `/transcribe` exige) | `routers/audio.py` | P2 | pendente |
-| R19 | Dependências sem pin em `requirements.txt` (nenhuma versão) → builds não reproduzíveis | `requirements.txt` | P2 | pendente |
-| R20 | Sem teste de integração com banco real (todos usam `get_connection` mockado em 11 módulos) | `conftest.py:146` | P1 | pendente |
+| R18 | `/api/audio/speak` não verifica permissão de microfone (só `/transcribe` exige) | `routers/audio.py` | P2 | ✅ corrigido — `speak`/`speak_stream` exigem `microphone` (+ teste 403) |
+| R19 | Dependências sem pin em `requirements.txt` (nenhuma versão) → builds não reproduzíveis | `requirements.txt` | P2 | ✅ corrigido — versões pinadas |
+| R20 | Sem teste de integração com banco real (todos usam `get_connection` mockado em 11 módulos) | `conftest.py:146` | P1 | ✅ corrigido — `tests/test_integration_db.py` + `test_db_pool.py` no banco real |
 
 ## Riscos de performance
 
 | # | Risco | Evidência | Severidade | Estado |
 |---|---|---|---|---|
-| R21 | `doctor.sh` executa inferência real (llama3.1 30s + embeddings 30s + screen diagnostics 15s) sequencial → diagnóstico lento | `doctor.sh:322-366,506` | P2 | pendente (modo --quick) |
-| R22 | Painéis remontam do zero ao reabrir (4+ chamadas em StatsPanel, 3 em Achievements) | `StatsPanel.tsx:24` | P2 | pendente |
-| R23 | Sem debounce real no input de chat (hook `useDebounce` órfão) | `hooks/useDebounce.ts` | P3 | pendente |
+| R21 | `doctor.sh` executa inferência real (llama3.1 30s + embeddings 30s + screen diagnostics 15s) sequencial → diagnóstico lento | `doctor.sh` | P2 | ✅ corrigido — `./doctor.sh --quick` pula as três seções de inferência (~1 s vs ~16–75 s); `--full` é o padrão e `--help` documenta |
+| R22 | Painéis remontam do zero ao reabrir (4+ chamadas em StatsPanel, 3 em Achievements) | `StatsPanel.tsx:24` | P2 | pendente — cache de dados por painel (zustand store) |
+| R23 | Sem debounce real no input de chat (hook `useDebounce` órfão) | `hooks/useDebounce.ts`, `ChatInput.tsx:48` | P3 | **sem efeito prático** — o input do chat é estado local lido só no envio (`onSend`), sem chamada por tecla; um debounce ali só acrescentaria latência. O hook segue disponível e testado para uso futuro |
 
 ## Pontos fortes (manter)
 
@@ -55,11 +55,11 @@ P1 = alta prioridade (confiança/dados); P2 = importante; P3 = melhoria futura.
 - Sem `shell=True`; calculadora AST-safe; CSV/filename sanitizados (rodada anterior).
 - Logging estruturado com request_id; health check 6 componentes; exception handler 500 seguro.
 - Sem segredos rastreados no git (backend/.env gitignored).
+- CI verde: `ruff check app tests` + `pytest` (537 testes) em `.github/workflows/backend.yml`.
 
 ## Tranqueiras de tratamento
 
-- **P0 (rodadas atuais):** R1, R2, R3 → permissões perigosas off no arquivo versionado; bind `127.0.0.1` + non-root + HEALTHCHECK; suíte de testes de segurança (PIN/rate-limit/CORS/routers). ✅ concluído.
-- **P0 (rodada corrente):** R12 → `backup.sh` agora usa `$SCRIPT_DIR/data/{memory,rag}` (caminho real) e `$SCRIPT_DIR/backups`; DB/`*.npz`/config de fato incluídos no backup. ✅ concluído (último P0 pendente).
-- **P1:** R5 `.gitignore` cobre `backups/`/`backages/`/`*.pid` ✅; R6 `update.sh` usa `git stash push` com mensagem + `stash pop` guardado (não mais stash silencioso perdido) ✅; R11 serviços inline (api/web/ollama/listener) alinhados + hardening `--host 127.0.0.1` ✅ parcial; R20 teste de integração com banco real ✅ — **P1 completo**.
-- **P2:** R7 `stop.sh` restringe `pgrep` ao caminho deste projeto (não mata uvicorn de outros projetos) ✅; R18 `/audio/speak` agora exige permissão `microphone` (+ teste 403) ✅; R19 `requirements.txt` com versões pinadas (reproduzível) ✅. Pendentes: R9 (feito FASE 2-a), R10, R13, R14, R15, R16, R21, R22.
-- **P3:** R17, R23.
+- **P0:** R1, R2, R3 (rodada 1) e R12 (rodada 2) — ✅ todos concluídos.
+- **P1:** R5, R6, R20 ✅; R11 parcial (serviços inline alinhados, `scripts/*.service` ainda não copiados pelo instalador).
+- **P2:** R7, R9, R10, R13, R14, R15, R16, R18, R19, R21 ✅ — **pendente: R22** (cache dos painéis).
+- **P3:** R17 aceito; R23 sem efeito prático (justificado acima).

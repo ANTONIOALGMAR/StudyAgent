@@ -682,5 +682,149 @@
     "action": "set",
     "permission": "camera",
     "value": true
+  },
+  {
+    "timestamp": "2026-09-18T10:59:16.577995",
+    "action": "set",
+    "permission": "microphone",
+    "value": false
+  },
+  {
+    "timestamp": "2026-09-18T10:59:20.616505",
+    "action": "set",
+    "permission": "microphone",
+    "value": true
+  },
+  {
+    "timestamp": "2026-10-05T16:03:20.339327",
+    "action": "set",
+    "permission": "internet",
+    "value": true
+  },
+  {
+    "timestamp": "2026-10-05T16:03:20.340035",
+    "action": "set",
+    "permission": "internet",
+    "value": false
+  },
+  {
+    "timestamp": "2026-10-05T16:06:14.528195",
+    "action": "set",
+    "permission": "internet",
+    "value": true
+  },
+  {
+    "timestamp": "2026-10-05T16:06:14.528856",
+    "action": "set",
+    "permission": "internet",
+    "value": false
+  },
+  {
+    "timestamp": "2026-10-05T16:14:43.319913",
+    "action": "set",
+    "permission": "internet",
+    "value": true
+  },
+  {
+    "timestamp": "2026-10-05T16:14:43.320531",
+    "action": "set",
+    "permission": "internet",
+    "value": false
+  },
+  {
+    "timestamp": "2026-10-05T16:15:13.135034",
+    "action": "set",
+    "permission": "internet",
+    "value": true
+  },
+  {
+    "timestamp": "2026-10-05T16:15:13.135681",
+    "action": "set",
+    "permission": "internet",
+    "value": false
+  },
+  {
+    "timestamp": "2026-10-05T16:18:39.616041",
+    "action": "set",
+    "permission": "internet",
+    "value": true
+  },
+  {
+    "timestamp": "2026-10-05T16:18:39.616669",
+    "action": "set",
+    "permission": "internet",
+    "value": false
+  },
+  {
+    "timestamp": "2026-10-05T16:20:18.522165",
+    "action": "set",
+    "permission": "internet",
+    "value": true
+  },
+  {
+    "timestamp": "2026-10-05T16:20:18.522861",
+    "action": "set",
+    "permission": "internet",
+    "value": false
+  },
+  {
+    "timestamp": "2026-10-05T16:53:56.930700",
+    "action": "set",
+    "permission": "internet",
+    "value": true
+  },
+  {
+    "timestamp": "2026-10-05T16:53:56.931357",
+    "action": "set",
+    "permission": "internet",
+    "value": false
+  },
+  {
+    "timestamp": "2026-10-05T16:56:50.701444",
+    "action": "set",
+    "permission": "internet",
+    "value": true
+  },
+  {
+    "timestamp": "2026-10-05T16:56:50.702070",
+    "action": "set",
+    "permission": "internet",
+    "value": false
+  },
+  {
+    "timestamp": "2026-10-05T17:00:11.044068",
+    "action": "set",
+    "permission": "internet",
+    "value": true
+  },
+  {
+    "timestamp": "2026-10-05T17:00:11.044829",
+    "action": "set",
+    "permission": "internet",
+    "value": false
+  },
+  {
+    "timestamp": "2026-10-05T17:18:19.073358",
+    "action": "set",
+    "permission": "internet",
+    "value": false
+  },
+  {
+    "timestamp": "2026-10-05T17:18:19.685770",
+    "action": "set",
+    "permission": "internet",
+    "value": true
+  },
+  {
+    "timestamp": "2026-10-06T11:50:08.522192",
+    "action": "set",
+    "permission": "internet",
+    "value": true
+  },
+  {
+    "timestamp": "2026-10-06T11:50:08.522827",
+    "action": "set",
+    "permission": "internet",
+    "value": false
   }
 ]

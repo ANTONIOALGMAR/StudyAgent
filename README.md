@@ -1,10 +1,11 @@
 # StudyAgent
 
-Tutor de estudos multimodal que roda **100% local** no seu computador (Linux): chat com IA local via Ollama, voz nos dois sentidos, visão computacional para ler telas e câmera, leitura completa de PDFs, pesquisa na internet com fontes citadas, exercícios com correção automática, flashcards com repetição espaçada, planos de estudo, perfil adaptativo, gamificação com XP e níveis, recomendações por tempo, export/import em CSV e JSON — tudo sob um sistema de permissões explícitas.
+Tutor de estudos multimodal que roda **100% local** no seu computador (Linux): chat com IA local via Ollama com **resposta em streaming (SSE)**, voz nos dois sentidos, visão computacional para ler telas e câmera com **reconhecimento facial**, leitura completa de PDFs, pesquisa na internet com fontes citadas, exercícios com correção automática, flashcards com repetição espaçada, planos de estudo, perfil adaptativo, gamificação com XP e níveis, recomendações por tempo, export/import em CSV e JSON, avatar 3D reativo e ferramentas de edição de código — tudo sob um sistema de permissões explícitas.
 
 ## Funcionalidades
 
 ### 💬 Conversa com tutor de IA
+- **Resposta em streaming (SSE)**: tokens chegam em tempo real via `POST /api/chat/stream` (com fallback síncrono em `/api/chat`)
 - Modelos locais via Ollama (`llama3.1` texto, `qwen2.5vl:7b` visão) — nada sai do computador
 - **Metodologia socrática**: modo tutor (padrão) guia com perguntas antes de dar respostas
 - Persona configurável: professor, tutor (socrático), exercícios, revisão, resumo, simples
@@ -12,18 +13,21 @@ Tutor de estudos multimodal que roda **100% local** no seu computador (Linux): c
 - **Consciência contextual**: referências a exercícios anteriores, temas fracos, tela mostrada
 - Memória rolante: últimas mensagens + resumo automático da sessão
 - Calculadora segura embutida
+- **Ferramentas de código**: o agente pode ler (`read_code`), criar (`write_code`), editar (`edit_code`) e buscar em arquivos (`list_files`, `search_code`) — sempre sob a permissão explícita de acesso a arquivos
 
 ### 🗣 Voz completa
 - **Modo viva-voz opcional**: diga **"ei Study, sua pergunta"** em qualquer aba/janela — o agente ouve pela palavra de acordar, responde no chat e fala a resposta pelos alto-falantes
 - **🎧 Audiobook de documentos**: no leitor de PDF, toque em 🎧 para ouvir o arquivo página por página (acessibilidade)
-- **Fala → texto:** faster-whisper `small` com VAD silero, beam=5, prompt PT-BR
-- **Modo conversa automática 🔄:** o agente ouve continuamente (VAD no navegador), transcreve, responde e fala — mão livre
+- **Fala → texto:** faster-whisper com VAD silero, prompt PT-BR, beam greedy por padrão (`STUDY_STT_BEAM=1`) para transcrição rápida na CPU — modelos pré-carregados no startup do backend
+- **Pontuação inteligente:** a transcrição sai com maiúscula inicial e pontuação correta — `?` quando há palavra interrogativa **ou** quando a entonação do áudio sobe no fim (pergunta de "sim/não" como *"vamos fazer um novo teste?"*)
+- **Modo conversa automática 🔄:** o agente ouve continuamente (VAD no navegador), transcreve, responde e fala — mão livre, com meio-duplex (só a fala do agente bloqueia o microfone; durante o raciocínio ele já volta a ouvir)
 - **Texto → fala:** Piper com voz brasileira `pt_BR-faber-medium`
 
 ### 👀 Visão
 - 🖥 Anexo captura de tela à mensagem
 - 📺 Painel *ao vivo* multi-monitor com atualização contínua e **modo comentarista** (o agente avisa quando algo muda na tela)
 - 📷 Câmera: aponte, capture e pergunte
+- 👤 **Reconhecimento facial (InsightFace)**: cadastre rostos (`/api/face/register`), detecte quem está na frente da câmera (`/api/face/present`) e personalize o atendimento (`/api/face/recognize`)
 - Visão por IA híbrida: OCR Tesseract + leitura do modelo de visão
 
 ### 📄 Documentos
@@ -116,6 +120,7 @@ Tutor de estudos multimodal que roda **100% local** no seu computador (Linux): c
 ### 🔒 Segurança
 - **Rate limiting**: chat 15/min, exercícios 5/min e correção 30/min (slowapi) + flashcards 10/min, planos 10/min, áudio 20-30/min e reconhecimento facial 10-30/min
 - **Permissões explícitas**: nenhum módulo acessa microfone, câmera, tela, arquivos ou internet sem checar
+- **Ferramentas de código**: ler/criar/editar/buscar arquivos usa permissão `filesystem` (`file_access` default ativo) — controlável pelo painel de permissões
 - **PIN local (`STUDYAGENT_PIN`)**: ativar permissões perigosas (controle do mouse/teclado, execução de comandos) exige o PIN no header `X-StudyAgent-Pin` — impedindo que uma página/processo local malicioso conceda controle total sem consentimento
 - **Escuta só no localhost**: a API faz bind em `127.0.0.1` (start.sh, install.sh, systemd); o Docker publica a porta apenas no host (`127.0.0.1:8000`) e não na rede
 - **Proteção CSV**: exportação de flashcards escapa células que começam com `=`, `+`, `-`, `@` (anti CSV injection) e nomes de arquivo são sanitizados no Content-Disposition
@@ -123,34 +128,44 @@ Tutor de estudos multimodal que roda **100% local** no seu computador (Linux): c
 
 ### 🛠 Infraestrutura
 - `install.sh` — instalação completa (Python, npm, Ollama, systemd)
-- `doctor.sh` — verificação de saúde com cores (pass/warn/fail)
+- `doctor.sh` — verificação de saúde com cores (pass/warn/fail); `--quick` pula as seções de inferência real (~1 s vs ~16–75 s)
 - `start.sh` / `stop.sh` — gerenciamento de serviços
 - `update.sh` — git pull + backup automático
 - `backup.sh` — backups comprimidos com rotação de 10
 
 ### 🎭 Interface
-- Rosto animado do agente que reage: pensa, ouve, grava, fala — e **reage ao conteúdo** (felicidade, preocupação, curiosidade)
-- **Modo palco:** rosto em tela cheia (⤢, Esc para sair)
-- Sidebar de ferramentas sanfona com 10 botões
+- **Avatar 3D reativo** (Three.js / React Three Fiber): pensa, ouve, grava, fala — com rostos realistas, partículas de fundo e olhos que seguem o cursor (estados em `agentStates`)
+- **Modo palco:** avatar em tela cheia (⤢, Esc para sair)
+- Layout **glassmorphism**: brilhos radiais, blur, acentos neon e animações de hover
+- **Painel de evidências**: visualiza as etapas do pipeline do agente (ferramentas usadas, badges, estágios)
+- **Painel de câmera** com captura e reconhecimento facial
+- Sidebar de ferramentas sanfona (permissões aninhadas) e gerenciador de painéis
 - Tema escuro, tudo em português
 
 ## Arquitetura
 
 ```
 backend/app/
-├── main.py                 FastAPI (6 routers + rate limiting + exception handler)
-├── db.py                   Conexão SQLite centralizada (WAL mode, thread-local)
+├── main.py                 FastAPI (8 routers + middleware request-id/timing + rate limiting + exception handler)
+├── db.py                   Pool de conexões SQLite thread-safe (WAL mode) com recuperação
 ├── config.py               Caminhos, modelos Ollama
 ├── core/                   Núcleo V2 (desacoplado do agente)
+│   ├── orchestrator/         Plan builder → executor com circuit breaker, evidence, policies, validator
 │   ├── model_manager.py      Papéis de modelos por env (text/vision/synthesis/embedding/stt/tts)
 │   ├── planner.py            Decide captura de tela, monitor e estratégia de documento
+│   ├── plan_builder.py       Constrói planos de execução com as ferramentas registradas
 │   ├── context_manager.py    System prompt socrático + dashboard do aluno + propostas
 │   ├── vision_router.py      Notas de imagem, bloco híbrido de OCR, janela ativa
 │   ├── tool_registry.py      Registro decorado de ferramentas + schemas p/ tool-calling
-│   └── registered_tools.py   web_search, open_url, calculate
-├── routers/                Endpoints FastAPI (chat, screen, exercises, documents, audio, tutor)
+│   ├── registered_tools.py   web_search, open_url, calculate + 5 de código (permissão filesystem)
+│   ├── structured_logging.py Logging estruturado com request_id/session_id
+│   ├── memory_manager.py     Estimativa de tokens + trimming da janela de contexto
+│   ├── health.py             Health check (6 componentes)
+│   ├── vector_store.py       Stores de embeddings (numpy/chroma) para RAG
+│   └── cache.py / fs_manager.py / env_validation.py
+├── routers/                chat, screen, exercises, documents, audio (+audio_stream), tutor, facial, health
 ├── agent/
-│   ├── agent.py            Orquestrador: plano → ferramentas → resposta
+│   ├── agent.py            Orquestrador: plano → ferramentas → resposta (síncrona ou SSE stream)
 │   ├── llm.py              Cliente Ollama + síntese de pesquisas (qwen2.5vl)
 │   ├── memory.py           SQLite: 21 tabelas
 │   └── exercises.py         Gerador + corretor + grade_and_track (atualiza mastery + XP)
@@ -167,31 +182,42 @@ backend/app/
 ├── vision/
 │   ├── screen.py           Captura multi-monitor (mss + cosmic-screenshot p/ Wayland)
 │   ├── window.py           Janela ativa (xdotool/swaymsg)
-│   └── ocr.py              OCR Tesseract (híbrido com a visão do modelo)
+│   ├── engine.py           Pipeline de visão (screentext/detalhes/objeto)
+│   ├── ocr.py              OCR Tesseract (híbrido com a visão do modelo)
+│   └── facial.py           Reconhecimento facial (InsightFace)
 ├── audio/
-│   ├── speech_to_text.py   faster-whisper com VAD silero + prompt PT-BR
+│   ├── speech_to_text.py   faster-whisper com VAD silero + prompt PT-BR (+ anti-alucinação)
 │   ├── text_to_speech.py   Piper TTS
 │   ├── vad.py              Segmentador por energia (puro numpy, testável)
 │   ├── wake_word.py        Gatilho "ei study" sobre a transcrição STT
-│   └── listener.py         Daemon viva-voz (arecord→VAD→STT→chat→TTS→aplay)
+│   ├── intonation.py       Detecção de entonação de pergunta (F0/autocorrelação, sem modelo)
+│   ├── orthography.py       Normalização PT-BR pós-STT (maiúscula, "?", formas faladas)
+│   ├── listener.py         Daemon viva-voz (arecord→VAD→STT→chat→TTS→aplay), meio-duplex
+│   └── voice_streamer.py   Streaming de resposta em áudio (tokens → fala)
 ├── tools/
 │   ├── calculator.py       Avaliador AST seguro
+│   ├── code_editor.py      Leitura/escrita/edição/busca de arquivos (permissão filesystem)
 │   ├── documents.py        Extração PDF, digest map-reduce, narração (audiobook)
-│   ├── rag.py              Busca semântica (nomic-embed-text + numpy cosine)
+│   ├── rag.py              Busca semântica (embeddings + cosine)
 │   └── web_search.py       DDG→Bing→Wikipédia, fetch, destilação
 └── security/
-    ├── permissions.py Portão de permissões
-    └── local_auth.py   PIN local (STUDYAGENT_PIN + X-StudyAgent-Pin) p/ permissões perigosas
+    ├── permissions.py      Portão de permissões (fail-closed + dependências + auditoria)
+    └── local_auth.py       PIN local (STUDYAGENT_PIN + X-StudyAgent-Pin) p/ permissões perigosas
 
 frontend/src/
-├── App.tsx                 Layout: sidebar permissões + chat
+├── App.tsx                 Layout glassmorphism: sidebar (com permissões) + chat
+├── api.ts                  Cliente tipado (50+ funções)
 ├── components/
-│   ├── Chat.tsx              Núcleo da UI (conversa, voz, telas, câmera, 10 botões sidebar)
+│   ├── Chat.tsx              Núcleo da UI (conversa, voz, telas, câmera, sidebar)
 │   ├── ChatMessages.tsx      Lista de mensagens + estado vazio/loading/error
 │   ├── ChatInput.tsx         Campo de entrada + botões de ação
 │   ├── LivePanel.tsx         Painel ao vivo multi-monitor
-│   ├── AgentFace.tsx         Rosto SVG expressivo
-│   ├── Sidebar.tsx           Ferramentas sanfona
+│   ├── StudyAgent3D/         Avatar 3D reativo (rostos, partículas, olhos, estados)
+│   ├── EvidencePanel.tsx     Visualização das etapas do pipeline do agente
+│   ├── CameraPanel.tsx       Câmera + reconhecimento facial
+│   ├── Sidebar.tsx           Ferramentas sanfona + permissões aninhadas
+│   ├── PanelManager.tsx      Gerenciador de painéis
+│   ├── panels.ts             Definição/registro dos painéis
 │   ├── ExercisesPanel.tsx    Quiz com correção
 │   ├── FlashcardsPanel.tsx   Baralhos + revisão SM-2 interativa
 │   ├── StudyPlanPanel.tsx    Checklist de plano de estudo
@@ -202,15 +228,19 @@ frontend/src/
 │   ├── PdfViewer.tsx         Leitor de documentos + 🎧 audiobook
 │   └── PermissionsPanel.tsx
 ├── hooks/
-│   ├── useChat.ts            Lógica de chat + envio
-│   ├── useVoice.ts           Gravação + transcrição
+│   ├── useChat.ts            Lógica de chat + envio (streaming/síncrono)
+│   ├── useVoice.ts           Gravação + transcrição + fala
 │   ├── useScreen.ts          Captura + monitores
+│   ├── useAgentState.ts      Estado do avatar 3D
 │   └── useDebounce.ts        Debounce de input
-├── test/
-│   ├── App.test.tsx          5 testes básicos
-│   ├── snapshots.test.tsx    10 snapshot tests
-│   └── useDebounce.test.ts   3 testes de debounce
-└── api.ts                  Cliente tipado (50+ funções)
+├── store/
+│   └── userStore.ts        Estado global do usuário
+├── lib/
+│   └── audioReactive.ts    Reatividade do avatar ao áudio (mouth-sync)
+└── test/
+    ├── ChatMessages.test.tsx
+    ├── snapshots.test.tsx  Snapshot tests
+    └── useDebounce.test.ts
 ```
 
 ### Banco de Dados (21 tabelas)
@@ -241,12 +271,12 @@ frontend/src/
 
 ### Testes
 
-506 testes (488 backend + 18 frontend):
+555 testes (537 backend + 18 frontend):
 
 ```bash
 # Backend
 cd backend
-.venv/bin/pytest tests/ -v       # 488 testes
+.venv/bin/pytest tests/ -v       # 537 testes
 .venv/bin/ruff check app tests
 
 # Frontend
@@ -269,6 +299,18 @@ npx vite build
 | `STUDY_EMBEDDING_MODEL` | `nomic-embed-text` | Embeddings para RAG |
 | `STUDY_NUM_PREDICT` | `2048` | Limite de tokens na resposta |
 | `STUDY_VAD_THRESHOLD` | `500` | Sensibilidade do microfone (listener) |
+| `STUDY_STT_MODEL` | `small` | Modelo faster-whisper (transcrição) |
+| `STUDY_STT_BEAM` | `1` | Beam size do Whisper (1 = greedy/mais rápido; 5 = mais preciso, mais lento) |
+| `STUDY_STT_DEVICE` | `cpu` | Device do Whisper (`cpu` ou `cuda`) |
+| `STUDY_STT_COMPUTE` | `int8` | Precisão de inferência do Whisper |
+| `STUDY_STT_INTONATION` | `1` | Detecta entonação de pergunta (subida de pitch no fim) para pontuar a transcrição |
+| `STUDY_STT_NO_SPEECH` | `0.6` | Corte de segmentos sem fala (anti-alucinação do Whisper) |
+| `STUDY_STT_LOGPROB` | `-1.0` | Corte de segmentos de baixa confiança |
+| `STUDY_STT_COMPRESSION` | `2.4` | Corte de repetição em loop |
+| `STUDY_STT_HALLUC_SILENCE` | `2.0` | Corta "alucinação" gerada no silêncio |
+| `STUDY_AUDIO_TIMEOUT` | `5` | Timeout de leitura do microfone no viva-voz (s = encerra o ciclo) |
+| `STUDY_TTS_TIMEOUT` | `120` | Timeout do playback no viva-voz (s) |
+| `STUDY_CYCLE_SLEEP` | `0.5` | Pausa entre ciclos do viva-voz (s) |
 | `OLLAMA_HOST` | `http://localhost:11434` | Host do Ollama |
 | `STUDYAGENT_HOST` | `127.0.0.1` | Interface de rede da API (localhost) |
 | `STUDYAGENT_PIN` | _(vazio)_ | PIN para ativar permissões perigosas (ver **Segurança**) |
@@ -358,7 +400,8 @@ sudo apt-get install -y tesseract-ocr tesseract-ocr-por
 ```bash
 ./start.sh     # Inicia todos os serviços
 ./stop.sh      # Para todos os serviços
-./doctor.sh    # Verificação de saúde
+./doctor.sh    # Verificação de saúde (completa, com inferência real)
+./doctor.sh --quick   # Verificação rápida (~1s, sem inferência)
 ./update.sh    # Atualiza do git + backup
 ./backup.sh    # Cria backup comprimido
 ```
@@ -390,6 +433,7 @@ Abra **http://localhost:5173**
 |---|---|---|
 | GET | `/api/health` | Status e modelos |
 | POST | `/api/chat` | Conversa (rate limit: 15/min) |
+| POST | `/api/chat/stream` | Conversa em streaming (SSE, token a token) |
 | POST | `/api/screen/capture` | Captura + OCR |
 | GET | `/api/screen/monitors` | Lista monitores |
 | GET | `/api/screen/preview` | JPEG do monitor (painel ao vivo) |
@@ -448,6 +492,12 @@ Abra **http://localhost:5173**
 | GET | `/api/profile/export` | Export perfil completo |
 | POST | `/api/profile/import` | Import perfil completo |
 | GET | `/api/sessions` | Lista sessões |
+| GET | `/api/sessions/{id}/messages` | Mensagens de uma sessão |
+| POST | `/api/face/present` | Detecta rosto na imagem |
+| POST | `/api/face/register` | Cadastra um rosto |
+| POST | `/api/face/recognize` | Reconhece o rosto cadastrado |
+| GET | `/api/face/list` | Lista rostos cadastrados |
+| DELETE | `/api/face/{name}` | Remove um rosto |
 | GET/PUT | `/api/permissions[/{name}]` | Permissões (ativar permissões perigosas requer PIN) |
 
 ## Roadmap
@@ -461,7 +511,7 @@ Abra **http://localhost:5173**
 - [x] P6 — Perfil adaptativo: student profile, topic mastery, weak/strong detection
 - [x] P7 — Automação com confirmação: action proposals, approve/reject
 - [x] P8 — Perfil avançado: sessões, analytics temporal, dificuldade adaptativa, recomendações
-- [x] P9 — Gamificação: 16 conquistas, streaks por tema, verificação automática
+- [x] P9 — Gamificação: 26 conquistas, streaks por tema, verificação automática
 - [x] P10 — Export/Import: CSV/Anki, JSON, perfil completo
 
 ### Evolution Phases (Master Prompt)
@@ -488,4 +538,4 @@ Abra **http://localhost:5173**
 - [x] RAG V2: embedding cache, reranking, metadata, page_range filter
 - [x] Frontend Decomposition: Chat.tsx 993→357 lines, 3 hooks, 4 components
 - [x] Performance: JPEG compression (~5x smaller), lazy loading panels
-- [x] Tests: 488 backend + 18 frontend = 506 total
+- [x] Tests: 537 backend + 18 frontend = 555 total

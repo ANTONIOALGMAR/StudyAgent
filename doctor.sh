@@ -54,16 +54,55 @@ http_ok() {
     curl -fsS --max-time 3 "$1" >/dev/null 2>&1
 }
 
+skip_if_quick() {
+    # Seções que disparam inferência real (geração de texto, embeddings e o
+    # diagnóstico de visão) custam 15–30 s cada na CPU. Em --quick elas são
+    # puladas para o diagnóstico de presence ser rápido.
+    if [ "$QUICK" -eq 1 ]; then
+        section "$1 (modo rápido: pulado)"
+        info "pulado por --quick — rode ./doctor.sh --full para validar"
+        return 1
+    fi
+    return 0
+}
+
 # ============================================================
 # CABEÇALHO
 # ============================================================
+
+QUICK=0
+case "${1:-}" in
+    --quick|-q)
+        QUICK=1
+        ;;
+    --full|"")
+        QUICK=0
+        ;;
+    --help|-h)
+        echo "uso: ./doctor.sh [--quick|--full]"
+        echo
+        echo "  (padrão)  diagnóstico completo, incluindo inferência real"
+        echo "  --quick   pula as seções lentas (geração de texto, embeddings,"
+        echo "            diagnóstico de visão) — útil para checar se os"
+        echo "            serviços estão de pé"
+        exit 0
+        ;;
+    *)
+        echo "opção desconhecida: $1 (use --help)" >&2
+        exit 2
+        ;;
+esac
 
 clear 2>/dev/null || true
 
 echo
 echo -e "${CYAN}╔════════════════════════════════════════════════════════════╗${NC}"
 echo -e "${CYAN}║              STUDYAGENT SYSTEM DOCTOR                    ║${NC}"
-echo -e "${CYAN}║          Diagnóstico completo da plataforma               ║${NC}"
+if [ "$QUICK" -eq 1 ]; then
+    echo -e "${CYAN}║          Modo rápido (inferência real pulada)             ║${NC}"
+else
+    echo -e "${CYAN}║          Diagnóstico completo da plataforma               ║${NC}"
+fi
 echo -e "${CYAN}╚════════════════════════════════════════════════════════════╝${NC}"
 echo
 
@@ -313,6 +352,8 @@ fi
 # TESTE DE GERAÇÃO
 # ============================================================
 
+if skip_if_quick "TESTE FUNCIONAL — TEXTO"; then
+
 section "TESTE FUNCIONAL — TEXTO"
 
 if http_ok "$OLLAMA_HOST_STUDY/api/version"; then
@@ -326,7 +367,7 @@ if http_ok "$OLLAMA_HOST_STUDY/api/version"; then
         -H 'Content-Type: application/json' \
         -d '{
             "model":"llama3.1",
-            "prompt":"Responda exatamente: TESTE OK",
+            "prompt":"Repita a palavra abaixo, sem mais nada:\nTESTE",
             "stream":false
         }' 2>/dev/null || true)
 
@@ -334,7 +375,7 @@ if http_ok "$OLLAMA_HOST_STUDY/api/version"; then
 
     TEXT_TIME=$((TEXT_END - TEXT_START))
 
-    if echo "$TEXT_RESPONSE" | grep -qi "TESTE OK"; then
+    if echo "$TEXT_RESPONSE" | grep -qi '"TESTE"'; then
         pass "llama3.1 geração funcional (${TEXT_TIME} ms)"
     elif [ -n "$TEXT_RESPONSE" ]; then
         warn "llama3.1 respondeu, mas resultado inesperado"
@@ -346,10 +387,13 @@ if http_ok "$OLLAMA_HOST_STUDY/api/version"; then
 else
     warn "Teste de texto ignorado: Ollama offline"
 fi
+fi
 
 # ============================================================
 # TESTE DE EMBEDDING
 # ============================================================
+
+if skip_if_quick "TESTE FUNCIONAL — EMBEDDINGS"; then
 
 section "TESTE FUNCIONAL — EMBEDDINGS"
 
@@ -371,6 +415,7 @@ if http_ok "$OLLAMA_HOST_STUDY/api/version"; then
         warn "nomic-embed-text: teste falhou"
     fi
 
+fi
 fi
 
 # ============================================================
@@ -503,6 +548,8 @@ else
     warn "API não responde em :8000"
 fi
 
+if skip_if_quick "BACKEND API — DIAGNÓSTICO DE VISÃO"; then
+
 SCREEN_DIAG=$(curl -fsS \
     --connect-timeout 2 \
     --max-time 15 \
@@ -560,6 +607,7 @@ if [ -n "$SCREEN_DIAG" ]; then
 
 else
     warn "Endpoint de diagnóstico de tela não respondeu"
+fi
 fi
 
 # ============================================================
