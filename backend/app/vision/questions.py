@@ -550,6 +550,24 @@ def parse_answers(
     return [respostas[q.label] for q in questions if q.label in respostas]
 
 
+def format_answers(respostas: list[dict]) -> str:
+    """Monta o texto de exibição das respostas já validadas pelo parse.
+
+    Reproduz o formato pedido ao modelo, mas com o conteúdo limpo — por
+    exemplo, uma justificativa genérica (vazia) vira "incerta" sem letra.
+    """
+
+    linhas = []
+    for r in respostas:
+        letter = (r.get("answer") or "").strip()
+        texto = (r.get("answer_text") or "").strip()
+        if letter:
+            linhas.append(f"{r['label']}) {letter}) {texto}")
+        else:
+            linhas.append(f"{r['label']}) {texto}")
+    return "\n".join(linhas)
+
+
 __all__ = [
     "ANSWER_FORMAT",
     "DetectedQuestion",

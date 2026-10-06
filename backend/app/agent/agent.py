@@ -1463,9 +1463,16 @@ class StudyAgent:
                 "error": str(exc),
             }
 
+        respostas = questions_mod.parse_answers(resposta, encontradas)
+
+        # Exibe o conteúdo já validado: justificativa genérica vira
+        # "incerta" em vez de passar o chute confiante do modelo.
+        if respostas:
+            resposta = questions_mod.format_answers(respostas)
+
         return {
             **base,
-            "answers": questions_mod.parse_answers(resposta, encontradas),
+            "answers": respostas if respostas else [],
             "answer_text": resposta,
         }
 

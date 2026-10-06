@@ -471,6 +471,34 @@ class TestAnswerScreenQuestions:
         assert [a["label"] for a in result["answers"]] == ["1", "2"]
         assert result["answers"][0]["answer"] == "B"
 
+    def test_justificativa_generica_vira_incerta(self):
+        """Resposta com 'correto, conforme o enunciado' não é exibida como
+        certa no auto-solve: vira 'incerta', sem letra."""
+
+        with (
+            patch(
+                "app.vision.screen.ScreenManager.capture_monitor",
+                return_value=_imagem_questoes(),
+            ),
+            patch("app.vision.screen._discover_monitors", return_value=_tres_monitores()),
+            patch("app.vision.window.active_window", return_value=None),
+            patch("app.agent.agent.ocr") as mock_ocr,
+            patch("app.agent.agent.chat") as mock_chat,
+        ):
+            mock_ocr.available.return_value = True
+            mock_ocr.read_text.return_value = OCR_QUESTOES
+            mock_chat.return_value = (
+                "1) B) 12 — A resposta está correta, conforme o enunciado."
+            )
+
+            agent = StudyAgent()
+            result = agent.answer_screen_questions()
+
+        assert result["answers"][0]["answer"] == ""
+        assert result["answer_text"] == (
+            "1) incerta — justificativa genérica não confirma a alternativa."
+        )
+
     def test_sem_questoes_nao_chama_o_modelo(self):
         with (
             patch(
