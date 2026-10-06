@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { transcribeAudio, speak } from '../api'
 import { registerVoiceAnalyser } from '../lib/audioReactive'
 
-export type HandsFreeState = 'off' | 'listening' | 'recording' | 'processing' | 'speaking'
+export type HandsFreeState = 'off' | 'listening' | 'recording' | 'processing' | 'thinking' | 'speaking'
 
 const SILENCE_MS = 1500
 const MIN_UTTERANCE_MS = 600
@@ -23,7 +23,7 @@ function rmsOf(buf: Float32Array): number {
 }
 
 export interface UseVoiceOptions {
-  onUserMessage: (text: string) => void
+  onUserMessage: (text: string) => void | Promise<void>
   onAssistantMessage?: (text: string) => void
   enabled?: boolean
 }
@@ -44,6 +44,11 @@ export function useVoice({ onUserMessage }: UseVoiceOptions) {
   const hfActiveRef = useRef(false)
   const speechSourceRef = useRef<MediaElementAudioSourceNode | null>(null)
   const speechCtxRef = useRef<AudioContext | null>(null)
+  // Meio-duplex PARCIAL: só a FALA do agente bloqueia a captura (evita eco).
+  // Durante o raciocínio do modelo o microfone fica armado para novas falas.
+  const busyRef = useRef(false)
+  const pendingRef = useRef<string | null>(null)
+  const speakingRef = useRef(false)
 
   // Safety net de autoplay: se um AudioContext foi criado fora de um gesto de
   // usuário, retomá-lo na primeira interação para o som/análise não saírem mudo.
@@ -108,6 +113,7 @@ export function useVoice({ onUserMessage }: UseVoiceOptions) {
 
         setHfState('speaking')
         setSpeaking(true)
+        speakingRef.current = true
         try {
           await new Promise<void>((resolve) => {
             const cap = setTimeout(resolve, SPEAK_CAP_MS)
@@ -117,6 +123,7 @@ export function useVoice({ onUserMessage }: UseVoiceOptions) {
           })
         } finally {
           setSpeaking(false)
+          speakingRef.current = false
           teardownSpeechGraph()
         }
       } catch (e) {
@@ -151,7 +158,8 @@ export function useVoice({ onUserMessage }: UseVoiceOptions) {
       }
 
       const timer = setInterval(() => {
-        if (!hfActiveRef.current) { finish(); return }
+        // Agente começou a falar → encerra a captura (meio-duplex real).
+        if (!hfActiveRef.current || speakingRef.current) { finish(); return }
         analyser.getFloatTimeDomainData(buf)
         const level = rmsOf(buf)
         const now = performance.now()
@@ -179,23 +187,55 @@ export function useVoice({ onUserMessage }: UseVoiceOptions) {
     })
   }, [])
 
+  const runTurn = useCallback((text: string) => {
+    busyRef.current = true
+    setHfState('thinking')
+    const resultado = onUserMessage(text)
+    if (resultado) {
+      resultado
+        .catch((e: unknown) => console.error('Erro no turno (hands-free):', e))
+        .finally(() => { busyRef.current = false })
+    } else {
+      busyRef.current = false
+    }
+  }, [onUserMessage])
+
   const handsFreeLoop = useCallback(async () => {
     while (hfActiveRef.current) {
+      // Meio-duplex durante a FALA: não capta a própria voz do agente.
+      if (speakingRef.current) {
+        await new Promise((r) => setTimeout(r, 150))
+        continue
+      }
+      // Turno anterior terminou e há fala na fila → processa primeiro.
+      if (pendingRef.current && !busyRef.current) {
+        const texto = pendingRef.current
+        pendingRef.current = null
+        void runTurn(texto)
+        continue
+      }
       const blob = await recordUtterance()
       if (!hfActiveRef.current) break
       if (!blob || blob.size < 1000) continue
       setHfState('processing')
+      let text: string
       try {
-        const text = await transcribeAudio(blob)
-        if (text) {
-          onUserMessage(text)
-        }
+        text = await transcribeAudio(blob)
       } catch (e) {
         console.error('Erro na transcrição (hands-free):', e)
         break
       }
+      if (!text || !hfActiveRef.current) continue
+      // Meio-duplex PARCIAL: o modelo raciocina SEM emitir som, então o
+      // microfone continua armado durante o pensamento — a pessoa pode
+      // falar de novo imediatamente. Só a fala do agente bloqueia.
+      if (busyRef.current) {
+        pendingRef.current = text
+        continue
+      }
+      void runTurn(text)
     }
-  }, [recordUtterance, onUserMessage])
+  }, [recordUtterance, runTurn])
 
   const startHandsFree = useCallback(async () => {
     try {
@@ -210,6 +250,9 @@ export function useVoice({ onUserMessage }: UseVoiceOptions) {
       audioCtxRef.current = ctx
       analyserRef.current = analyser
       hfActiveRef.current = true
+      busyRef.current = false
+      pendingRef.current = null
+      speakingRef.current = false
       setHandsFree(true)
       void handsFreeLoop()
     } catch (e) {
@@ -219,6 +262,9 @@ export function useVoice({ onUserMessage }: UseVoiceOptions) {
 
   const stopHandsFree = useCallback(() => {
     hfActiveRef.current = false
+    busyRef.current = false
+    pendingRef.current = null
+    speakingRef.current = false
     setHandsFree(false)
     setHfState('off')
     if (recorderRef.current?.state === 'recording') recorderRef.current.stop()
@@ -261,6 +307,9 @@ export function useVoice({ onUserMessage }: UseVoiceOptions) {
 
   const cleanup = useCallback(() => {
     hfActiveRef.current = false
+    busyRef.current = false
+    pendingRef.current = null
+    speakingRef.current = false
     streamRef.current?.getTracks().forEach((t) => t.stop())
     void audioCtxRef.current?.close().catch(() => {})
     streamRef.current = null

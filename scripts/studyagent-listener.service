@@ -2,14 +2,23 @@
 Description=StudyAgent - modo viva-voz ("ei Study, ...")
 After=studyagent-api.service
 Wants=studyagent-api.service
+StartLimitIntervalSec=60
+StartLimitBurst=3
 
 [Service]
 Type=simple
 WorkingDirectory=%h/StudyAgent/backend
 ExecStart=%h/StudyAgent/backend/.venv/bin/python -m app.audio.listener
-Restart=on-failure
+# always (e não on-failure): o listener também sai por conta própria quando o
+# microfone some, e ainda assim precisa voltar. Com StartLimitBurst=3 o systemd
+# para de tentar se o problema for persistente (microfone ausente), em vez de
+# reiniciar para sempre. Travas de áudio não saem do processo — são tratadas
+# dentro do listener (timeout de leitura do arecord e do aplay, R10).
+Restart=always
 RestartSec=5
 Environment=STUDY_VAD_THRESHOLD=500
+Environment=STUDY_AUDIO_TIMEOUT=5
+Environment=STUDY_TTS_TIMEOUT=120
 
 [Install]
 WantedBy=default.target

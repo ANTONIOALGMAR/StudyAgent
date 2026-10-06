@@ -34,6 +34,17 @@ def _acordou(norm: str) -> bool:
     return any(primeira == tok or primeira.startswith(tok + " ") for tok in WAKE_TOKENS)
 
 
+def _prefix_words(norm: str) -> int | None:
+    """Qtd. de palavras do gatilho no início do texto, ou None se não acordou."""
+    for p in WAKE_PREFIXES:
+        if norm == p or norm.startswith(p + " "):
+            return len(p.split())
+    primeira = norm.split(",", 1)[0]
+    if any(primeira == tok or primeira.startswith(tok + " ") for tok in WAKE_TOKENS):
+        return 1
+    return None
+
+
 def extract_command(texto: str) -> str | None:
     """Comando após a palavra de acordar (com acentos originais), ou None."""
     if not texto or not _acordou(normalize(texto)):
@@ -42,10 +53,12 @@ def extract_command(texto: str) -> str | None:
     m = re.search(r"[,.!?;:]\s*(.+)", texto, flags=re.S)
     if m:
         return m.group(1).strip() or None
-    # sem pontuação: descarta as mesmas palavras do gatilho na frase crua
-    n_gatilho = len(normalize(texto).split(",", 1)[0].split())
-    partes = texto.split(None, n_gatilho)
-    if len(partes) != n_gatilho + 1:
+    # sem pontuação: descarta só as palavras do gatilho, mantendo o comando
+    prepos = _prefix_words(normalize(texto))
+    if prepos is None:
+        return None
+    partes = texto.split(None, prepos)
+    if len(partes) <= prepos:
         return None  # só o gatilho, sem comando
     return partes[-1].strip(" ,.!?;:") or None
 

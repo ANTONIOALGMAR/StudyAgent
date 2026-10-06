@@ -33,3 +33,16 @@ def test_studi_reconhecido(stt_variacao="studi"):
 def test_texto_antes_do_gatilho_ignorado():
     # "study" no meio da frase não acorda — só no início/comando direto
     assert extract_command("eu gosto de estudar study hall") is None
+
+
+def test_comando_sem_pontuacao():
+    # Sem vírgula/final: texto bruto do Whisper quando a pontuação falha
+    assert extract_command("ei study vamos fazer um novo teste") == "vamos fazer um novo teste"
+
+
+def test_comando_com_pergunta():
+    assert extract_command("ei study, vamos fazer um novo teste?") == "vamos fazer um novo teste?"
+
+
+def test_estude_agente_prefixo():
+    assert extract_command("estude agente, resolva isso").startswith("resolva isso")

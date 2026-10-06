@@ -258,6 +258,8 @@ body {
 
 .status-pill.st-speaking { border-color: #2f6f4f; color: #34d27b; }
 
+.status-pill.st-thinking { border-color: #6d5bd0; color: #b8a8ff; }
+
 .camera-panel {
   background: #1d2230;
   border: 1px solid #262b38;

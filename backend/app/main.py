@@ -83,6 +83,27 @@ app.include_router(facial.router)
 @app.on_event("startup")
 async def on_startup():
     log.info("[STARTUP] StudyAgent v2.0 starting...")
+    # Pré-carrega os modelos de áudio (Whisper + Piper) em background para o
+    # primeiro uso de voz não pagar o custo da carga fria (vários segundos).
+    _preload_audio_models()
+
+
+def _preload_audio_models() -> None:
+    """Carrega STT/TTS num thread daemon (não bloqueia o startup)."""
+    import threading
+
+    def _load():
+        try:
+            from .audio import speech_to_text, text_to_speech
+
+            speech_to_text.preload()
+            if text_to_speech.available():
+                text_to_speech.preload()
+            log.info("[STARTUP] audio models preloaded (STT + TTS)")
+        except Exception as exc:  # noqa: BLE001
+            log.warning("[STARTUP] audio preload skipped: %s", exc)
+
+    threading.Thread(target=_load, daemon=True).start()
 
 
 @app.on_event("shutdown")

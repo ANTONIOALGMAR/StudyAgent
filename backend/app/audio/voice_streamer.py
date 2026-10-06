@@ -1,7 +1,8 @@
+import logging
 import queue
 import threading
-import logging
-from typing import Generator, AsyncGenerator
+from typing import Generator
+
 from .text_to_speech import synthesize as tts_sync
 
 log = logging.getLogger("audio.streaming")
@@ -11,7 +12,7 @@ class VoiceStreamer:
     Gerencia o streaming de texto para áudio.
     Recebe tokens do LLM, agrupa em frases e envia para o TTS.
     """
-    
+
     def __init__(self):
         self.audio_queue = queue.Queue()
         self._stop_event = threading.Event()
@@ -21,13 +22,13 @@ class VoiceStreamer:
         """Agrupa tokens em frases completas para evitar cortes abruptos na fala."""
         buffer = ""
         delimiters = {'.', '!', '?', '\n'}
-        
+
         for token in text_stream:
             buffer += token
             if any(buffer.endswith(d) for d in delimiters):
                 yield buffer.strip()
                 buffer = ""
-        
+
         if buffer.strip():
             yield buffer.strip()
 
@@ -39,7 +40,7 @@ class VoiceStreamer:
             for sentence in self._sentence_splitter(text_stream):
                 if not sentence:
                     continue
-                
+
                 log.info(f"[VOICE-STREAM] Synthesizing: {sentence[:30]}...")
                 audio_bytes = tts_sync(sentence)
                 self.audio_queue.put(audio_bytes)
