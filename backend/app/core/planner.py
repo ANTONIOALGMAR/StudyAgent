@@ -55,6 +55,41 @@ MONITOR_NUM_RE = re.compile(
 )
 
 
+# "essa tela", "aqui", "na minha frente", "tela atual" → tela sob comando.
+ACTIVE_SCREEN_RE = re.compile(
+    r"(?:"
+    r"\b(?:n[ae]sta|n[ae]ssa|essa|esta|aquela)\s+tela\b|"
+    r"\btela\s+(?:atual|da\s+frente|em\s+destaque|do\s+aluno)\b|"
+    r"\bminha\s+tela\b|"
+    r"\bminha\s+frente\b|"
+    r"\bna\s+frente\b|"
+    r"\bdiante\s+dela\b|"
+    r"\bque\s+(?:est[áa]o?s?|aparece[m]?|tem)\s+aqui\b|"
+    r"\b(?:est[áa]|aparece|aparece[m]?)\s+(?:aqui|na\s+tela)\b"
+    r")",
+    re.IGNORECASE | re.UNICODE,
+)
+
+
+# ============================================================================
+# REGEX — RESOLVER QUESTÕES
+# ============================================================================
+
+ANSWER_INTENT_RE = re.compile(
+    r"\b("
+    r"resolv\w+|"
+    r"responda|responder|respostas?|"
+    r"gabarit\w*|"
+    r"soluc\w+|"
+    r"corretas?\b|"
+    r"alternativas?\s+corretas?|"
+    r"qual\s+(?:é\s+)?(?:a\s+)?(?:resposta|alternativa|gabarito)|"
+    r"identific\w*\s+(?:as\s+)?respostas?"
+    r")\b",
+    re.IGNORECASE | re.UNICODE,
+)
+
+
 # ============================================================================
 # REGEX — DOCUMENTOS
 # ============================================================================
@@ -273,6 +308,12 @@ class Plan:
 
     human_monitor: int | None = None
 
+    monitor_explicit: bool = False
+
+    active_screen: bool = False
+
+    want_answers: bool = False
+
     vision_required: bool = False
     vision_intent: VisionIntent = VisionIntent.SCREEN_QUESTION
 
@@ -281,9 +322,19 @@ class Plan:
 
     @property
     def wants_document(self) -> bool:
-        """Indica se existe um documento associado ao plano."""
+        """Indica que existe um documento associado ao plano."""
 
         return self.doc_id is not None
+
+    @property
+    def needs_active_monitor(self) -> bool:
+        """Indica que o monitor deve ser descoberto pela janela ativa.
+
+        Só acontece quando o usuário não citou um número de tela/monitor:
+        "essa tela" precisa virar o monitor onde a janela em foco está.
+        """
+
+        return self.capture_screen and not self.monitor_explicit
 
 
 # ============================================================================
@@ -308,6 +359,9 @@ def build_plan(
     - Painel ao vivo habilita captura quando não há documento/câmera.
     - "tela N" usa numeração humana: tela 1, tela 2, tela 3...
     - "monitor N" usa índice técnico: monitor 0, monitor 1, monitor 2...
+    - Sem número explícito, a tela sob comando é a que tem a janela
+      em foco (monitor_explicit=False → needs_active_monitor=True).
+    - Pedido de resolução de questões força a intenção SCREEN_EXERCISE.
     """
 
     plan = Plan(message=message)
@@ -322,10 +376,19 @@ def build_plan(
         SCREEN_EXPLICIT_RE.search(lower)
     )
 
-    num = MONITOR_NUM_RE.search(lower)
+    num = None
+    matches = list(MONITOR_NUM_RE.finditer(lower))
+    if matches:
+        num = matches[-1]
+
+    plan.active_screen = bool(ACTIVE_SCREEN_RE.search(lower))
+
+    plan.want_answers = bool(ANSWER_INTENT_RE.search(lower))
 
     if num:
         requested_number = int(num.group(1))
+
+        plan.monitor_explicit = True
 
         # Número humano informado pelo usuário (tela 1 / monitor 2).
         plan.human_monitor = requested_number
@@ -333,7 +396,7 @@ def build_plan(
         # "tela 1" = monitor interno 0
         # "tela 2" = monitor interno 1
         # "tela 3" = monitor interno 2
-        if re.search(r"\btelas?\b", lower):
+        if re.search(r"\btelas?\b", num.group(0)):
             plan.monitor = requested_number - 1
 
         # "monitor 0" = monitor interno 0
@@ -356,10 +419,10 @@ def build_plan(
     # DECISÃO DE CAPTURA
     # ================================================================
 
-    if plan.wants_document and not plan.explicit_screen:
+    if plan.wants_document and not plan.explicit_screen and not plan.active_screen:
         plan.capture_screen = False
 
-    elif use_screen_requested or plan.explicit_screen:
+    elif use_screen_requested or plan.explicit_screen or plan.active_screen:
         plan.capture_screen = True
 
     elif (
@@ -379,6 +442,11 @@ def build_plan(
     if plan.capture_screen:
         plan.vision_required = True
         plan.vision_intent = detect_vision_intent(message)
+
+        # "resolva as questões da tela" precisa da intenção de exercício,
+        # mesmo quando o usuário não escreveu a palavra "exercício".
+        if plan.want_answers and plan.vision_intent != VisionIntent.SCREEN_ERROR:
+            plan.vision_intent = VisionIntent.SCREEN_EXERCISE
 
     elif camera_image:
         plan.vision_required = True

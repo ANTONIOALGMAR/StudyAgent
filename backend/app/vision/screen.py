@@ -416,6 +416,145 @@ class ScreenManager:
         return _discover_monitors()
 
     @staticmethod
+    def monitor_for_rect(rect: Optional[dict]) -> Optional[int]:
+        """Descobre em qual monitor a área informada está.
+
+        A janela ativa é atribuída ao monitor com maior área de
+        interseção. Com janelas sobrepostas entre telas, o monitor que
+        contém o centro da janela tem preferência.
+        """
+
+        if not rect:
+            return None
+
+        try:
+            esquerda = int(rect["left"])
+            topo = int(rect["top"])
+            largura = int(rect["width"])
+            altura = int(rect["height"])
+
+        except (KeyError, TypeError, ValueError):
+            return None
+
+        if largura <= 0 or altura <= 0:
+            return None
+
+        direita = esquerda + largura
+        baixo = topo + altura
+        centro_x = esquerda + largura // 2
+        centro_y = topo + altura // 2
+
+        melhor_indice = None
+        melhor_area = 0
+
+        for posicao, monitor in enumerate(_discover_monitors()):
+            try:
+                m_esq = int(monitor.get("left", 0))
+                m_topo = int(monitor.get("top", 0))
+                m_dir = int(monitor.get("right", m_esq + int(monitor.get("width", 0))))
+                m_baixo = int(monitor.get("bottom", m_topo + int(monitor.get("height", 0))))
+
+            except (TypeError, ValueError):
+                continue
+
+            inter_l = max(esquerda, m_esq)
+            inter_t = max(topo, m_topo)
+            inter_r = min(direita, m_dir)
+            inter_b = min(baixo, m_baixo)
+
+            area = max(0, inter_r - inter_l) * max(0, inter_b - inter_t)
+
+            if area <= 0:
+                continue
+
+            contem_centro = (
+                m_esq <= centro_x < m_dir
+                and m_topo <= centro_y < m_baixo
+            )
+
+            if contem_centro or area > melhor_area:
+                melhor_indice = posicao
+                melhor_area = area
+
+                if contem_centro:
+                    break
+
+        return melhor_indice
+
+    @staticmethod
+    def active_monitor() -> Optional[dict]:
+        """Descobre a tela sob comando: onde está a janela ativa.
+
+        Devolve o monitor que contém a janela em foco ou `None` quando
+        o ambiente não expõe essa informação.
+        """
+
+        posicao = ScreenManager.active_monitor_position()
+
+        if posicao is None:
+            return None
+
+        monitor = ScreenManager.get_monitor(posicao)
+
+        if not monitor:
+            return None
+
+        from .window import active_window
+
+        janela = active_window() or {}
+
+        monitor["position"] = posicao
+        monitor["active_window"] = {
+            "title": janela.get("title", ""),
+            "app": janela.get("app", ""),
+        }
+
+        return monitor
+
+    @staticmethod
+    def active_monitor_position() -> Optional[int]:
+        """Posição (índice técnico) do monitor com a janela ativa."""
+
+        from .window import active_window
+
+        try:
+            janela = active_window()
+
+        except Exception:
+            return None
+
+        if not janela:
+            return None
+
+        return ScreenManager.monitor_for_rect(janela)
+
+    @staticmethod
+    def resolve_monitor(
+        monitor_id: Optional[int] = None,
+    ) -> tuple[Optional[int], Optional[dict]]:
+        """Resolve o monitor a usar.
+
+        Prioridade: monitor pedido > tela sob comando (janela ativa) >
+        primeiro monitor. O segundo item da tupla traz o monitor ativo
+        quando ele foi usado para decidir.
+        """
+
+        if monitor_id is not None:
+            try:
+                return int(monitor_id), None
+
+            except (TypeError, ValueError):
+                pass
+
+        ativo = ScreenManager.active_monitor()
+
+        if ativo is not None:
+            position = ativo.get("position")
+            return (0 if position is None else position), ativo
+
+        return 0, None
+
+    @staticmethod
     def get_monitor(monitor_id: int) -> Optional[dict]:
         """Busca dados de um monitor específico."""
 

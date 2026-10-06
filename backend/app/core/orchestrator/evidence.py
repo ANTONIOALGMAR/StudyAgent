@@ -145,6 +145,23 @@ class EvidenceStore:
             data={"intent": intent, "monitor": monitor},
         )
 
+    def add_questions(
+        self,
+        count: int,
+        *,
+        source: str = "questions.detect",
+        labels: list[str] | None = None,
+        monitor: int | None = None,
+    ) -> Evidence:
+        return self.add(
+            source=source,
+            evidence_type=EvidenceType.VISION,
+            content=f"{count} questão(ões) detectada(s): "
+            + (", ".join(labels[:12]) if labels else "sem rótulos"),
+            confidence=0.8,
+            data={"count": count, "labels": labels or [], "monitor": monitor},
+        )
+
     def add_window(
         self,
         app: str | None = None,

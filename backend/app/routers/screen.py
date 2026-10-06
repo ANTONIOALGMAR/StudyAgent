@@ -24,6 +24,13 @@ class AnalyzeScreenRequest(BaseModel):
     monitor: int = 1
 
 
+class AnswerQuestionsRequest(BaseModel):
+    session_id: str | None = None
+    region: dict | None = None
+    monitor: int | None = None
+    question: str | None = None
+
+
 @router.post("/screen/capture")
 def screen_capture(region: dict | None = None, monitor: int = 1):
     try:
@@ -59,6 +66,31 @@ def screen_analyze(req: AnalyzeScreenRequest):
     except PermissionDeniedError as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
     return result
+
+
+@router.post("/screen/questions")
+def screen_questions(req: AnswerQuestionsRequest):
+    """Lê a tela sob comando e responde às questões encontradas."""
+    try:
+        return agent.answer_screen_questions(
+            session_id=req.session_id,
+            region=req.region,
+            monitor=req.monitor,
+            question=req.question,
+        )
+    except PermissionDeniedError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@router.get("/screen/active")
+def screen_active():
+    """Informa qual é a tela sob comando (monitor com a janela em foco)."""
+    from ..vision.screen import ScreenManager as _SM
+
+    monitor = _SM.active_monitor()
+    return {"monitor": monitor, "detected": monitor is not None}
 
 
 @router.get("/screen/diagnostics")
@@ -123,11 +155,14 @@ def screen_diagnostics():
         pass
 
     perm = PermissionManager()
+    from ..vision.screen import ScreenManager as _SM
+
     return {
         "screen_capture": capture_test,
         "capture_time_ms": capture_test_time_ms,
         "monitor_count": len(monitors),
         "monitors": monitors,
+        "active_monitor": _SM.active_monitor(),
         "ocr_available": ocr_avail,
         "ocr_test": ocr_test,
         "ocr_time_ms": ocr_test_time_ms,

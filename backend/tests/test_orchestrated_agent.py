@@ -75,18 +75,23 @@ class TestOrchestratedMultiStep:
         assert mock_ct.call_count == 0  # não usou o loop reativo
 
     @patch("app.agent.agent.chat_with_tools")
-    @patch("app.agent.agent.chat")
+    @patch("app.agent.agent.chat_stream")
     @patch("app.core.plan_builder.build_plan")
-    def test_empty_plan_falls_back_to_loop(self, mock_build, mock_chat, mock_ct):
-        """Plano vazio (sem tools necessárias) cai no loop tradicional."""
+    def test_empty_plan_answers_directly(self, mock_build, mock_stream, mock_ct):
+        """Plano vazio (sem tools necessárias) responde DIRETO em streaming.
+
+        Regressão de latência: antes, plano vazio caía no tool loop
+        (chat_with_tools + nova geração = 2 chamadas extras ao LLM). Agora
+        uma pergunta comum de estudo leva UMA única chamada em streaming.
+        """
         mock_build.return_value = BuildResult(steps=[], raw="")
-        mock_ct.return_value = {"content": "resposta simples", "tool_calls": []}
-        mock_chat.return_value = "resposta simples"
+        mock_stream.return_value = iter(["resposta ", "simples"])
 
         agent = _make_agent()
         result = agent.process("busque algo")
 
         assert result["response"] == "resposta simples"
+        assert mock_ct.call_count == 0  # não usou tool-calling
 
     @patch("app.agent.agent.chat_with_tools")
     @patch("app.agent.agent.chat")

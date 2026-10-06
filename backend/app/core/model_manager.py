@@ -6,11 +6,11 @@ inteligente quando um modelo configurado não existe.
 """
 
 import os
-import psutil
 import platform
 import shutil
 
 import ollama
+import psutil
 
 from ..config import OLLAMA_HOST
 
@@ -47,8 +47,14 @@ _context_tokens = {
 }
 
 
-def num_predict() -> int:
-    """Teto de tokens gerados por resposta (evita cortes no meio)."""
+def num_predict(max_tokens: int | None = None) -> int:
+    """Teto de tokens gerados por resposta (evita cortes no meio).
+
+    `max_tokens` (opcional) sobrepõe o default p/ chamadas curtas de apoio
+    (ex.: geração do JSON do plano de execução).
+    """
+    if max_tokens is not None:
+        return max_tokens
     return int(os.getenv("STUDY_NUM_PREDICT", "2048"))
 
 
@@ -134,8 +140,6 @@ def resolve(role: str) -> str:
 
 def hardware_summary() -> dict:
     """Resumo leve do ambiente para diagnóstico (/api/models)."""
-    import platform
-    import shutil
 
     ram_gb = psutil.virtual_memory().total / (1024**3)
     return {

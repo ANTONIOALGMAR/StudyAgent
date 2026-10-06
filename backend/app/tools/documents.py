@@ -7,6 +7,52 @@ WORD_RE = re.compile(r"\w{4,}", re.UNICODE)
 
 DIGEST_SLICE_CHARS = 9000
 
+# Formatos aceitos no anexo de estudo: texto/PDF e fotos/imagens.
+TEXT_SUFFIXES = {".pdf", ".txt", ".md"}
+
+IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".webp", ".bmp", ".gif", ".tif", ".tiff"}
+
+IMAGE_MEDIA_TYPES = {
+    ".png": "image/png",
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".webp": "image/webp",
+    ".bmp": "image/bmp",
+    ".gif": "image/gif",
+    ".tif": "image/tiff",
+    ".tiff": "image/tiff",
+}
+
+
+def is_image_path(path) -> bool:
+    """Indica se o caminho é uma imagem (foto de questão, print)."""
+
+    return Path(str(path)).suffix.lower() in IMAGE_SUFFIXES
+
+
+def ocr_image(path) -> tuple[int, str]:
+    """Lê uma imagem com OCR e devolve (páginas, texto).
+
+    Serve tanto para foto de questão (print de PDF, foto do quadro) quanto
+    para imagem colada na conversa: o texto fica disponível para busca e o
+    arquivo original continua guardado para o modelo de visão olhar.
+    """
+
+    from PIL import Image
+
+    from ..vision import ocr as _ocr
+
+    with Image.open(path) as img:
+        img.load()
+        paginas = getattr(img, "n_frames", 1) or 1
+
+        if not _ocr.available():
+            return int(paginas), ""
+
+        texto = _ocr.read_text(img) or ""
+
+    return int(paginas), texto
+
 _DIGEST_PROMPT = """Trecho de um documento de estudo (parte {i} de {n}):
 
 {chunk}
@@ -107,9 +153,13 @@ def load_document_text(path: Path) -> tuple[int, str]:
                 pages = len(PdfReader(str(path)).pages)
             except Exception:
                 pages = 0
+        elif suffix in IMAGE_SUFFIXES:
+            pages = 1
         return pages, text
     if suffix == ".pdf":
         return extract_pdf(path)
+    if suffix in IMAGE_SUFFIXES:
+        return ocr_image(path)
     text = path.read_text(encoding="utf-8", errors="ignore")
     return 1, text
 

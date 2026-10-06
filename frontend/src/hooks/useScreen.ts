@@ -18,19 +18,54 @@ export function useScreen({ sessionIdRef, setMessages, setSessionId }: UseScreen
   const watchActiveRef = useRef(false)
   const monitorSelRef = useRef(0)
   const liveOpenRef = useRef(false)
+  const watchAbortRef = useRef<AbortController | null>(null)
 
   useEffect(() => { monitorSelRef.current = monitorSel }, [monitorSel])
   useEffect(() => { liveOpenRef.current = liveOpen }, [liveOpen])
 
+  // Poll dos monitores + preview ao vivo. `getMonitors` é abortado no cleanup
+  // (evita rejeição não tratada quando o painel fecha durante o fetch) e o
+  // preview pausa em aba oculta — 2s de JPEG a cada 2s com o Chrome em
+  // background consome CPU à toa.
   useEffect(() => {
     if (!liveOpen) return
-    void getMonitors().then(setMonitors)
-    const t = setInterval(() => setPreviewTick((x) => x + 1), 2000)
-    return () => clearInterval(t)
+    const controller = new AbortController()
+    let timer: ReturnType<typeof setInterval> | undefined
+    let hidden = document.hidden
+
+    const onVisibility = () => {
+      hidden = document.hidden
+      if (!hidden && !timer) startPreview()
+      if (hidden && timer) { clearInterval(timer); timer = undefined }
+    }
+
+    const startPreview = () => {
+      if (timer || hidden) return
+      timer = setInterval(() => setPreviewTick((x) => x + 1), 2000)
+    }
+
+    getMonitors(controller.signal)
+      .then(setMonitors)
+      .catch((e: unknown) => {
+        if (!controller.signal.aborted) console.error('Falha ao listar monitores:', e)
+      })
+    setPreviewTick((x) => x + 1)
+    startPreview()
+    document.addEventListener('visibilitychange', onVisibility)
+    return () => {
+      controller.abort()
+      document.removeEventListener('visibilitychange', onVisibility)
+      if (timer) clearInterval(timer)
+    }
   }, [liveOpen])
 
+  // Watch loop: cada chamada de /api/chat carrega um AbortController próprio,
+  // abortado ao desligar o modo — sem isso a requisição em voo (até ~30s de
+  // inferência) continua rodando no backend depois do painel fechar.
   const watchLoop = useCallback(async () => {
     while (watchActiveRef.current && liveOpenRef.current) {
+      const controller = new AbortController()
+      watchAbortRef.current = controller
       try {
         const res = await chat(
           'Observe esta captura das minhas telas. Descreva em no máximo 2 frases o que está sendo mostrado agora. Se for essencialmente igual à última observação, responda exatamente: sem mudanças',
@@ -38,6 +73,8 @@ export function useScreen({ sessionIdRef, setMessages, setSessionId }: UseScreen
           true,
           null,
           monitorSelRef.current,
+          null,
+          controller.signal,
         )
         const txt = res.response.trim()
         setSessionId(res.session_id)
@@ -46,7 +83,11 @@ export function useScreen({ sessionIdRef, setMessages, setSessionId }: UseScreen
           setMessages((m) => [...m, { role: 'assistant', content: `👁 ${txt}` }])
         }
       } catch {
-        break
+        // Abort (painel fechado) ou erro de rede — o loop só continua se
+        // ainda estiver ativo; caso contrário, sai.
+        if (!watchActiveRef.current || !liveOpenRef.current) break
+      } finally {
+        if (watchAbortRef.current === controller) watchAbortRef.current = null
       }
       const until = Date.now() + 25000
       while (Date.now() < until && watchActiveRef.current && liveOpenRef.current) {
@@ -61,8 +102,12 @@ export function useScreen({ sessionIdRef, setMessages, setSessionId }: UseScreen
       void watchLoop()
     } else {
       watchActiveRef.current = false
+      watchAbortRef.current?.abort()
     }
-    return () => { watchActiveRef.current = false }
+    return () => {
+      watchActiveRef.current = false
+      watchAbortRef.current?.abort()
+    }
   }, [watchMode, liveOpen, watchLoop])
 
   const peekScreen = useCallback(async () => {

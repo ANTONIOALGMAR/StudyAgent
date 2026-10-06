@@ -25,17 +25,29 @@ async def upload_document(file: UploadFile = File(...)):  # noqa: B008
     except PermissionDeniedError as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
 
-    from ..tools.documents import extract_pdf
+    from ..tools.documents import (
+        IMAGE_SUFFIXES,
+        TEXT_SUFFIXES,
+        extract_pdf,
+        ocr_image,
+    )
 
     raw = await file.read()
     if not raw:
         raise HTTPException(status_code=400, detail="arquivo vazio")
     name = file.filename or "documento"
     suffix = Path(name).suffix.lower()
-    if suffix not in (".pdf", ".txt", ".md"):
-        raise HTTPException(status_code=400, detail="formatos aceitos: pdf, txt, md")
+
+    if suffix not in TEXT_SUFFIXES and suffix not in IMAGE_SUFFIXES:
+        aceitos = [s.lstrip(".") for s in sorted(TEXT_SUFFIXES | IMAGE_SUFFIXES)]
+        raise HTTPException(
+            status_code=400,
+            detail="formatos aceitos: " + ", ".join(aceitos),
+        )
+
     save_path = Path(documents_dir) / f"{uuid_mod.uuid4().hex[:8]}{suffix}"
     save_path.write_bytes(raw)
+
     if suffix == ".pdf":
         try:
             pages, text = extract_pdf(save_path)
@@ -43,16 +55,36 @@ async def upload_document(file: UploadFile = File(...)):  # noqa: B008
             save_path.unlink(missing_ok=True)
             raise HTTPException(status_code=400, detail=f"PDF inválido: {exc}") from exc
         save_path.with_suffix(".txt").write_text(text, encoding="utf-8")
+
+    elif suffix in IMAGE_SUFFIXES:
+        try:
+            pages, text = ocr_image(save_path)
+        except Exception as exc:
+            save_path.unlink(missing_ok=True)
+            raise HTTPException(
+                status_code=400, detail=f"imagem inválida: {exc}"
+            ) from exc
+        save_path.with_suffix(".txt").write_text(text, encoding="utf-8")
+
     else:
         pages = 1
         text = raw.decode("utf-8", errors="ignore")
+
     doc_id = agent.memory.add_document(name, str(save_path), pages, len(text))
-    return {"id": doc_id, "name": name, "pages": pages, "chars": len(text)}
+    return {
+        "id": doc_id,
+        "name": name,
+        "pages": pages,
+        "chars": len(text),
+        "kind": "image" if suffix in IMAGE_SUFFIXES else "document",
+    }
 
 
 @router.get("/documents/{doc_id}/file")
 def document_file(doc_id: str):
     import re
+
+    from ..tools.documents import IMAGE_MEDIA_TYPES
 
     doc = agent.memory.get_document(doc_id)
     if not doc:
@@ -62,9 +94,14 @@ def document_file(doc_id: str):
         raise HTTPException(status_code=404, detail="arquivo não encontrado no disco")
     name = doc["name"] or "documento"
     name = re.sub(r'[\\";\r\n]', "", name)
+    media_type = (
+        "application/pdf"
+        if path.suffix.lower() == ".pdf"
+        else IMAGE_MEDIA_TYPES.get(path.suffix.lower(), "text/plain")
+    )
     return FileResponse(
         path,
-        media_type="application/pdf",
+        media_type=media_type,
         headers={
             "Content-Disposition": f'inline; filename="{name}"',
             "Cache-Control": "private, max-age=3600",

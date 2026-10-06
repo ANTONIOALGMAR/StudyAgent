@@ -52,9 +52,9 @@ def _get_insightface_app():
 
 def _default_embed(image_bytes: bytes) -> np.ndarray | None:
     """Extrai o embedding L2-normalizado do(s) rosto(s) da imagem, se houver face nítida."""
-    from PIL import Image
-
     import io
+
+    from PIL import Image
 
     try:
         img = Image.open(io.BytesIO(image_bytes)).convert("RGB")

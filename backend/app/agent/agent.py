@@ -8,10 +8,10 @@ from ..core.context_manager import (
     excerpts_body,
     whole_doc_body,
 )
+from ..core.memory_manager import CognitiveMemory
 from ..core.model_manager import available_models
 from ..core.orchestrator.evidence import EvidenceStore
 from ..core.orchestrator.validator import ResponseValidator
-from ..core.memory_manager import CognitiveMemory
 from ..core.planner import (
     WHOLE_DOC_MAX_CHARS,
     build_plan,
@@ -28,12 +28,57 @@ from ..core.vision_router import (
 )
 from ..security.permissions import PermissionDeniedError
 from ..vision import ocr, screen, window
+from ..vision import questions as questions_mod
 from ..vision.engine import process_capture
-from ..vision.screen import ScreenManager
+from ..vision.screen import ScreenManager, image_to_base64
 from .llm import chat, chat_stream, chat_with_tools
 from .memory import Memory
 
 log = logging.getLogger("studyagent.vision")
+
+# Teto de tokens para a geração do JSON do plano de execução (chamada de
+# apoio enxuta — o plano é curto e não precisa do teto padrão de resposta).
+PLAN_MAX_TOKENS = 400
+
+# Monitor inicial quando o ambiente não informa a tela sob comando.
+DEFAULT_MONITOR = 0
+
+
+def _resolve_screen_monitor(
+    monitor: int | None = None,
+) -> tuple[int, dict | None]:
+    """Descobre a tela sob comando; cai para o monitor inicial se falhar.
+
+    Monitor pedido pelo usuário ou pelo painel tem prioridade. Sem ele, a
+    "tela sob comando" é a que tem a janela em foco — descobrir isso
+    depende de xdotool/swaymsg e da geometria do sistema, então qualquer
+    falha vira o monitor inicial em vez de derrubar o chat.
+    """
+
+    if monitor is not None:
+        try:
+            return int(monitor), None
+
+        except (TypeError, ValueError):
+            pass
+
+    try:
+        resultado = ScreenManager.resolve_monitor(None)
+
+    except Exception as exc:
+        log.info("[SCREEN] tela sob comando indisponível: %s", exc)
+        return DEFAULT_MONITOR, None
+
+    if not isinstance(resultado, tuple) or len(resultado) != 2:
+        return DEFAULT_MONITOR, None
+
+    monitor_id, ativo = resultado
+
+    try:
+        return int(monitor_id), ativo if isinstance(ativo, dict) else None
+
+    except (TypeError, ValueError):
+        return DEFAULT_MONITOR, None
 
 
 class StudyAgent:
@@ -111,7 +156,7 @@ class StudyAgent:
             requested_doc_id=doc_id,
             session_doc_id=self._session_docs.get(session_id),
         )
-        
+
         # ── Memória Cognitiva: Recuperação ──────────────────────────
         # Componente opcional de personalização; se ausente/indisponível,
         # o chat segue sem lembrar fatos (não deve nunca quebrar a conversa).
@@ -121,10 +166,18 @@ class StudyAgent:
         cognitive_context = user_facts if user_facts else []
 
 
-        # ── Resolução de monitor: plano > parâmetro > default ───────
-        effective_monitor = monitor or 1
-        if plan.monitor is not None:
-            effective_monitor = plan.monitor
+        # ── Resolução de monitor: plano > parâmetro > tela sob comando ──
+        active_monitor = None
+        explicit_monitor = plan.monitor if plan.monitor is not None else monitor
+
+        if explicit_monitor is None and plan.capture_screen:
+            # Sem número na mensagem: a "tela sob comando" é a que tem a
+            # janela em foco (típico com 3 telas ligadas).
+            effective_monitor, active_monitor = _resolve_screen_monitor()
+        elif explicit_monitor is not None:
+            effective_monitor = _resolve_screen_monitor(explicit_monitor)[0]
+        else:
+            effective_monitor = 0
 
         evidence.add_intent(plan.vision_intent.value, effective_monitor)
 
@@ -150,6 +203,7 @@ class StudyAgent:
         vision_source = "none"
 
         # ── Captura de tela via planner ─────────────────────────────
+        detected_questions: list = []
         if plan.capture_screen:
             physical_name = None
             try:
@@ -158,6 +212,8 @@ class StudyAgent:
                     physical_name = monitors[effective_monitor].get("name")
             except Exception:
                 physical_name = None
+            if active_monitor and active_monitor.get("name"):
+                physical_name = active_monitor.get("name")
             vision_ctx = self._vision_pipeline(
                 message=message,
                 monitor=effective_monitor,
@@ -196,6 +252,17 @@ class StudyAgent:
             if vision_ctx.window_app:
                 evidence.add_window(vision_ctx.window_app, vision_ctx.window_title)
 
+            # ── Questões na tela ─────────────────────────────────────
+            # Depois da leitura da tela, o texto vira lista de itens
+            # numerados com alternativas para o modelo responder item a item.
+            detected_questions = questions_mod.detect_questions(vision_ctx.ocr_text)
+            if detected_questions:
+                log.info(
+                    "[VISION] questions_detected=%d monitor=%s",
+                    len(detected_questions),
+                    effective_monitor,
+                )
+
         # ── Imagem da câmera (camera_image explícito) ───────────────
         if camera_image is not None:
             vision_source = "camera"
@@ -208,7 +275,7 @@ class StudyAgent:
 
         # ── Montagem da mensagem ────────────────────────────────────
         msg_parts = [message]
-        
+
         if cognitive_context:
             facts_str = "\n".join([f"- {f}" for f in cognitive_context])
             msg_parts.insert(0, f"[MEMÓRIA DO ALUNO]\n{facts_str}\n")
@@ -240,11 +307,53 @@ class StudyAgent:
 
                 from ..tools.documents import (
                     build_digest,
+                    is_image_path,
                     load_document_text,
                     retrieve_relevant,
                 )
 
-                _, text = load_document_text(Path(doc["path"]))
+                caminho = Path(doc["path"])
+                _, text = load_document_text(caminho)
+
+                # Foto/print de questão: a imagem vai junto para o modelo
+                # olhar de verdade, não só o texto do OCR.
+                if is_image_path(caminho):
+                    try:
+                        dados = caminho.read_bytes()
+                    except OSError as exc:
+                        logging.getLogger("uvicorn.error").warning(
+                            f"Não consegui ler a imagem anexada: {exc}"
+                        )
+                    else:
+                        if dados:
+                            images.append(dados)
+                            vision_source = "document_image"
+                            tools_used.append("image_input")
+                            ocr_text = text or self._safe_ocr_bytes(dados) or None
+
+                            if not detected_questions:
+                                detected_questions = (
+                                    questions_mod.detect_questions(ocr_text)
+                                )
+
+                            vision_ctx = VisionContext(
+                                source="document_image",
+                                ocr_text=ocr_text,
+                                user_question=message,
+                                intent=(
+                                    VisionIntent.SCREEN_EXERCISE
+                                    if plan.want_answers
+                                    else VisionIntent.SCREEN_QUESTION
+                                ),
+                            )
+                            vision_ctx.image_bytes = dados
+                            vision_ctx.add_stage("DOCUMENT_IMAGE_ATTACHED")
+
+                            if detected_questions:
+                                vision_ctx.metadata["questions"] = len(
+                                    detected_questions
+                                )
+
                 if len(text) <= WHOLE_DOC_MAX_CHARS:
                     body = whole_doc_body(text)
                 elif plan.whole_doc:
@@ -277,6 +386,31 @@ class StudyAgent:
                 self._session_docs[session_id] = plan.doc_id
                 if len(self._session_docs) > 50:
                     self._session_docs.pop(next(iter(self._session_docs)))
+
+        # ── Questões detectadas (tela, câmera ou imagem anexada) ─────
+        if not detected_questions and ocr_text:
+            detected_questions = questions_mod.detect_questions(ocr_text)
+
+        if detected_questions:
+            msg_parts.append(questions_mod.format_questions(detected_questions))
+
+            if plan.want_answers or plan.vision_intent == VisionIntent.SCREEN_EXERCISE:
+                msg_parts.append(
+                    questions_mod.answer_instruction(detected_questions)
+                )
+
+            evidence.add_questions(
+                len(detected_questions),
+                labels=[q.label for q in detected_questions],
+                monitor=effective_monitor if vision_source == "screen" else None,
+            )
+
+            log.info(
+                "[QUESTIONS] questions=%d source=%s answered=%s",
+                len(detected_questions),
+                vision_source,
+                plan.want_answers or plan.vision_intent == VisionIntent.SCREEN_EXERCISE,
+            )
 
         enriched_message = "\n\n".join(msg_parts)
 
@@ -321,9 +455,7 @@ class StudyAgent:
             else:
                 tokens = chat_stream(messages)
         else:
-            tokens = iter(
-                [self._run_with_orchestration(messages, images, tools_used, plan)]
-            )
+            tokens = self._orchestrate_tokens(messages, images, tools_used, plan)
 
         response_parts: list[str] = []
         for piece in tokens:
@@ -346,8 +478,8 @@ class StudyAgent:
         # Executamos em background para não atrasar a resposta ao usuário
         import threading
         threading.Thread(
-            target=self._reflect_and_remember, 
-            args=(message, response_text), 
+            target=self._reflect_and_remember,
+            args=(message, response_text),
             daemon=True
         ).start()
 
@@ -409,7 +541,6 @@ class StudyAgent:
             "estou estudando", "preciso de ajuda com", "estou com dificuldade",
             "tenho prova", "minha prova", "meu professor", "minha matéria",
         ]
-        lowered = message.lower()
         facts: list[str] = []
         for punct in (".", "!", "?"):
             for seg in message.split(punct):
@@ -550,23 +681,23 @@ class StudyAgent:
         log.warning("[LOOP] max_steps=%d reached", MAX_STEPS)
         return reply.get("content") or ""
 
-    def _run_with_orchestration(self, messages, images, tools_used, plan):
-        """Caminho de orquestração: uma pergunta vira um plano multi-step.
+    def _orchestrate_tokens(self, messages, images, tools_used, plan):
+        """Caminho de orquestração — gerador de fragmentos da resposta.
 
-        Usa o AgentOrchestrator/ToolExecutor (plano de execução com grafo de
-        dependências, retry/timeout por política e evidências) para distribuir
-        VÁRIAS ações encadeadas dentro de uma única resposta. Se nenhuma
-        ferramenta for necessária ou o plano for inválido, cai no loop
-        reativo tradicional (_run_tool_loop).
+        Uma pergunta vira um plano multi-step (decidido via LLM). Quando o
+        plano é vazio (nenhuma ferramenta necessária), responde DIRETO com um
+        único chat em streaming — eliminando os round-trips extras do tool
+        loop (chat_with_tools + nova geração limpa), que eram o principal
+        gargalo de latência das perguntas comuns de estudo.
         """
         from ..core.orchestrator.execution_plan import ExecutionPlan
-        from ..core.orchestrator.executor import ToolExecutor
         from ..core.orchestrator.orchestrator import AgentOrchestrator
         from ..core.plan_builder import build_plan as build_tool_plan
 
         # Caminho de visão / sem tools fica no loop tradicional
         if images or (hasattr(plan, "category") and plan.category.value == "CHAT"):
-            return self._run_tool_loop(messages, images, tools_used)
+            yield self._run_tool_loop(messages, images, tools_used)
+            return
 
         last_user = next(
             (m["content"] for m in reversed(messages) if m["role"] == "user"),
@@ -574,12 +705,21 @@ class StudyAgent:
         )
 
         # ── 1. Gera o plano (JSON) de ações ────────────────────────
+        # Chamada enxuta de tokens: o plano é um JSON pequeno, então o teto
+        # de geração é bem menor que o default (ex.: 2048) — menos espera.
         build = build_tool_plan(
             last_user,
-            llm_fn=lambda prompt: chat([{"role": "user", "content": prompt}]),
+            llm_fn=lambda prompt: chat(
+                [{"role": "user", "content": prompt}], max_tokens=PLAN_MAX_TOKENS
+            ),
         )
-        if not build.ok:
-            return self._run_tool_loop(messages, images, tools_used)
+
+        # ── Plano vazio/inválido: resposta direta em streaming ─────
+        # Sem ferramentas necessárias, nenhuma das ações encadeadas existe;
+        # ir para o tool loop seria gastar 2 chamadas extras ao modelo.
+        if not build.ok or not build.steps:
+            yield from self._guarded_chat_stream(messages)
+            return
 
         from ..core.tool_registry import get as registry_get
 
@@ -616,10 +756,8 @@ class StudyAgent:
             orch.execute(ctx)
         except PermissionDeniedError as exc:
             log.warning("[ORCH] permission_denied=%s", exc)
-            return {
-                "response": f"Permissão negada para executar essa ação: {exc}",
-                "tools_used": list(tools_used),
-            }
+            yield f"Permissão negada para executar essa ação: {exc}"
+            return
 
         for step in execution.steps:
             if step.status.value in ("SUCCESS", "FAILED") and step.tool not in tools_used:
@@ -633,7 +771,9 @@ class StudyAgent:
                 success = True
                 blocks.append(f"[{step.tool}] {step.result}")
         if not success:
-            return self._run_tool_loop(messages, images, tools_used)
+            # Nenhum passo executou com sucesso → loop reativo tradicional.
+            yield self._run_tool_loop(messages, images, tools_used)
+            return
 
         final_prompt = (
             f"Pergunta do usuário: {last_user}\n\n"
@@ -645,7 +785,7 @@ class StudyAgent:
         response_text = chat([{"role": "user", "content": final_prompt}])
         log.info("[ORCH] steps=%d tools=%s exec_id=%s",
                  len(execution.steps), tools_used, ctx.execution_id)
-        return response_text
+        yield response_text
 
     def _tool_allowed(self, tool_name: str) -> bool:
         """Verifica permissão de uma ferramenta (por nome no registry)."""
@@ -778,6 +918,103 @@ class StudyAgent:
             region=region,
             monitor=monitor,
         )
+
+    def answer_screen_questions(
+        self,
+        session_id=None,
+        region=None,
+        monitor=None,
+        question: str | None = None,
+    ):
+        """Lê a tela sob comando e responde às questões encontradas.
+
+        Fluxo: descobre a tela com a janela em foco → captura → OCR →
+        separa as questões → pede as respostas ao modelo de visão.
+        """
+
+        self._require("screen_capture")
+
+        monitor_id, active = _resolve_screen_monitor(monitor)
+
+        shot = ScreenManager.capture_monitor(monitor_id=monitor_id, region=region)
+
+        captura = screen.validate_capture(shot, monitor_id)
+        if not captura.is_valid:
+            raise RuntimeError(
+                captura.error or "Não consegui capturar a tela com conteúdo."
+            )
+
+        ocr_text = ""
+        if ocr.available():
+            try:
+                ocr_text = ocr.read_text(shot)
+
+            except Exception as exc:
+                log.warning("[QUESTIONS] OCR falhou: %s", exc)
+
+        encontradas = questions_mod.detect_questions(ocr_text)
+
+        base = {
+            "session_id": session_id or self.memory.get_or_create_session(session_id),
+            "monitor": monitor_id,
+            "monitor_name": (active or {}).get("name"),
+            "screen_detected": active is not None,
+            "window": (active or {}).get("active_window"),
+            "ocr_available": ocr.available(),
+            "ocr_length": len(ocr_text or ""),
+            "questions": [q.to_dict() for q in encontradas],
+        }
+
+        if not encontradas:
+            return {
+                **base,
+                "answers": [],
+                "answer_text": (
+                    "Não encontrei questões numeradas na tela "
+                    f"(monitor {monitor_id}). "
+                    "Aproxime a lista de exercícios ou diga o número da questão."
+                ),
+            }
+
+        bloco = questions_mod.format_questions(encontradas)
+        instrucao = questions_mod.answer_instruction(encontradas)
+        pedido = question or "Resolva as questões da tela."
+
+        messages = [
+            {
+                "role": "system",
+                "content": (
+                    "Você lê imagens de listas de exercícios e responde cada "
+                    "questão de forma curta e justificada. Use somente o que "
+                    "está visível na imagem."
+                ),
+            },
+            {
+                "role": "user",
+                "content": f"{pedido}\n\n{bloco}\n\n{instrucao}",
+            },
+        ]
+
+        try:
+            resposta = chat(messages, images=[image_to_base64(shot)])
+
+        except Exception as exc:
+            log.exception("[QUESTIONS] modelo de visão falhou")
+            return {
+                **base,
+                "answers": [],
+                "answer_text": (
+                    "Li as questões da tela, mas o modelo de visão não "
+                    f"respondeu agora: {exc}"
+                ),
+                "error": str(exc),
+            }
+
+        return {
+            **base,
+            "answers": questions_mod.parse_answers(resposta, encontradas),
+            "answer_text": resposta,
+        }
 
     def status(self):
         return {

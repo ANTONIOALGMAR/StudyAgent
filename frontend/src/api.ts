@@ -46,6 +46,7 @@ export async function chat(
   cameraImage?: string | null,
   monitor: number = 1,
   docId?: string | null,
+  signal?: AbortSignal,
 ): Promise<ChatResponse> {
   const res = await fetch(`${API}/api/chat`, {
     method: 'POST',
@@ -58,6 +59,7 @@ export async function chat(
       monitor,
       doc_id: docId ?? null,
     }),
+    signal,
   })
   if (!res.ok) {
     const err = await res.json().catch(() => ({ detail: res.statusText }))
@@ -71,6 +73,67 @@ export interface UploadedDoc {
   name: string
   pages: number
   chars: number
+  kind?: 'document' | 'image'
+}
+
+export interface DetectedQuestion {
+  label: string
+  stem: string
+  options: Record<string, string>
+  kind: string
+  multiple_choice: boolean
+}
+
+export interface QuestionAnswer {
+  label: string
+  answer: string
+  answer_text: string
+}
+
+export interface ScreenQuestionsResult {
+  monitor: number | null
+  monitor_name?: string | null
+  screen_detected: boolean
+  window?: { title?: string; app?: string } | null
+  ocr_available: boolean
+  ocr_length: number
+  questions: DetectedQuestion[]
+  answers: QuestionAnswer[]
+  answer_text: string
+}
+
+export async function answerScreenQuestions(
+  monitor?: number | null,
+  question?: string,
+): Promise<ScreenQuestionsResult> {
+  const res = await fetch(`${API}/api/screen/questions`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ monitor: monitor ?? null, question: question ?? null }),
+  })
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: res.statusText }))
+    throw new Error(err.detail ?? `Erro ${res.status}`)
+  }
+  return res.json()
+}
+
+export interface ActiveScreenInfo {
+  monitor: {
+    index?: number
+    name?: string
+    width?: number
+    height?: number
+    position?: number
+    active_window?: { title?: string; app?: string } | null
+  } | null
+  detected: boolean
+}
+
+export async function getActiveScreen(): Promise<ActiveScreenInfo> {
+  const res = await fetch(`${API}/api/screen/active`)
+  if (!res.ok) throw new Error(`Erro ${res.status}`)
+  return res.json()
 }
 
 export async function uploadDocument(file: File): Promise<UploadedDoc> {
@@ -217,8 +280,8 @@ export interface MonitorInfo {
   top: number
 }
 
-export async function getMonitors(): Promise<MonitorInfo[]> {
-  const res = await fetch(`${API}/api/screen/monitors`)
+export async function getMonitors(signal?: AbortSignal): Promise<MonitorInfo[]> {
+  const res = await fetch(`${API}/api/screen/monitors`, { signal })
   if (!res.ok) return []
   const data = await res.json()
   return data.monitors as MonitorInfo[]

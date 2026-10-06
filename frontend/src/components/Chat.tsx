@@ -9,7 +9,7 @@ import PermissionsPanel from './PermissionsPanel'
 import EvidencePanel from './EvidencePanel'
 import CameraPanel from './CameraPanel'
 import PanelManager from './PanelManager'
-import { type UploadedDoc } from '../api'
+import { documentFileUrl, type UploadedDoc } from '../api'
 import { useChat } from '../hooks/useChat'
 import { useVoice } from '../hooks/useVoice'
 import { useScreen } from '../hooks/useScreen'
@@ -65,9 +65,8 @@ export default function Chat() {
   })
 
   const voice = useVoice({
-    onUserMessage: (text) => {
-      void chatHook.sendText(text, { viaVoice: true, awaitSpeech: true, onSpeech: voice.playSpeechAwait })
-    },
+    onUserMessage: (text) =>
+      chatHook.sendText(text, { viaVoice: true, awaitSpeech: true, onSpeech: voice.playSpeechAwait }),
   })
 
   // Fix session ID ref
@@ -144,6 +143,7 @@ export default function Chat() {
     voice.hfState === 'listening' ? '🎧 ouvindo… fale quando quiser'
     : voice.hfState === 'recording' ? '🔴 gravando… termine sua frase'
     : voice.hfState === 'processing' ? '🧠 pensando…'
+    : voice.hfState === 'thinking' ? '🥢 pensando… responda se quiser'
     : voice.hfState === 'speaking' ? '🗣 falando…'
     : ''
 
@@ -151,8 +151,9 @@ export default function Chat() {
     { icon: '🖥', label: 'Anexar tela', active: screen.useScreenCapture, onClick: () => screen.setUseScreenCapture(!screen.useScreenCapture), title: 'Anexar captura de tela à mensagem' },
     { icon: '📺', label: 'Telas ao vivo', active: screen.liveOpen, onClick: () => { screen.setLiveMinimized(false); screen.setLiveOpen(!screen.liveOpen) }, title: 'Acompanhe o que o agente vê' },
     { icon: '📷', label: 'Câmera', active: camOpen, onClick: () => setCamOpen(!camOpen), title: 'Aponte a câmera e pergunte' },
-    { icon: '📎', label: 'Anexar PDF', active: !!activeDoc, onClick: () => fileInputRef.current?.click(), title: 'Estudar um documento' },
-    { icon: '📖', label: 'Ler PDF', active: !!viewerDoc, onClick: () => setViewerDoc(viewerDoc ? null : activeDoc), title: 'Abrir/fechar leitor de documentos' },
+    { icon: '📎', label: 'Anexar', active: !!activeDoc, onClick: () => fileInputRef.current?.click(), title: 'Anexar PDF, texto ou foto de questões' },
+    { icon: '📖', label: 'Ler doc', active: !!viewerDoc, onClick: () => setViewerDoc(viewerDoc ? null : activeDoc), title: 'Abrir/fechar leitor de documentos' },
+    { icon: '🧩', label: 'Questões da tela', active: false, onClick: () => void chatHook.solveScreenQuestions(), title: 'Ler a tela sob comando e resolver as questões' },
     { icon: '🎯', label: 'Exercícios', active: panels.exOpen, onClick: () => setPanels(p => ({ ...p, exOpen: !p.exOpen })), title: 'Gerar exercícios com correção' },
     { icon: '🃏', label: 'Flashcards', active: panels.fcOpen, onClick: () => setPanels(p => ({ ...p, fcOpen: !p.fcOpen })), title: 'Revisão espaçada com flashcards' },
     { icon: '📋', label: 'Plano de estudo', active: panels.spOpen, onClick: () => setPanels(p => ({ ...p, spOpen: !p.spOpen })), title: 'Gerar plano de estudo estruturado' },
@@ -186,8 +187,17 @@ export default function Chat() {
 
         {activeDoc && (
           <div className="doc-chip">
-            📄 {activeDoc.name}
-            <button onClick={() => setViewerDoc(activeDoc)} title="Abrir leitor de PDF">👁</button>
+            {activeDoc.kind === 'image' ? '🖼️' : '📄'} {activeDoc.name}
+            {activeDoc.kind === 'image' ? (
+              <button
+                onClick={() => window.open(documentFileUrl(activeDoc.id), '_blank')}
+                title="Abrir a imagem"
+              >
+                👁
+              </button>
+            ) : (
+              <button onClick={() => setViewerDoc(activeDoc)} title="Abrir leitor de PDF">👁</button>
+            )}
             <button onClick={() => setActiveDoc(null)} title="Remover documento">✕</button>
           </div>
         )}
@@ -267,7 +277,12 @@ export default function Chat() {
           onStartHandsFree={voice.startHandsFree}
           onStopHandsFree={voice.stopHandsFree}
           onFileChosen={(file) => {
-            void chatHook.loadDocument(file).then((doc) => { if (doc) { setActiveDoc(doc); setViewerDoc(doc) } })
+            void chatHook.loadDocument(file).then((doc) => {
+              if (!doc) return
+              setActiveDoc(doc)
+              // Imagem não abre o leitor de PDF; fica no chat para o agente ler.
+              if (doc.kind !== 'image') setViewerDoc(doc)
+            })
           }}
         />
 

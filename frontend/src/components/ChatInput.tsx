@@ -27,7 +27,7 @@ export default function ChatInput({
       <input
         ref={fileInputRef}
         type="file"
-        accept=".pdf,.txt,.md"
+        accept=".pdf,.txt,.md,.png,.jpg,.jpeg,.webp,.bmp,.gif,.tif,.tiff"
         style={{ display: 'none' }}
         onChange={(e) => {
           const file = e.target.files?.[0]

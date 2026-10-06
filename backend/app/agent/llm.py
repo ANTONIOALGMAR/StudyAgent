@@ -19,7 +19,16 @@ def available_models():
     return [m.model for m in _client.list().models]
 
 
-def chat(messages, images=None, stream=False):
+def _options(role: str, max_tokens: int | None = None) -> dict:
+    """Defaults de opções do Ollama; `max_tokens` sobrepõe o teto de tokens."""
+    options = {"num_ctx": context_tokens(role), "num_predict": num_predict(max_tokens)}
+    if role == "vision":
+        # Temperatura baixa reduz alucinação/confabulação na análise visual.
+        options["temperature"] = vision_temperature()
+    return options
+
+
+def chat(messages, images=None, stream=False, max_tokens=None):
     if images:
         messages = _attach_images(messages, images)
         role = "vision"
@@ -27,10 +36,7 @@ def chat(messages, images=None, stream=False):
         role = "text"
     model = resolve(role)
     log.info("[VISION] model=%s images=%d stream=%s", model, len(images or []), stream)
-    options = {"num_ctx": context_tokens(role), "num_predict": num_predict()}
-    if role == "vision":
-        # Temperatura baixa reduz alucinação/confabulação na análise visual.
-        options["temperature"] = vision_temperature()
+    options = _options(role, max_tokens)
     try:
         if stream:
             return _client.chat(
@@ -39,7 +45,7 @@ def chat(messages, images=None, stream=False):
                 options=options,
                 stream=True,
             )
-        
+
         response = _client.chat(
             model=model,
             messages=messages,
@@ -59,7 +65,7 @@ def chat(messages, images=None, stream=False):
         raise
 
 
-def chat_stream(messages, images=None):
+def chat_stream(messages, images=None, max_tokens=None):
     """Streaming token-a-token (gerador de strings).
 
     Mesma resolução de modelo/options de `chat`, mas entrega cada fragmento
@@ -73,9 +79,7 @@ def chat_stream(messages, images=None):
         role = "text"
     model = resolve(role)
     log.info("[VISION] model=%s images=%d stream=True", model, len(images or []))
-    options = {"num_ctx": context_tokens(role), "num_predict": num_predict()}
-    if role == "vision":
-        options["temperature"] = vision_temperature()
+    options = _options(role, max_tokens)
     try:
         for chunk in _client.chat(
             model=model,
@@ -101,7 +105,7 @@ def chat_with_tools(messages, tools):
         model=resolve("text"),
         messages=messages,
         tools=tools,
-        options={"num_ctx": context_tokens("text"), "num_predict": num_predict()},
+        options=_options("text"),
     )
     message = response["message"]
     tool_calls = [
@@ -139,7 +143,7 @@ def synthesize(question: str, material: str) -> str:
                 "content": f"Pergunta: {question}\n\nMaterial da pesquisa:\n{material}",
             },
         ],
-        options={"num_ctx": context_tokens("synthesis"), "num_predict": num_predict()},
+        options=_options("synthesis"),
     )
     return response["message"]["content"]
 
