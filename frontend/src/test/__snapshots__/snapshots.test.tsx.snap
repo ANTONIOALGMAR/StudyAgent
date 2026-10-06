@@ -284,18 +284,24 @@ exports[`LivePanel snapshots > renders default state 1`] = `
       <strong>
         ao vivo
       </strong>
-      <select>
+      <select
+        aria-label="Selecionar monitor"
+      >
         <option
+          title="Captura do desktop virtual que combina todas as telas conectadas"
           value="0"
         >
-          Tela 
-          1
-           · 
-          1920
-          ×
-          1080
+          Todas as telas (desktop virtual)
         </option>
       </select>
+      <span
+        aria-label="Informação sobre todas as telas"
+        role="img"
+        style="margin-left: 8px; color: rgb(148, 163, 184); cursor: default;"
+        title="'Todas as telas (desktop virtual)' captura o desktop combinado (uma única imagem que cobre todo o espaço virtual). Use esta opção para analisar o conteúdo que pode estar distribuído em múltiplos monitores."
+      >
+        ℹ️
+      </span>
       <button
         class="btn-screen"
         title="Minimizar"
@@ -348,18 +354,24 @@ exports[`LivePanel snapshots > renders with watch mode enabled 1`] = `
       <strong>
         ao vivo
       </strong>
-      <select>
+      <select
+        aria-label="Selecionar monitor"
+      >
         <option
+          title="Captura do desktop virtual que combina todas as telas conectadas"
           value="0"
         >
-          Tela 
-          1
-           · 
-          1920
-          ×
-          1080
+          Todas as telas (desktop virtual)
         </option>
       </select>
+      <span
+        aria-label="Informação sobre todas as telas"
+        role="img"
+        style="margin-left: 8px; color: rgb(148, 163, 184); cursor: default;"
+        title="'Todas as telas (desktop virtual)' captura o desktop combinado (uma única imagem que cobre todo o espaço virtual). Use esta opção para analisar o conteúdo que pode estar distribuído em múltiplos monitores."
+      >
+        ℹ️
+      </span>
       <button
         class="btn-screen"
         title="Minimizar"

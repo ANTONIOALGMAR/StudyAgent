@@ -65,6 +65,37 @@ def save_profile(name: str = "", grade: str = "", school: str = "", preferences:
     return {"id": profile_id, "name": name, "grade": grade, "school": school, "preferences": preferences}
 
 
+def sync_profile_name(name: str) -> dict | None:
+    """Sincroniza o nome do aluno detectado pelo reconhecimento facial no perfil principal."""
+    clean_name = (name or "").strip()
+    if not clean_name:
+        return None
+
+    conn = get_connection()
+    row = conn.execute("SELECT * FROM student_profile LIMIT 1").fetchone()
+    now = datetime.now().isoformat()
+
+    if row:
+        profile = dict(row)
+        conn.execute(
+            "UPDATE student_profile SET name=?, updated_at=? WHERE id=?",
+            (clean_name, now, profile["id"]),
+        )
+        profile["name"] = clean_name
+        profile["updated_at"] = now
+        conn.commit()
+        return profile
+
+    profile_id = "student1"
+    conn.execute(
+        "INSERT INTO student_profile (id, name, grade, school, preferences, created_at, updated_at) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?)",
+        (profile_id, clean_name, "", "", "", now, now),
+    )
+    conn.commit()
+    return {"id": profile_id, "name": clean_name, "grade": "", "school": "", "preferences": ""}
+
+
 # ── Weighted Scoring ───────────────────────────────────────────────────────────
 
 

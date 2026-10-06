@@ -28,6 +28,16 @@ class TestProfile:
         assert profile["name"] == "Ana Silva"
         assert profile["grade"] == "9º ano"
 
+    def test_sync_profile_name_from_face(self, tmp_db):
+        from app.tutor.profile import get_profile, save_profile, sync_profile_name
+        save_profile(name="Antiga", grade="8º ano", school="EMEF")
+        synced = sync_profile_name("Ana Souza")
+        assert synced["name"] == "Ana Souza"
+        profile = get_profile()
+        assert profile["name"] == "Ana Souza"
+        assert profile["grade"] == "8º ano"
+        assert profile["school"] == "EMEF"
+
 
 # ── P6: Topic Mastery ──────────────────────────────────────────────────────────
 

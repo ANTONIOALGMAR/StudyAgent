@@ -54,6 +54,30 @@ MONITOR_NUM_RE = re.compile(
     re.IGNORECASE | re.UNICODE,
 )
 
+AUTO_VISUAL_CONTEXT_RE = re.compile(
+    r"\b(?:"
+    r"onde\s+est[aá]|"
+    r"onde\s+fica|"
+    r"localiz\w+|"
+    r"encontre|achar|procure|procura|"
+    r"veja\s+o\s+ambiente|"
+    r"observe\s+o\s+ambiente|"
+    r"me\s+mostre\s+o\s+ambiente|"
+    r"(?:o\s+que\s+|qual\s+)(?:v\[êe\]|v\w+|tem|h[aá]|objeto|coisa|item)|"
+    r"(?:o\s+que\s+v\w+\s+na\s+imagem|o\s+que\s+v\w+\s+na\s+foto|o\s+que\s+v\w+\s+na\s+camera|o\s+que\s+v\w+\s+no\s+ambiente)|"
+    r"descreva\s+(?:a\s+)?(?:imagem|foto|câmera|camera)|"
+    r"quais\s+(?:objetos|itens)|"
+    r"qual\s+(?:objeto|coisa|item)\s+est[aá]|"
+    r"what\s+is\s+in\s+the\s+room|"
+    r"where\s+is\s+the|"
+    r"what\s+is\s+there|"
+    r"what\s+do\s+you\s+see|"
+    r"what\s+do\s+you\s+see\s+in\s+the\s+image|"
+    r"describe\s+(?:the\s+)?(?:image|photo|camera|room)"
+    r")\b",
+    re.IGNORECASE | re.UNICODE,
+)
+
 
 # "essa tela", "aqui", "na minha frente", "tela atual" → tela sob comando.
 ACTIVE_SCREEN_RE = re.compile(
@@ -422,7 +446,16 @@ def build_plan(
     if plan.wants_document and not plan.explicit_screen and not plan.active_screen:
         plan.capture_screen = False
 
+    elif camera_image:
+        plan.capture_screen = False
+
     elif use_screen_requested or plan.explicit_screen or plan.active_screen:
+        plan.capture_screen = True
+
+    elif (
+        AUTO_VISUAL_CONTEXT_RE.search(lower)
+        and not plan.wants_document
+    ):
         plan.capture_screen = True
 
     elif (
@@ -439,7 +472,11 @@ def build_plan(
     # INTENÇÃO VISUAL
     # ================================================================
 
-    if plan.capture_screen:
+    if camera_image:
+        plan.vision_required = True
+        plan.vision_intent = VisionIntent.CAMERA
+
+    elif plan.capture_screen:
         plan.vision_required = True
         plan.vision_intent = detect_vision_intent(message)
 
@@ -447,10 +484,6 @@ def build_plan(
         # mesmo quando o usuário não escreveu a palavra "exercício".
         if plan.want_answers and plan.vision_intent != VisionIntent.SCREEN_ERROR:
             plan.vision_intent = VisionIntent.SCREEN_EXERCISE
-
-    elif camera_image:
-        plan.vision_required = True
-        plan.vision_intent = VisionIntent.CAMERA
 
     # ================================================================
     # LEITURA INTEGRAL DO DOCUMENTO

@@ -13,6 +13,8 @@ import { documentFileUrl, type UploadedDoc } from '../api'
 import { useChat } from '../hooks/useChat'
 import { useVoice } from '../hooks/useVoice'
 import { useScreen } from '../hooks/useScreen'
+import PermissionModal from './PermissionModal'
+import { setPermission } from '../api'
 
 const PdfViewer = lazy(() => import('./PdfViewer'))
 const StudyAgentAvatar = lazy(() => import('./StudyAgent3D/StudyAgentAvatar'))
@@ -65,8 +67,13 @@ export default function Chat() {
   })
 
   const voice = useVoice({
-    onUserMessage: (text) =>
-      chatHook.sendText(text, { viaVoice: true, awaitSpeech: true, onSpeech: voice.playSpeechAwait }),
+onUserMessage: (text) => {
+      if (shouldAutoOrchestrateVisuals(text)) {
+        screen.setUseScreenCapture(true)
+        screen.setLiveOpen(true)
+      }
+      void chatHook.sendText(text, { viaVoice: true, awaitSpeech: true, onSpeech: voice.playSpeechAwait })
+    },
   })
 
   // Fix session ID ref
@@ -94,6 +101,71 @@ export default function Chat() {
     return () => window.removeEventListener('keydown', onKey)
   }, [stage])
 
+  // Handle structured actions emitted by the backend (e.g., request_permission)
+  const [permissionRequest, setPermissionRequest] = useState<{ permission: string; reason?: string; original?: string } | null>(null)
+
+  useEffect(() => {
+    function onActions(ev: Event) {
+      try {
+        // @ts-ignore
+        const detail = ev.detail || {}
+        const actions = detail.actions || []
+        const original = detail.original || ''
+        for (const a of actions) {
+          if (a.type === 'request_permission' && a.permission === 'camera') {
+            setPermissionRequest({ permission: a.permission, reason: a.reason, original })
+            return
+          }
+        }
+      } catch (e) {
+        // ignore
+      }
+    }
+    window.addEventListener('studyagent:actions', onActions as EventListener)
+    return () => window.removeEventListener('studyagent:actions', onActions as EventListener)
+  }, [chatHook])
+
+  async function handleAllowPermission(remember = false) {
+    const req = permissionRequest
+    if (!req) return
+    const original = req.original || ''
+    setPermissionRequest(null)
+
+    if (remember) {
+      try {
+        await setPermission('camera', true)
+      } catch (e) {
+        // ignore permission persistence failures
+        console.warn('Failed to persist permission', e)
+      }
+    }
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' } })
+      const video = document.createElement('video') as HTMLVideoElement
+      video.srcObject = stream
+      await video.play().catch(() => {})
+      await new Promise((r) => setTimeout(r, 300))
+      const canvas = document.createElement('canvas')
+      canvas.width = video.videoWidth || 640
+      canvas.height = video.videoHeight || 480
+      const ctx = canvas.getContext('2d')
+      if (ctx) ctx.drawImage(video, 0, 0, canvas.width, canvas.height)
+      const b64 = canvas.toDataURL('image/jpeg', 0.85).split(',')[1]
+      // stop tracks
+      stream.getTracks().forEach((t) => t.stop())
+      // re-send the original message with image attached
+      void chatHook.sendText(original, { imageB64: b64 })
+    } catch (err) {
+      // failed to get camera
+      try { window.alert('Não foi possível acessar a câmera. Verifique as permissões do navegador.') } catch (e) {}
+    }
+  }
+
+  function handleDenyPermission() {
+    setPermissionRequest(null)
+  }
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.ctrlKey && e.shiftKey && e.key === 'E') { e.preventDefault(); setEvidenceOpen((v) => !v) }
@@ -116,9 +188,30 @@ export default function Chat() {
     return () => window.removeEventListener('keydown', onKey)
   }, [evidenceOpen, panels, screen])
 
+  function shouldAutoOrchestrateVisuals(text: string) {
+    const normalized = text.toLowerCase()
+    const envKeywords = [
+      'onde está', 'onde fica', 'localize', 'localizar', 'encontre', 'achar', 'procure',
+      'o que tem', 'o que há', 'o que ha', 'quais objetos', 'quais itens',
+      'me mostre o ambiente', 'observe o ambiente', 'veja o ambiente',
+      'qual objeto está', 'qual coisa está', 'what is in the room', 'where is the',
+    ]
+    return envKeywords.some((keyword) => normalized.includes(keyword))
+  }
+
+  function shouldAutoOpenCamera(text: string) {
+    const normalized = text.toLowerCase()
+    return /c[aâ]mera|camera|imagem|foto|ambiente|visualizar|vejo|o que tem na imagem|o que vê|o que ve|onde está|localize|procure/.test(normalized)
+  }
+
   function send() {
     const text = input.trim()
     setInput('')
+    if (shouldAutoOrchestrateVisuals(text) || shouldAutoOpenCamera(text)) {
+      screen.setUseScreenCapture(true)
+      screen.setLiveOpen(true)
+      setCamOpen(true)
+    }
     void chatHook.sendText(text)
   }
 
@@ -250,6 +343,14 @@ export default function Chat() {
             }}
           />
         )}
+
+        <PermissionModal
+          open={!!permissionRequest}
+          permission={permissionRequest?.permission || 'camera'}
+          reason={permissionRequest?.reason}
+          onAllow={handleAllowPermission}
+          onDeny={handleDenyPermission}
+        />
 
         {(chatHook.lastEvidence || chatHook.lastToolsUsed.length > 0) && (
           <button

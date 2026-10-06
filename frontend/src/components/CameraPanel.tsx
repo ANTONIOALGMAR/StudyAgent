@@ -1,5 +1,5 @@
 import { useRef, useEffect, useState } from 'react'
-import { recognizeFace, registerFace } from '../api'
+import { getProfile, recognizeFace, registerFace, saveProfile } from '../api'
 
 interface CameraPanelProps {
   isOpen: boolean
@@ -64,6 +64,20 @@ export default function CameraPanel({ isOpen, onClose, onCapture, loading }: Cam
     onCapture(b64, question)
   }
 
+  async function syncFaceProfile(name: string) {
+    try {
+      const current = await getProfile().catch(() => null)
+      await saveProfile(
+        name,
+        current?.grade ?? '',
+        current?.school ?? '',
+        current?.preferences ?? '',
+      )
+    } catch {
+      // Silencia falha de sincronização para não bloquear reconhecimento.
+    }
+  }
+
   async function handleRecognize() {
     const b64 = captureFrame()
     if (!b64) { setFaceMsg('Aguarde a câmera estabilizar…'); return }
@@ -71,9 +85,14 @@ export default function CameraPanel({ isOpen, onClose, onCapture, loading }: Cam
     setFaceMsg(null)
     try {
       const res = await recognizeFace(b64)
-      if (!res.present) setFaceMsg('Nenhum rosto claro detectado na imagem.')
-      else if (res.name) setFaceMsg(`Olá, ${res.name}! Bem-vindo(a) de volta 👋`)
-      else setFaceMsg('Rosto detectado, mas não cadastrado. Use "Cadastrar rosto".')
+      if (res.name) {
+        void syncFaceProfile(res.name)
+        setFaceMsg(`Olá, ${res.name}! Bem-vindo(a) de volta 👋`)
+      } else if (!res.present) {
+        setFaceMsg('Nenhum rosto claro detectado na imagem.')
+      } else {
+        setFaceMsg('Rosto detectado, mas não cadastrado. Use "Cadastrar rosto".')
+      }
     } catch (e) {
       setFaceMsg(e instanceof Error ? e.message : 'Falha no reconhecimento facial')
     } finally {
@@ -86,10 +105,12 @@ export default function CameraPanel({ isOpen, onClose, onCapture, loading }: Cam
     if (!b64) { setFaceMsg('Aguarde a câmera estabilizar…'); return }
     const name = window.prompt('Como devo chamar você? (seu nome)')
     if (!name || !name.trim()) return
+    const cleanName = name.trim()
     setFaceBusy(true)
     setFaceMsg(null)
     try {
-      const res = await registerFace(name.trim(), b64)
+      const res = await registerFace(cleanName, b64)
+      void syncFaceProfile(res.name)
       setFaceMsg(`Rosto cadastrado como "${res.name}". Agora posso reconhecê-lo(a)!`)
     } catch (e) {
       setFaceMsg(e instanceof Error ? e.message : 'Falha ao cadastrar rosto')

@@ -225,6 +225,34 @@ export async function setPermission(name: string, value: boolean): Promise<void>
   }
 }
 
+export interface PermissionAuditEntry {
+  action: string
+  permission: string
+  value?: boolean
+  actor?: string
+  reason?: string
+  timestamp?: string
+}
+
+export async function getPermissionAudit(limit = 10): Promise<PermissionAuditEntry[]> {
+  const res = await fetch(`${API}/api/permissions/audit?limit=${limit}`)
+  if (!res.ok) return []
+  return res.json()
+}
+
+export async function clearEnvironmentMemory(params: { userId?: string; userName?: string; all?: boolean } = {}): Promise<{ deleted: number; user_id?: string; user_name?: string; all: boolean }> {
+  const res = await fetch(`${API}/api/memory/clear`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(params),
+  })
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: res.statusText }))
+    throw new Error(err.detail ?? `Erro ${res.status}`)
+  }
+  return res.json()
+}
+
 export async function captureScreen(monitor?: number): Promise<{ image_b64: string; text: string }> {
   const res = await fetch(`${API}/api/screen/capture`, {
     method: 'POST',
@@ -331,6 +359,19 @@ export async function getMonitors(signal?: AbortSignal): Promise<MonitorInfo[]> 
 
 export function screenPreviewUrl(monitor: number): string {
   return `${API}/api/screen/preview?monitor=${monitor}`
+}
+
+export async function getNotifications(limit = 20): Promise<any[]> {
+  const res = await fetch(`${API}/api/notifications?limit=${limit}`)
+  if (!res.ok) throw new Error('Failed to fetch notifications')
+  return res.json()
+}
+
+export async function markNotificationRead(id: string): Promise<void> {
+  const res = await fetch(`${API}/api/notifications/${encodeURIComponent(id)}/read`, {
+    method: 'POST',
+  })
+  if (!res.ok) throw new Error('Failed to mark notification read')
 }
 
 export interface ExerciseQuestion {

@@ -826,5 +826,56 @@
     "action": "set",
     "permission": "internet",
     "value": false
+  },
+  {
+    "timestamp": "2026-10-06T15:11:27.487892",
+    "action": "set",
+    "permission": "camera",
+    "value": true,
+    "reason": "aceitar camera (actor=alice)",
+    "actor": "alice"
+  },
+  {
+    "timestamp": "2026-10-06T15:11:43.070675",
+    "action": "set",
+    "permission": "internet",
+    "value": true
+  },
+  {
+    "timestamp": "2026-10-06T15:11:43.071450",
+    "action": "set",
+    "permission": "internet",
+    "value": false
+  },
+  {
+    "timestamp": "2026-10-06T15:11:43.075611",
+    "action": "set",
+    "permission": "camera",
+    "value": false
+  },
+  {
+    "timestamp": "2026-10-06T15:11:43.076033",
+    "action": "set",
+    "permission": "screen_capture",
+    "value": false
+  },
+  {
+    "timestamp": "2026-10-06T15:11:43.076457",
+    "action": "set",
+    "permission": "camera",
+    "value": true
+  },
+  {
+    "timestamp": "2026-10-06T15:11:43.076825",
+    "action": "hierarchy",
+    "permission": "screen_capture",
+    "value": true,
+    "reason": "ativado por camera"
+  },
+  {
+    "timestamp": "2026-10-06T15:11:43.077250",
+    "action": "set",
+    "permission": "screen_capture",
+    "value": true
   }
 ]
