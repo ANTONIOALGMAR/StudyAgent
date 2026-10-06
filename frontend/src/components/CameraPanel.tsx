@@ -6,9 +6,10 @@ interface CameraPanelProps {
   onClose: () => void
   onCapture: (b64: string, question: string) => void
   loading: boolean
+  initialQuestion?: string
 }
 
-export default function CameraPanel({ isOpen, onClose, onCapture, loading }: CameraPanelProps) {
+export default function CameraPanel({ isOpen, onClose, onCapture, loading, initialQuestion }: CameraPanelProps) {
   const camStreamRef = useRef<MediaStream | null>(null)
   const videoRef = useRef<HTMLVideoElement | null>(null)
   const [faceMsg, setFaceMsg] = useState<string | null>(null)
@@ -17,6 +18,9 @@ export default function CameraPanel({ isOpen, onClose, onCapture, loading }: Cam
 
   useEffect(() => {
     if (isOpen) {
+      if (initialQuestion) {
+        setInput(initialQuestion)
+      }
       openCamera()
     } else {
       closeCamera()

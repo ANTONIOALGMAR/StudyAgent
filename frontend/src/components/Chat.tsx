@@ -5,7 +5,6 @@ import ChatMessages from './ChatMessages'
 import ChatInput from './ChatInput'
 import LivePanel from './LivePanel'
 import Sidebar from './Sidebar'
-import PermissionsPanel from './PermissionsPanel'
 import EvidencePanel from './EvidencePanel'
 import CameraPanel from './CameraPanel'
 import PanelManager from './PanelManager'
@@ -38,6 +37,7 @@ export default function Chat() {
   const [evidenceOpen, setEvidenceOpen] = useState(false)
   const [stage, setStage] = useState(false)
   const [camOpen, setCamOpen] = useState(false)
+  const [cameraQuestion, setCameraQuestion] = useState('')
   const [panels, setPanels] = useState({
     exOpen: false,
     fcOpen: false,
@@ -68,7 +68,11 @@ export default function Chat() {
 
   const voice = useVoice({
 onUserMessage: (text) => {
-      if (shouldAutoOrchestrateVisuals(text)) {
+      if (shouldAutoOpenCamera(text)) {
+        setCamOpen(true)
+        setCameraQuestion(text)
+        chatHook.setLiveOpen(false)
+      } else if (shouldAutoOrchestrateVisuals(text)) {
         screen.setUseScreenCapture(true)
         screen.setLiveOpen(true)
       }
@@ -130,6 +134,11 @@ onUserMessage: (text) => {
     if (!req) return
     const original = req.original || ''
     setPermissionRequest(null)
+
+    if (camOpen) {
+      // o painel de câmera já está aberto aguardando captura manual
+      return
+    }
 
     if (remember) {
       try {
@@ -207,10 +216,13 @@ onUserMessage: (text) => {
   function send() {
     const text = input.trim()
     setInput('')
-    if (shouldAutoOrchestrateVisuals(text) || shouldAutoOpenCamera(text)) {
+    if (shouldAutoOpenCamera(text)) {
+      setCamOpen(true)
+      setCameraQuestion(text)
+      chatHook.setLiveOpen(false)
+    } else if (shouldAutoOrchestrateVisuals(text)) {
       screen.setUseScreenCapture(true)
       screen.setLiveOpen(true)
-      setCamOpen(true)
     }
     void chatHook.sendText(text)
   }
@@ -259,9 +271,7 @@ onUserMessage: (text) => {
 
   return (
     <div className="app-shell">
-      <Sidebar items={sidebarItems}>
-        <PermissionsPanel />
-      </Sidebar>
+      <Sidebar items={sidebarItems} />
       <div className="chat">
         <div className="chat-header">
           <Suspense fallback={<div className="face-fallback" />}>
@@ -335,11 +345,13 @@ onUserMessage: (text) => {
         {camOpen && (
           <CameraPanel 
             isOpen={camOpen} 
-            onClose={() => setCamOpen(false)} 
+            onClose={() => { setCamOpen(false); setCameraQuestion('') }} 
             loading={chatHook.loading}
+            initialQuestion={cameraQuestion}
             onCapture={(b64, question) => {
               setCamOpen(false)
-              void chatHook.sendText(question, { imageB64: b64 })
+              setCameraQuestion('')
+              void chatHook.sendText(question || cameraQuestion || 'O que você vê nesta imagem?', { imageB64: b64 })
             }}
           />
         )}

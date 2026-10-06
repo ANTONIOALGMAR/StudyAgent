@@ -446,6 +446,46 @@ class StudyAgent:
         # ── Captura de tela via planner ─────────────────────────────
         detected_questions: list = []
         if plan.capture_screen:
+            # Localização de objeto físico: a câmera é a fonte real (o objeto
+            # está no ambiente, não na tela). Sem frame anexado, primeiro
+            # respondemos pela memória se a localização já for conhecida;
+            # caso contrário, pedimos ao frontend capturar a câmera e reenviar
+            # com a imagem (ação estruturada) — nunca capturamos a tela aqui.
+            if camera_image is None and self._is_object_location_request(message):
+                known_location = self._resolve_object_location(message)
+                if known_location:
+                    self.memory.add_message(session_id, "user", message)
+                    self.memory.add_message(session_id, "assistant", known_location)
+                    yield {
+                        "type": "done",
+                        "result": {
+                            "session_id": session_id,
+                            "response": known_location,
+                            "tools_used": [],
+                            "evidence": None,
+                        },
+                    }
+                    return
+                yield {
+                    "type": "done",
+                    "result": {
+                        "session_id": session_id,
+                        "response": "Para localizar visualmente este objeto preciso acessar a câmera. Posso pedir sua permissão?",
+                        "tools_used": [],
+                        "evidence": None,
+                        "actions": [
+                            {
+                                "type": "request_permission",
+                                "permission": "camera",
+                                "reason": "Localizar objeto visualmente",
+                                "scope": "one_time",
+                                "original_message": message,
+                            }
+                        ],
+                    },
+                }
+                return
+
             # Check permissions before attempting capture. If screen/camera
             # permissions are not allowed, return a structured action requesting
             # permission so the frontend can ask the user and resend with an image.
