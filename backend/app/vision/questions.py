@@ -421,9 +421,14 @@ Exemplo:
 Regras:
 - Use o rótulo exatamente como aparece acima (1, 2, 3...).
 - Se houver alternativas, comece pela LETRA maiúscula seguida de ")".
+- Seja acertivo: marque UMA alternativa e diga a resposta com segurança.
+- Não chute: antes de decidir, avalie cada alternativa e verifique por que
+  as demais estão erradas; só marque uma letra quando tiver certeza.
+- Nunca inverter/autorizar a marcação por pura eliminação sem justificativa.
+- Se a questão estiver ilegível ou ambígua, escreva "incerta" no lugar da
+  letra e da resposta — não adivinhe.
 - Não repita o enunciado inteiro.
 - Não invente questões que não estão na lista.
-- Se alguma questão estiver ilegível, escreva "ilegível" no lugar da resposta.
 """.strip()
 
 
@@ -455,7 +460,14 @@ def answer_instruction(questions: list[DetectedQuestion]) -> str:
 
     return (
         "Resolva TODAS as questões listadas acima, uma por vez, "
-        "identificando a resposta de cada item.\n"
+        "identificando a resposta de cada item.\n\n"
+        "Leia o enunciado e as alternativas de CADA questão e responda "
+        "conforme esse contexto específico — não aplique resposta genérica. "
+        "Aponte a alternativa correta com firmeza, indicando claramente a "
+        "letra, e só a marque se tiver certeza; avalie por que as demais "
+        "estão erradas. Se não conseguir determinar a resposta com "
+        "segurança (questão ilegível ou ambígua), diga 'incerta' em vez de "
+        "adivinhar.\n"
         + ANSWER_FORMAT
     )
 
