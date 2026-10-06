@@ -35,8 +35,11 @@ export function useScreen({ sessionIdRef, setMessages, setSessionId }: UseScreen
   const watchAbortRef = useRef<AbortController | null>(null)
   const autoAbortRef = useRef<AbortController | null>(null)
   // Questões já resolvidas nesta rodada (fingerprint → vista). Evita reagir
-  // à mesma questão que continuou na tela entre varreduras.
+  // à mesma questão que continuou na tela entre varreduras. Dois níveis:
+  // o fingerprint exato e uma chave de conteúdo do enunciado (sem pontuação)
+  // para que um ruídozinho do OCR não faça a mesma questão parecer nova.
   const seenQuestionsRef = useRef<Set<string>>(new Set())
+  const seenStemsRef = useRef<Set<string>>(new Set())
 
   useEffect(() => { monitorSelRef.current = monitorSel }, [monitorSel])
   useEffect(() => { liveOpenRef.current = liveOpen }, [liveOpen])
@@ -139,10 +142,14 @@ export function useScreen({ sessionIdRef, setMessages, setSessionId }: UseScreen
         const det = await detectScreenQuestions(monitorSelRef.current, controller.signal)
         // Painel fechou/loop desligado durante o fetch → não resolve mais nada.
         if (!autoActiveRef.current || !liveOpenRef.current) break
+        const stemKey = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 40)
         const novas = det.questions.filter((q) => {
           if (!q.fingerprint) return false
           if (seenQuestionsRef.current.has(q.fingerprint)) return false
+          const chave = stemKey(q.stem)
+          if (chave && seenStemsRef.current.has(chave)) return false
           seenQuestionsRef.current.add(q.fingerprint)
+          if (chave) seenStemsRef.current.add(chave)
           return true
         })
         if (novas.length > 0) {
@@ -188,15 +195,21 @@ export function useScreen({ sessionIdRef, setMessages, setSessionId }: UseScreen
     } else {
       autoActiveRef.current = false
       autoAbortRef.current?.abort()
-      // Desligou → limpa a memória de questões vistas para a próxima
-      // ativação tratar de novo o que estiver na tela.
-      if (!autoSolve) seenQuestionsRef.current.clear()
     }
     return () => {
       autoActiveRef.current = false
       autoAbortRef.current?.abort()
     }
   }, [autoSolve, liveOpen, autoSolveLoop])
+
+  // Desligar/religar o auto-solve não re-resolve o que já foi visto: só
+  // quando o painel ao vivo fecha de vez a memória é apagada.
+  useEffect(() => {
+    if (!liveOpen) {
+      seenQuestionsRef.current.clear()
+      seenStemsRef.current.clear()
+    }
+  }, [liveOpen])
 
   const peekScreen = useCallback(async () => {
     try {

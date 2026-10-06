@@ -53,6 +53,14 @@ _OPTION_RE = re.compile(
     re.UNICODE,
 )
 
+# Formato usado por ambientes de avaliação online: "Opção A" (ou
+# "Alternativa A") seguido do texto da opção na mesma linha ou na próxima.
+_OPTION_LABEL_RE = re.compile(
+    r"^\s*(?:op[çc][ãa]o|alternativa)\s+"
+    r"(?P<letra>[a-eA-E])\s*[:\-.)]?\s*(?P<texto>.*)$",
+    re.IGNORECASE | re.UNICODE,
+)
+
 _QUESTION_WORD_RE = re.compile(
     r"\b(qual|quais|quanto|quanta|quando|onde|quem|como|por que|porque|"
     r"conforme|determine|calcule|assinale|marque|escolha|"
@@ -110,9 +118,13 @@ class DetectedQuestion:
 
         Usada pelo cliente do loop ao vivo para resolver cada questão
         apenas uma vez, mesmo que ela continue na tela entre varreduras.
+
+        A normalização ignora pontuação além de caixa/espaços: assim um
+        ruído pequeno do OCR (vírgula extra, quebra de linha) não faz a
+        mesma questão parecer nova.
         """
 
-        base = f"{self.label}|{_normalize(self.stem)}"
+        base = re.sub(r"[^\w]+", "", f"{self.label}|{self.stem}".lower())[:120]
         return hashlib.sha1(base.encode("utf-8", "ignore")).hexdigest()
 
     @property
@@ -263,7 +275,30 @@ def _montar_questao(
     alternativas: dict[str, str] = {}
     enunciado: list[str] = []
 
+    # No formato "Opção A" (ambientes de avaliação online) o rótulo pode
+    # vir sozinho com o texto da opção na linha seguinte.
+    letra_pendente: str | None = None
+
     for linha in corpo:
+        m_label = _OPTION_LABEL_RE.match(linha)
+        if m_label is not None:
+            letra = m_label.group("letra").lower()
+            texto = m_label.group("texto").strip()[:MAX_OPTION_CHARS]
+            if texto:
+                if letra not in alternativas:
+                    alternativas[letra] = texto
+                letra_pendente = None
+            else:
+                letra_pendente = letra
+            continue
+
+        if letra_pendente is not None:
+            texto = linha[:MAX_OPTION_CHARS]
+            if texto and letra_pendente not in alternativas:
+                alternativas[letra_pendente] = texto
+            letra_pendente = None
+            continue
+
         match = _OPTION_RE.match(linha)
         if match:
             letra = (

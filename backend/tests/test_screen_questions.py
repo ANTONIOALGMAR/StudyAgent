@@ -233,6 +233,29 @@ class TestDeteccaoQuestoes:
         )
         assert achadas[0].options == {"a": "3", "b": "7", "c": "5"}
 
+    def test_opcoes_no_formato_opcao_a(self):
+        """Ambiente de avaliação online marca as opções como 'Opção A' etc."""
+        achadas = q_mod.detect_questions(
+            "Questão 1\nCom relação às ações oculares, assinale a correta:\n"
+            "Opção A\nCada ação secundária é executada por um único músculo.\n"
+            "Selecionado\n"
+            "Opção B\nCada músculo executa pelo menos uma ação.\n"
+            "Opção C\nNenhum músculo executa ações secundárias ou terciárias.\n"
+        )
+        assert len(achadas) == 1
+        questao = achadas[0]
+        assert questao.label == "1"
+        assert questao.is_multiple_choice
+        assert questao.options["a"] == "Cada ação secundária é executada por um único músculo."
+        assert questao.options["b"] == "Cada músculo executa pelo menos uma ação."
+        assert questao.options["c"] == "Nenhum músculo executa ações secundárias ou terciárias."
+
+    def test_alternativa_com_texto_na_mesma_linha(self):
+        achadas = q_mod.detect_questions(
+            "Questão 1\nQual o maior?\nAlternativa A: 3\nAlternativa B: 7\n"
+        )
+        assert achadas[0].options == {"a": "3", "b": "7"}
+
     def test_verdadeiro_ou_falso(self):
         achadas = q_mod.detect_questions(
             "Questão 1\nA água ferve a 100 °C.\n( ) Verdadeiro\n( ) Falso\n"
@@ -533,6 +556,14 @@ class TestFingerprints:
         q1 = q_mod.DetectedQuestion(label="1", stem="Quanto é 3 + 4 + 5?")
         q2 = q_mod.DetectedQuestion(label="1", stem="  quanto é  3 + 4 + 5? ")
         assert q1.fingerprint == q2.fingerprint
+
+    def test_estavel_apesar_de_pontuacao_do_ocr(self):
+        """Vírgula/reticências que o OCR injota não mudam a identidade."""
+        q1 = q_mod.DetectedQuestion(label="1", stem="Quanto é 3 + 4 + 5?")
+        q2 = q_mod.DetectedQuestion(label="1", stem="Quanto é 3 + 4 + 5?!")
+        q3 = q_mod.DetectedQuestion(label="1", stem="Quanto é 3 + 4, + 5?")
+        assert q1.fingerprint == q2.fingerprint
+        assert q1.fingerprint == q3.fingerprint
 
     def test_muda_com_questao_diferente(self):
         q1 = q_mod.DetectedQuestion(label="1", stem="Quanto é 3 + 4 + 5?")

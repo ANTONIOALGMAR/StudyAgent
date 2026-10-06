@@ -134,7 +134,7 @@ describe('useScreen — auto-solve de questões ao vivo', () => {
     expect(answer).toHaveBeenCalledTimes(2)
   })
 
-  it('desligar e religar limpa a memória de questões vistas', async () => {
+  it('desligar e religar não repete a mesma questão', async () => {
     const { result } = renderScreen()
 
     await act(async () => {
@@ -148,9 +148,33 @@ describe('useScreen — auto-solve de questões ao vivo', () => {
       result.current.screen.setAutoSolve(false)
       await vi.advanceTimersByTimeAsync(10)
     })
-
     await act(async () => {
       result.current.screen.setAutoSolve(true)
+      await vi.advanceTimersByTimeAsync(10)
+    })
+    expect(answer).toHaveBeenCalledTimes(1)
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(11000)
+    })
+    expect(answer).toHaveBeenCalledTimes(1)
+  })
+
+  it('fechar o painel limpa a memória; reabrir re-resolve', async () => {
+    const { result } = renderScreen()
+
+    await act(async () => {
+      result.current.screen.setLiveOpen(true)
+      result.current.screen.setAutoSolve(true)
+      await vi.advanceTimersByTimeAsync(10)
+    })
+    expect(answer).toHaveBeenCalledTimes(1)
+
+    await act(async () => {
+      result.current.screen.setLiveOpen(false)
+    })
+    await act(async () => {
+      result.current.screen.setLiveOpen(true)
       await vi.advanceTimersByTimeAsync(10)
     })
     expect(answer).toHaveBeenCalledTimes(2)
