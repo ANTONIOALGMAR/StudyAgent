@@ -288,7 +288,12 @@ exports[`LivePanel snapshots > renders default state 1`] = `
         <option
           value="0"
         >
-          Todas as telas
+          Tela 
+          1
+           · 
+          1920
+          ×
+          1080
         </option>
       </select>
       <button
@@ -316,6 +321,15 @@ exports[`LivePanel snapshots > renders default state 1`] = `
       />
       agente comenta mudanças automaticamente
     </label>
+    <label
+      class="watch-toggle"
+      title="Varre a tela a cada 5s e resolve sozinho as questões que aparecerem (uma vez cada)"
+    >
+      <input
+        type="checkbox"
+      />
+      🧩 resolver questões automaticamente
+    </label>
   </div>
 </div>
 `;
@@ -338,7 +352,12 @@ exports[`LivePanel snapshots > renders with watch mode enabled 1`] = `
         <option
           value="0"
         >
-          Todas as telas
+          Tela 
+          1
+           · 
+          1920
+          ×
+          1080
         </option>
       </select>
       <button
@@ -366,6 +385,15 @@ exports[`LivePanel snapshots > renders with watch mode enabled 1`] = `
         type="checkbox"
       />
       agente comenta mudanças automaticamente
+    </label>
+    <label
+      class="watch-toggle"
+      title="Varre a tela a cada 5s e resolve sozinho as questões que aparecerem (uma vez cada)"
+    >
+      <input
+        type="checkbox"
+      />
+      🧩 resolver questões automaticamente
     </label>
   </div>
 </div>

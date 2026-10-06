@@ -8,6 +8,8 @@ interface Props {
   previewTick: number
   watchMode: boolean
   setWatchMode: (v: boolean) => void
+  autoSolve: boolean
+  setAutoSolve: (v: boolean) => void
   onClose: () => void
   onMinimize: () => void
 }
@@ -15,6 +17,7 @@ interface Props {
 export default function LivePanel({
   monitors, monitorSel, setMonitorSel,
   previewTick, watchMode, setWatchMode,
+  autoSolve, setAutoSolve,
   onClose, onMinimize,
 }: Props) {
   return (
@@ -26,18 +29,12 @@ export default function LivePanel({
           value={monitorSel}
           onChange={(e) => setMonitorSel(Number(e.target.value))}
         >
-          {monitors.length === 0 && <option value={0}>Todas as telas</option>}
-          {monitors.map((m) =>
-            m.index === 0 ? (
-              <option key={m.index} value={m.index}>
-                Todas as telas
-              </option>
-            ) : (
-              <option key={m.index} value={m.index}>
-                Tela {m.index} · {m.width}×{m.height}
-              </option>
-            ),
-          )}
+          {monitors.length === 0 && <option value={0}>Tela 1</option>}
+          {monitors.map((m) => (
+            <option key={m.index} value={m.index}>
+              Tela {m.index + 1} · {m.width}×{m.height}
+            </option>
+          ))}
         </select>
         <button className="btn-screen" onClick={onMinimize} title="Minimizar">—</button>
         <button className="btn-screen" onClick={onClose}>✕</button>
@@ -55,6 +52,14 @@ export default function LivePanel({
           onChange={(e) => setWatchMode(e.target.checked)}
         />
         agente comenta mudanças automaticamente
+      </label>
+      <label className="watch-toggle" title="Varre a tela a cada 5s e resolve sozinho as questões que aparecerem (uma vez cada)">
+        <input
+          type="checkbox"
+          checked={autoSolve}
+          onChange={(e) => setAutoSolve(e.target.checked)}
+        />
+        🧩 resolver questões automaticamente
       </label>
     </div>
   )

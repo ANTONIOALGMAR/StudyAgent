@@ -4,15 +4,18 @@ from __future__ import annotations
 
 import base64
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import Response
 from pydantic import BaseModel
+from slowapi import Limiter
+from slowapi.util import get_remote_address
 
 from ..agent.agent import PermissionDeniedError, StudyAgent
 from ..security.permissions import PermissionManager
 from ..vision.screen import image_to_base64, image_to_jpeg_base64, list_monitors
 
 router = APIRouter(prefix="/api")
+limiter = Limiter(key_func=get_remote_address)
 agent = StudyAgent()
 permissions = PermissionManager()
 
@@ -29,6 +32,12 @@ class AnswerQuestionsRequest(BaseModel):
     region: dict | None = None
     monitor: int | None = None
     question: str | None = None
+
+
+class DetectQuestionsRequest(BaseModel):
+    session_id: str | None = None
+    region: dict | None = None
+    monitor: int | None = None
 
 
 @router.post("/screen/capture")
@@ -66,6 +75,26 @@ def screen_analyze(req: AnalyzeScreenRequest):
     except PermissionDeniedError as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
     return result
+
+
+@router.post("/screen/detect")
+@limiter.limit("30/minute")
+def screen_detect(request: Request, req: DetectQuestionsRequest):
+    """Varredura leve (OCR + regex) para o loop ao vivo — sem modelo.
+
+    Diz se há questões na tela e devolve fingerprints para o cliente
+    resolver cada questão apenas uma vez.
+    """
+    try:
+        return agent.detect_screen_questions(
+            monitor=req.monitor,
+            region=req.region,
+            session_id=req.session_id,
+        )
+    except PermissionDeniedError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
 @router.post("/screen/questions")

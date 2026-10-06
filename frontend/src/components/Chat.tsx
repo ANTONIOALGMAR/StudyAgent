@@ -218,7 +218,9 @@ export default function Chat() {
             previewTick={screen.previewTick}
             watchMode={screen.watchMode}
             setWatchMode={screen.setWatchMode}
-            onClose={() => { screen.setWatchMode(false); screen.setLiveOpen(false) }}
+            autoSolve={screen.autoSolve}
+            setAutoSolve={screen.setAutoSolve}
+            onClose={() => { screen.setWatchMode(false); screen.setAutoSolve(false); screen.setLiveOpen(false) }}
             onMinimize={() => screen.setLiveMinimized(true)}
           />
         )}

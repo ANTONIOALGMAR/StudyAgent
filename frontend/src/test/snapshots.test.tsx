@@ -82,6 +82,8 @@ describe('LivePanel snapshots', () => {
     previewTick: 0,
     watchMode: false,
     setWatchMode: () => {},
+    autoSolve: false,
+    setAutoSolve: () => {},
     onClose: () => {},
     onMinimize: () => {},
   }

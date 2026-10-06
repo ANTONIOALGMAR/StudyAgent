@@ -919,17 +919,18 @@ class StudyAgent:
             monitor=monitor,
         )
 
-    def answer_screen_questions(
+    def _prepare_screen_questions(
         self,
         session_id=None,
         region=None,
         monitor=None,
-        question: str | None = None,
+        *,
+        nova_session=False,
     ):
-        """Lê a tela sob comando e responde às questões encontradas.
+        """Captura + OCR + detecção de questões, sem chamar o modelo.
 
-        Fluxo: descobre a tela com a janela em foco → captura → OCR →
-        separa as questões → pede as respostas ao modelo de visão.
+        Base comum entre `detect_screen_questions` (varredura leve do
+        loop ao vivo) e `answer_screen_questions` (resolução completa).
         """
 
         self._require("screen_capture")
@@ -954,16 +955,53 @@ class StudyAgent:
 
         encontradas = questions_mod.detect_questions(ocr_text)
 
+        if nova_session:
+            session_id = session_id or self.memory.get_or_create_session(session_id)
+
         base = {
-            "session_id": session_id or self.memory.get_or_create_session(session_id),
+            "session_id": session_id,
             "monitor": monitor_id,
             "monitor_name": (active or {}).get("name"),
             "screen_detected": active is not None,
             "window": (active or {}).get("active_window"),
             "ocr_available": ocr.available(),
             "ocr_length": len(ocr_text or ""),
+            "fingerprint": questions_mod.text_fingerprint(ocr_text),
             "questions": [q.to_dict() for q in encontradas],
         }
+
+        return shot, ocr_text, encontradas, base
+
+    def detect_screen_questions(self, monitor=None, region=None, session_id=None):
+        """Varredura leve da tela: OCR + regex, sem modelo de visão.
+
+        Feita pelo loop ao vivo a cada poucos segundos para saber se há
+        questões novas na tela — só quando aparecem é que a resolução
+        completa (`answer_screen_questions`) é disparada.
+        """
+
+        *_, base = self._prepare_screen_questions(
+            session_id, region, monitor, nova_session=False,
+        )
+        return base
+
+    def answer_screen_questions(
+        self,
+        session_id=None,
+        region=None,
+        monitor=None,
+        question: str | None = None,
+    ):
+        """Lê a tela sob comando e responde às questões encontradas.
+
+        Fluxo: descobre a tela com a janela em foco → captura → OCR →
+        separa as questões → pede as respostas ao modelo de visão.
+        """
+
+        shot, _ocr_text, encontradas, base = self._prepare_screen_questions(
+            session_id, region, monitor, nova_session=True,
+        )
+        monitor_id = base["monitor"]
 
         if not encontradas:
             return {

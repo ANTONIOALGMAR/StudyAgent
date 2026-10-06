@@ -13,6 +13,7 @@ como questão.
 
 from __future__ import annotations
 
+import hashlib
 import re
 from dataclasses import dataclass, field
 
@@ -77,6 +78,18 @@ _JUNK_LINE_RE = re.compile(
 # ============================================================================
 
 
+def _normalize(text: str) -> str:
+    """Minúsculas + espaços colapsados — base do fingerprint."""
+
+    return re.sub(r"\s+", " ", (text or "").strip()).lower()
+
+
+def text_fingerprint(text: str | None) -> str:
+    """Identidade estável do texto da tela (dedupe do loop ao vivo)."""
+
+    return hashlib.sha1(_normalize(text).encode("utf-8", "ignore")).hexdigest()
+
+
 @dataclass
 class DetectedQuestion:
     """Uma questão lida do texto (ou da imagem via OCR)."""
@@ -90,6 +103,17 @@ class DetectedQuestion:
     kind: str = "aberta"
 
     source_line: int = 0
+
+    @property
+    def fingerprint(self) -> str:
+        """Identidade estável da questão (rótulo + enunciado).
+
+        Usada pelo cliente do loop ao vivo para resolver cada questão
+        apenas uma vez, mesmo que ela continue na tela entre varreduras.
+        """
+
+        base = f"{self.label}|{_normalize(self.stem)}"
+        return hashlib.sha1(base.encode("utf-8", "ignore")).hexdigest()
 
     @property
     def is_multiple_choice(self) -> bool:
@@ -119,6 +143,7 @@ class DetectedQuestion:
             "options": dict(self.options),
             "kind": self.kind,
             "multiple_choice": self.is_multiple_choice,
+            "fingerprint": self.fingerprint,
         }
 
 

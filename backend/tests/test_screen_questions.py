@@ -523,3 +523,158 @@ def Path_of_image():
     destino = Path(tempfile.mkdtemp()) / "questao.png"
     destino.write_bytes(_imagem_questoes_png())
     return destino
+
+
+# ── Fingerprints (dedupe do loop ao vivo) ──────────────────────────
+
+
+class TestFingerprints:
+    def test_estavel_ignora_caso_e_espacos(self):
+        q1 = q_mod.DetectedQuestion(label="1", stem="Quanto é 3 + 4 + 5?")
+        q2 = q_mod.DetectedQuestion(label="1", stem="  quanto é  3 + 4 + 5? ")
+        assert q1.fingerprint == q2.fingerprint
+
+    def test_muda_com_questao_diferente(self):
+        q1 = q_mod.DetectedQuestion(label="1", stem="Quanto é 3 + 4 + 5?")
+        q2 = q_mod.DetectedQuestion(label="2", stem="Quanto é 3 + 4 + 5?")
+        q3 = q_mod.DetectedQuestion(label="1", stem="Qual a capital do Brasil?")
+        assert q1.fingerprint != q2.fingerprint
+        assert q1.fingerprint != q3.fingerprint
+
+    def test_to_dict_leva_fingerprint(self):
+        q = q_mod.DetectedQuestion(label="1", stem="Quanto é 3 + 4 + 5?")
+        assert q.to_dict()["fingerprint"] == q.fingerprint
+
+    def test_text_fingerprint_estavel(self):
+        a = q_mod.text_fingerprint("Questão 1\nQuanto é 3 + 4 + 5?")
+        b = q_mod.text_fingerprint("questão  1 quanto é 3 + 4 + 5?")
+        c = q_mod.text_fingerprint("outro texto")
+        assert a == b
+        assert a != c
+
+
+# ── Varredura leve (loop ao vivo) ──────────────────────────────────
+
+
+def _patches_tela(ocr_text=OCR_QUESTOES, janela=True):
+    """Context manager com captura/monitores/janela/OCR patchados."""
+
+    from contextlib import ExitStack, contextmanager
+
+    @contextmanager
+    def _cm():
+        with ExitStack() as stack:
+            stack.enter_context(
+                patch(
+                    "app.vision.screen.ScreenManager.capture_monitor",
+                    return_value=_imagem_questoes(),
+                )
+            )
+            stack.enter_context(
+                patch("app.vision.screen._discover_monitors", return_value=_tres_monitores())
+            )
+            stack.enter_context(
+                patch(
+                    "app.vision.window.active_window",
+                    return_value={
+                        "title": "Exercícios",
+                        "app": "chrome",
+                        "left": 2000,
+                        "top": 0,
+                        "width": 1000,
+                        "height": 800,
+                    }
+                    if janela
+                    else None,
+                )
+            )
+            mock_ocr = stack.enter_context(patch("app.agent.agent.ocr"))
+            mock_ocr.available.return_value = True
+            mock_ocr.read_text.return_value = ocr_text
+            mock_chat = stack.enter_context(patch("app.agent.agent.chat"))
+            yield mock_chat
+
+    return _cm()
+
+
+class TestDetectScreenQuestions:
+    def test_varredura_leve_sem_chamar_o_modelo(self):
+        with _patches_tela() as mock_chat:
+            agent = StudyAgent()
+            result = agent.detect_screen_questions()
+
+        assert len(result["questions"]) == 2
+        assert all(q["fingerprint"] for q in result["questions"])
+        assert result["fingerprint"]
+        assert result["monitor"] == 1
+        assert result["session_id"] is None  # varredura não cria sessão
+        mock_chat.assert_not_called()
+
+    def test_sem_questoes_devolve_lista_vazia(self):
+        with _patches_tela(ocr_text="Arquivo Editar Exibir Ajuda", janela=False):
+            agent = StudyAgent()
+            result = agent.detect_screen_questions()
+
+        assert result["questions"] == []
+        assert result["fingerprint"]
+
+    def test_fingerprint_das_questoes_e_estavel_entre_varreduras(self):
+        with _patches_tela():
+            agent = StudyAgent()
+            primeira = agent.detect_screen_questions()
+            segunda = agent.detect_screen_questions()
+
+        assert [q["fingerprint"] for q in primeira["questions"]] == [
+            q["fingerprint"] for q in segunda["questions"]
+        ]
+        assert primeira["fingerprint"] == segunda["fingerprint"]
+
+    def test_fingerprint_da_tela_muda_quando_o_conteudo_muda(self):
+        with _patches_tela(ocr_text=OCR_QUESTOES):
+            primeira = StudyAgent().detect_screen_questions()
+        with _patches_tela(ocr_text=OCR_QUESTOES + "\nQuestão 3\n1 + 1 = ?\na) 1\nb) 2"):
+            segunda = StudyAgent().detect_screen_questions()
+
+        assert primeira["fingerprint"] != segunda["fingerprint"]
+        assert len(segunda["questions"]) == 3
+
+
+# ── Rota POST /api/screen/detect ───────────────────────────────────
+
+
+class TestRotaScreenDetect:
+    def test_detect_responde_com_questoes_e_sem_modelo(self):
+        from fastapi.testclient import TestClient
+
+        from app.main import app
+
+        client = TestClient(app)
+
+        with _patches_tela() as mock_chat:
+            resp = client.post("/api/screen/detect", json={"monitor": None})
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert len(data["questions"]) == 2
+        assert all(q["fingerprint"] for q in data["questions"])
+        assert data["fingerprint"]
+        mock_chat.assert_not_called()
+
+    def test_detect_sem_permissao_retorna_403(self):
+        from fastapi.testclient import TestClient
+
+        from app.main import app
+        from app.security.permissions import PermissionDeniedError
+
+        client = TestClient(app)
+
+        with (
+            _patches_tela(),
+            patch(
+                "app.security.permissions.PermissionManager.require",
+                side_effect=PermissionDeniedError("screen_capture negado"),
+            ),
+        ):
+            resp = client.post("/api/screen/detect", json={})
+
+        assert resp.status_code == 403

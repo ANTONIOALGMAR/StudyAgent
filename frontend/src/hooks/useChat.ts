@@ -141,7 +141,11 @@ export function useChat({ useScreen, liveOpen, monitorSel, activeDoc, onMood }: 
         { role: 'user', content: '🧩 Resolva as questões da tela sob comando' },
       ])
       try {
-        const res = await answerScreenQuestions(monitor ?? null)
+        const res = await answerScreenQuestions(monitor ?? null, null, sessionIdRef.current)
+        if (res.session_id) {
+          setSessionId(res.session_id)
+          sessionIdRef.current = res.session_id
+        }
         const tela = res.screen_detected
           ? `tela ${(res.monitor ?? 0) + 1}${res.monitor_name ? ` (${res.monitor_name})` : ''}`
           : 'tela não identificada'

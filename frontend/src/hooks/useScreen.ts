@@ -1,5 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { captureScreen, getMonitors, screenPreviewUrl, chat, type MonitorInfo } from '../api'
+import {
+  answerScreenQuestions,
+  captureScreen,
+  detectScreenQuestions,
+  getMonitors,
+  screenPreviewUrl,
+  chat,
+  type MonitorInfo,
+} from '../api'
 
 export interface UseScreenOptions {
   sessionIdRef: React.MutableRefObject<string | null>
@@ -7,18 +15,28 @@ export interface UseScreenOptions {
   setSessionId: (id: string) => void
 }
 
+// Intervalo do loop que varre a tela atrás de questões novas. OCR puro
+// (sem modelo), então dá para ser perto que o custo é baixo.
+const DETECT_INTERVAL_MS = 5000
+
 export function useScreen({ sessionIdRef, setMessages, setSessionId }: UseScreenOptions) {
   const [useScreenCapture, setUseScreenCapture] = useState(false)
   const [liveOpen, setLiveOpen] = useState(false)
   const [liveMinimized, setLiveMinimized] = useState(false)
   const [watchMode, setWatchMode] = useState(false)
+  const [autoSolve, setAutoSolve] = useState(false)
   const [monitors, setMonitors] = useState<MonitorInfo[]>([])
   const [monitorSel, setMonitorSel] = useState(0)
   const [previewTick, setPreviewTick] = useState(0)
   const watchActiveRef = useRef(false)
+  const autoActiveRef = useRef(false)
   const monitorSelRef = useRef(0)
   const liveOpenRef = useRef(false)
   const watchAbortRef = useRef<AbortController | null>(null)
+  const autoAbortRef = useRef<AbortController | null>(null)
+  // Questões já resolvidas nesta rodada (fingerprint → vista). Evita reagir
+  // à mesma questão que continuou na tela entre varreduras.
+  const seenQuestionsRef = useRef<Set<string>>(new Set())
 
   useEffect(() => { monitorSelRef.current = monitorSel }, [monitorSel])
   useEffect(() => { liveOpenRef.current = liveOpen }, [liveOpen])
@@ -110,9 +128,79 @@ export function useScreen({ sessionIdRef, setMessages, setSessionId }: UseScreen
     }
   }, [watchMode, liveOpen, watchLoop])
 
+  // Auto-solve: varre a tela a cada DETECT_INTERVAL_MS com OCR+regex (sem
+  // modelo) e, quando encontra questões NOVAS (fingerprint não vista),
+  // dispara a resolução completa uma única vez e publica no chat.
+  const autoSolveLoop = useCallback(async () => {
+    while (autoActiveRef.current && liveOpenRef.current) {
+      const controller = new AbortController()
+      autoAbortRef.current = controller
+      try {
+        const det = await detectScreenQuestions(monitorSelRef.current, controller.signal)
+        // Painel fechou/loop desligado durante o fetch → não resolve mais nada.
+        if (!autoActiveRef.current || !liveOpenRef.current) break
+        const novas = det.questions.filter((q) => {
+          if (!q.fingerprint) return false
+          if (seenQuestionsRef.current.has(q.fingerprint)) return false
+          seenQuestionsRef.current.add(q.fingerprint)
+          return true
+        })
+        if (novas.length > 0) {
+          const res = await answerScreenQuestions(
+            monitorSelRef.current,
+            null,
+            sessionIdRef.current,
+            controller.signal,
+          )
+          if (res.session_id) {
+            setSessionId(res.session_id)
+            sessionIdRef.current = res.session_id
+          }
+          // Monitor explícito (o mesmo do preview): o cabeçalho sempre
+          // sai com o número da tela que o painel está exibindo.
+          const tela = `tela ${(res.monitor ?? 0) + 1}${res.monitor_name ? ` (${res.monitor_name})` : ''}`
+          const cabecalho = `🧩 ${tela} · ${novas.length} questão(ões) detectada(s) — resolvida automaticamente`
+          setMessages((m) => [
+            ...m,
+            { role: 'user', content: '🧩 Resolva as questões da tela (auto)' },
+            { role: 'assistant', content: `${cabecalho}\n\n${res.answer_text}` },
+          ])
+        }
+      } catch (e) {
+        // Abort (painel fechado) → sai; senão é erro transiente (rede,
+        // 429 do rate limit) e o próximo ciclo tenta de novo.
+        if (!autoActiveRef.current || !liveOpenRef.current) break
+        console.warn('Auto-solve: falha na varredura de questões:', e)
+      } finally {
+        if (autoAbortRef.current === controller) autoAbortRef.current = null
+      }
+      const until = Date.now() + DETECT_INTERVAL_MS
+      while (Date.now() < until && autoActiveRef.current && liveOpenRef.current) {
+        await new Promise((r) => setTimeout(r, 500))
+      }
+    }
+  }, [sessionIdRef, setMessages, setSessionId])
+
+  useEffect(() => {
+    if (autoSolve && liveOpen) {
+      autoActiveRef.current = true
+      void autoSolveLoop()
+    } else {
+      autoActiveRef.current = false
+      autoAbortRef.current?.abort()
+      // Desligou → limpa a memória de questões vistas para a próxima
+      // ativação tratar de novo o que estiver na tela.
+      if (!autoSolve) seenQuestionsRef.current.clear()
+    }
+    return () => {
+      autoActiveRef.current = false
+      autoAbortRef.current?.abort()
+    }
+  }, [autoSolve, liveOpen, autoSolveLoop])
+
   const peekScreen = useCallback(async () => {
     try {
-      const shot = await captureScreen()
+      const shot = await captureScreen(monitorSelRef.current)
       setMessages((m) => [
         ...m,
         {
@@ -135,6 +223,7 @@ export function useScreen({ sessionIdRef, setMessages, setSessionId }: UseScreen
     liveOpen, setLiveOpen,
     liveMinimized, setLiveMinimized,
     watchMode, setWatchMode,
+    autoSolve, setAutoSolve,
     monitors, monitorSel, setMonitorSel,
     previewTick,
     peekScreen, previewSrc,

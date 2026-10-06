@@ -51,7 +51,11 @@ describe('useChat — questões da tela e imagem anexada', () => {
 
     const chamada = (fetch as unknown as ReturnType<typeof vi.fn>).mock.calls[0]
     expect(chamada[0]).toContain('/api/screen/questions')
-    expect(JSON.parse(chamada[1].body)).toEqual({ monitor: null, question: null })
+    expect(JSON.parse(chamada[1].body)).toEqual({
+      monitor: null,
+      question: null,
+      session_id: null,
+    })
   })
 
   it('avisa quando não há questões na tela', async () => {

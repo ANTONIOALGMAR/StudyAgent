@@ -82,12 +82,42 @@ export interface DetectedQuestion {
   options: Record<string, string>
   kind: string
   multiple_choice: boolean
+  fingerprint?: string
 }
 
 export interface QuestionAnswer {
   label: string
   answer: string
   answer_text: string
+}
+
+export interface ScreenDetectResult {
+  session_id: string | null
+  monitor: number | null
+  monitor_name?: string | null
+  screen_detected: boolean
+  window?: { title?: string; app?: string } | null
+  ocr_available: boolean
+  ocr_length: number
+  fingerprint: string
+  questions: DetectedQuestion[]
+}
+
+export async function detectScreenQuestions(
+  monitor?: number | null,
+  signal?: AbortSignal,
+): Promise<ScreenDetectResult> {
+  const res = await fetch(`${API}/api/screen/detect`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ monitor: monitor ?? null }),
+    signal,
+  })
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: res.statusText }))
+    throw new Error(err.detail ?? `Erro ${res.status}`)
+  }
+  return res.json()
 }
 
 export interface ScreenQuestionsResult {
@@ -100,16 +130,24 @@ export interface ScreenQuestionsResult {
   questions: DetectedQuestion[]
   answers: QuestionAnswer[]
   answer_text: string
+  session_id?: string | null
 }
 
 export async function answerScreenQuestions(
   monitor?: number | null,
-  question?: string,
+  question?: string | null,
+  sessionId?: string | null,
+  signal?: AbortSignal,
 ): Promise<ScreenQuestionsResult> {
   const res = await fetch(`${API}/api/screen/questions`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ monitor: monitor ?? null, question: question ?? null }),
+    body: JSON.stringify({
+      monitor: monitor ?? null,
+      question: question ?? null,
+      session_id: sessionId ?? null,
+    }),
+    signal,
   })
   if (!res.ok) {
     const err = await res.json().catch(() => ({ detail: res.statusText }))
@@ -187,8 +225,12 @@ export async function setPermission(name: string, value: boolean): Promise<void>
   }
 }
 
-export async function captureScreen(): Promise<{ image_b64: string; text: string }> {
-  const res = await fetch(`${API}/api/screen/capture`, { method: 'POST' })
+export async function captureScreen(monitor?: number): Promise<{ image_b64: string; text: string }> {
+  const res = await fetch(`${API}/api/screen/capture`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ monitor: monitor ?? 1 }),
+  })
   if (!res.ok) throw new Error('Falha ao capturar tela')
   return res.json()
 }
