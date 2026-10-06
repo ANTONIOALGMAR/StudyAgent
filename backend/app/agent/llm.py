@@ -19,16 +19,19 @@ def available_models():
     return [m.model for m in _client.list().models]
 
 
-def _options(role: str, max_tokens: int | None = None) -> dict:
-    """Defaults de opções do Ollama; `max_tokens` sobrepõe o teto de tokens."""
+def _options(role: str, max_tokens: int | None = None, temperature: float | None = None) -> dict:
+    """Defaults de opções do Ollama; `max_tokens` sobrepõe o teto de tokens
+    e `temperature` sobrepõe a temperatura padrão da função."""
     options = {"num_ctx": context_tokens(role), "num_predict": num_predict(max_tokens)}
-    if role == "vision":
+    if temperature is not None:
+        options["temperature"] = temperature
+    elif role == "vision":
         # Temperatura baixa reduz alucinação/confabulação na análise visual.
         options["temperature"] = vision_temperature()
     return options
 
 
-def chat(messages, images=None, stream=False, max_tokens=None):
+def chat(messages, images=None, stream=False, max_tokens=None, temperature=None):
     if images:
         messages = _attach_images(messages, images)
         role = "vision"
@@ -36,7 +39,7 @@ def chat(messages, images=None, stream=False, max_tokens=None):
         role = "text"
     model = resolve(role)
     log.info("[VISION] model=%s images=%d stream=%s", model, len(images or []), stream)
-    options = _options(role, max_tokens)
+    options = _options(role, max_tokens, temperature)
     try:
         if stream:
             return _client.chat(

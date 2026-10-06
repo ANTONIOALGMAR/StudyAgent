@@ -1430,16 +1430,18 @@ class StudyAgent:
             {
                 "role": "system",
                 "content": (
-                    "Você resolve listas de exercícios de qualquer disciplina. "
-                    "Para cada questão, leia o enunciado e as alternativas e "
-                    "responda conforme esse contexto específico, apontando a "
-                    "alternativa correta com firmeza (indicar a letra). "
-                    "Não adivinhe: marque uma letra somente quando tiver "
-                    "certeza — para chegar à certeza, avalie cada alternativa "
-                    "e verifique por que as demais estão erradas. Se não for "
-                    "possível ter certeza (questão ilegível ou ambígua), diga "
-                    "'incerta' no lugar da resposta. Use o que estiver visível "
-                    "na imagem e seu conhecimento quando o enunciado exigir."
+                    "Você resolve questões de provas e listas de exercícios "
+                    "de qualquer disciplina, respondendo conforme o enunciado "
+                    "e as alternativas fornecidos. Para cada questão de "
+                    "múltipla escolha, identifique a alternativa correta com "
+                    "firmeza e justifique de forma ESPECÍFICA, citando o "
+                    "conteúdo que distingue a correta das erradas (ex.: qual "
+                    "lei ou tema se aplica a cada afirmativa). Não enumere "
+                    "todas as alternativas: aponte a certa e justifique. "
+                    "Nunca use justificativa vazia como 'a resposta está "
+                    "correta, conforme o enunciado'. Se a questão estiver "
+                    "incompleta, ambígua ou depender de figura não fornecida, "
+                    "responda 'incerta' — não adivinhe."
                 ),
             },
             {
@@ -1449,21 +1451,28 @@ class StudyAgent:
         ]
 
         try:
-            resposta = chat(messages, images=[image_to_base64(shot)])
+            # 1) Modelo de texto: as questões já vêm estruturadas do OCR e
+            #    raciocinam/justificam melhor sem a imagem no caminho.
+            resposta = chat(messages, temperature=0.1)
+            respostas = questions_mod.parse_answers(resposta, encontradas)
+
+            # 2) Sem resposta no formato (ex.: questão que depende de figura
+            #    só visível na imagem), tenta o modelo de visão uma vez.
+            if not respostas:
+                resposta = chat(messages, images=[image_to_base64(shot)])
+                respostas = questions_mod.parse_answers(resposta, encontradas)
 
         except Exception as exc:
-            log.exception("[QUESTIONS] modelo de visão falhou")
+            log.exception("[QUESTIONS] modelo falhou")
             return {
                 **base,
                 "answers": [],
                 "answer_text": (
-                    "Li as questões da tela, mas o modelo de visão não "
-                    f"respondeu agora: {exc}"
+                    "Li as questões da tela, mas o modelo não respondeu "
+                    f"agora: {exc}"
                 ),
                 "error": str(exc),
             }
-
-        respostas = questions_mod.parse_answers(resposta, encontradas)
 
         # Exibe o conteúdo já validado: justificativa genérica vira
         # "incerta" em vez de passar o chute confiante do modelo.

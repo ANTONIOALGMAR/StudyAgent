@@ -510,10 +510,39 @@ def parse_answers(
 
     por_rotulo = {q.label: q for q in questions}
     respostas: dict[str, dict] = {}
+    # Modelos costumam quebrar o formato em duas linhas quando o rótulo vem
+    # seguido do enunciado reescrito: '1) 3 + 4 + 5 = ?' + 'b) 12 — ...'.
+    # `pendente` guarda o rotulo para receber a alternativa na linha seguinte.
+    pendente: tuple[str, None] | None = None
+
+    def _marcar(rotulo, letra, justificativa):
+        if _TAUTOLOGICO_RE.search(justificativa):
+            letra = ""
+            justificativa = (
+                "incerta — justificativa genérica não confirma a alternativa."
+            )
+        respostas[rotulo] = {
+            "label": rotulo,
+            "answer": letra,
+            "answer_text": justificativa,
+        }
 
     for linha in text.splitlines():
         match = _ANSWER_LINE_RE.match(linha)
         if not match:
+            # Linha sem rótulo pode completar a alternativa da linha anterior.
+            letra_match = _LETTER_ANSWER_RE.match(linha.strip())
+            if pendente is not None and letra_match:
+                rotulo, _ = pendente
+                if rotulo not in respostas:
+                    questao = por_rotulo.get(rotulo)
+                    if questao is not None:
+                        _marcar(
+                            rotulo,
+                            letra_match.group(1).upper(),
+                            letra_match.group("resto").strip(),
+                        )
+            pendente = None
             continue
 
         rotulo = match.group(1)
@@ -526,26 +555,21 @@ def parse_answers(
         if questao is None or rotulo in respostas:
             continue
 
-        letra = ""
-        justificativa = resto
+        if not questao.is_multiple_choice:
+            _marcar(rotulo, "", resto)
+            continue
 
-        if questao.is_multiple_choice:
-            letra_match = _LETTER_ANSWER_RE.match(resto)
-            if letra_match:
-                letra = letra_match.group(1).upper()
-                justificativa = letra_match.group("resto").strip()
-
-        if _TAUTOLOGICO_RE.search(justificativa):
-            letra = ""
-            justificativa = (
-                "incerta — justificativa genérica não confirma a alternativa."
+        letra_match = _LETTER_ANSWER_RE.match(resto)
+        if letra_match:
+            _marcar(
+                rotulo,
+                letra_match.group(1).upper(),
+                letra_match.group("resto").strip(),
             )
-
-        respostas[rotulo] = {
-            "label": rotulo,
-            "answer": letra,
-            "answer_text": justificativa,
-        }
+        else:
+            # Questão de múltipla escolha sem letra no rótulo: espera a
+            # alternativa na linha seguinte antes de concluir.
+            pendente = (rotulo, None)
 
     return [respostas[q.label] for q in questions if q.label in respostas]
 

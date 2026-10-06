@@ -303,6 +303,18 @@ class TestDeteccaoQuestoes:
         respostas = q_mod.parse_answers("7) D) nada disso", achadas)
         assert respostas == []
 
+    def test_alternativa_na_linha_apos_o_rotulo(self):
+        """Modelo que reescreve o enunciado ('1) 3 + 4 + 5 = ?' + 'b) 12 —')
+        ainda tem a letra capturada da linha seguinte."""
+        achadas = q_mod.detect_questions(OCR_QUESTOES)
+        respostas = q_mod.parse_answers(
+            "1) 3 + 4 + 5 = ?\n"
+            "b) 12 — porque 3 + 4 + 5 = 12.\n",
+            achadas,
+        )
+        assert respostas[0]["answer"] == "B"
+        assert "12" in respostas[0]["answer_text"]
+
     def test_justificativa_generica_nao_vira_resposta(self):
         """'A resposta está correta, conforme o enunciado' não é resposta —
         derruba a letra e marca como incerta, em vez de chutar."""
@@ -498,6 +510,57 @@ class TestAnswerScreenQuestions:
         assert result["answer_text"] == (
             "1) incerta — justificativa genérica não confirma a alternativa."
         )
+
+    def test_solucao_vai_para_o_modelo_de_texto(self):
+        """Questão já estruturada pelo OCR é resolvida sem imagem."""
+        with (
+            patch(
+                "app.vision.screen.ScreenManager.capture_monitor",
+                return_value=_imagem_questoes(),
+            ),
+            patch("app.vision.screen._discover_monitors", return_value=_tres_monitores()),
+            patch("app.vision.window.active_window", return_value=None),
+            patch("app.agent.agent.ocr") as mock_ocr,
+            patch("app.agent.agent.chat") as mock_chat,
+        ):
+            mock_ocr.available.return_value = True
+            mock_ocr.read_text.return_value = OCR_QUESTOES
+            mock_chat.return_value = "1) B) 12 — 3 + 4 + 5 = 12.\n"
+
+            agent = StudyAgent()
+            result = agent.answer_screen_questions()
+
+        assert result["answers"][0]["answer"] == "B"
+        assert mock_chat.call_count == 1
+        assert not mock_chat.call_args.kwargs.get("images")
+        conteudo = "\n".join(m["content"] for m in mock_chat.call_args[0][0])
+        assert "ESPECÍFICA" in conteudo
+
+    def test_visao_e_fallback_se_o_texto_nao_formata_resposta(self):
+        """Sem resposta no formato (ex.: figura na tela), tenta a visão."""
+        with (
+            patch(
+                "app.vision.screen.ScreenManager.capture_monitor",
+                return_value=_imagem_questoes(),
+            ),
+            patch("app.vision.screen._discover_monitors", return_value=_tres_monitores()),
+            patch("app.vision.window.active_window", return_value=None),
+            patch("app.agent.agent.ocr") as mock_ocr,
+            patch("app.agent.agent.chat") as mock_chat,
+        ):
+            mock_ocr.available.return_value = True
+            mock_ocr.read_text.return_value = OCR_QUESTOES
+            mock_chat.side_effect = [
+                "Resolver tudo corretamente é importante.",
+                "1) B) 12 — 3 + 4 + 5 = 12.\n",
+            ]
+
+            agent = StudyAgent()
+            result = agent.answer_screen_questions()
+
+        assert mock_chat.call_count == 2
+        assert mock_chat.call_args_list[1].kwargs.get("images")
+        assert result["answers"][0]["answer"] == "B"
 
     def test_sem_questoes_nao_chama_o_modelo(self):
         with (
