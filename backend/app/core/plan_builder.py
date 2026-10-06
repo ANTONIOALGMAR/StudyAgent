@@ -15,7 +15,6 @@ from typing import Any
 
 from .tool_registry import all_tools
 
-
 JSON_OPEN_RE = re.compile(r"\{", re.IGNORECASE)
 
 

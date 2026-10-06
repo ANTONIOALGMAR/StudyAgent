@@ -1,12 +1,15 @@
-import numpy as np
 import json
-from typing import List, Dict, Any, Optional, Tuple
-from .vector_store import VectorStore
+from typing import Any, Dict, List, Optional, Tuple
+
+import numpy as np
+
 from ..config import DATA_DIR
+from .vector_store import VectorStore
+
 
 class NumPyStore(VectorStore):
     """Implementação original baseada em arquivos .npz."""
-    
+
     def __init__(self):
         self.index_dir = DATA_DIR / "rag"
         self.index_dir.mkdir(parents=True, exist_ok=True)
@@ -28,19 +31,18 @@ class NumPyStore(VectorStore):
         path = self._index_path(doc_id)
         if not path.exists():
             return None
-        
+
         dados = np.load(path, allow_pickle=False)
         vectors = dados["vectors"].astype(np.float32)
         chunks = json.loads(str(dados["chunks"]))
-        
+
         scores = vectors @ query_vec
         ordem = np.argsort(scores)[::-1]
-        
+
         top_indices = ordem[:k]
-        top_vectors = vectors[top_indices]
         top_chunks = [chunks[int(i)] for i in top_indices]
         top_scores = scores[top_indices]
-        
+
         return top_scores, top_chunks
 
     def delete(self, doc_id: str) -> None:

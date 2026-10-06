@@ -189,7 +189,7 @@ class TestExecutionPlan:
     def test_pending_steps(self):
         plan = ExecutionPlan()
         s1 = plan.add_step("screen.capture")
-        s2 = plan.add_step("ocr.read", depends_on=[s1.id])
+        plan.add_step("ocr.read", depends_on=[s1.id])
         pending = plan.pending_steps
         assert len(pending) == 1
         assert pending[0].id == s1.id
@@ -399,7 +399,7 @@ class TestExecutor:
         s1 = plan.add_step("step.a", required=False)
         s2 = plan.add_step("step.b", depends_on=[s1.id])
 
-        results = executor.execute_plan(plan)
+        executor.execute_plan(plan)
         assert s1.status == StepStatus.FAILED
         assert s2.status == StepStatus.SKIPPED
 

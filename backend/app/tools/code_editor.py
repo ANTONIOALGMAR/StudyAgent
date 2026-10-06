@@ -1,7 +1,5 @@
-import os
 import logging
-from pathlib import Path
-from typing import List, Dict, Any, Optional
+from typing import Any, Dict, List
 
 from ..core.fs_manager import fs_manager
 
@@ -34,7 +32,7 @@ def edit_file(path: str, old_string: str, new_string: str) -> str:
         content = safe_path.read_text(encoding="utf-8")
         if old_string not in content:
             return f"Erro: A string de busca não foi encontrada no arquivo {path}."
-        
+
         new_content = content.replace(old_string, new_string)
         safe_path.write_text(new_content, encoding="utf-8")
         return f"Arquivo {path} editado com sucesso."
@@ -65,7 +63,7 @@ def search_in_files(query: str, root_path: str) -> List[Dict[str, Any]]:
                             "path": str(path.relative_to(safe_root)),
                             "line": "Encontrado" # Simplificado
                         })
-                except:
+                except OSError:
                     continue
         return results
     except Exception as e:

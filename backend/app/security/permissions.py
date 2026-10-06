@@ -118,7 +118,6 @@ class PermissionManager:
         with self._lock:
             if name not in self._permissions:
                 raise KeyError(f"permissão desconhecida: {name}")
-            old = self._permissions[name]
             self._permissions[name] = bool(value)
             self._save()
             self._audit("set", name, value, reason)

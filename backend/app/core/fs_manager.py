@@ -1,7 +1,7 @@
+import logging
 import os
 from pathlib import Path
-from typing import List, Optional
-import logging
+from typing import List
 
 log = logging.getLogger("studyagent.fs")
 
@@ -10,7 +10,7 @@ class FSManager:
     Gerencia o acesso ao sistema de arquivos com foco em segurança.
     Garante que o agente opere apenas dentro de diretórios permitidos.
     """
-    
+
     def __init__(self):
         # Por padrão, permitimos a pasta do usuário e a pasta do projeto
         # Em produção, isso viria de uma configuração no .env ou banco de dados

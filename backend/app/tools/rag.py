@@ -4,7 +4,6 @@ V2: embedding cache, reranking, metadata por chunk, filtros de busca.
 """
 
 import hashlib
-import json
 import logging
 import threading
 
@@ -12,10 +11,9 @@ import numpy as np
 import requests
 
 from ..config import DATA_DIR, OLLAMA_HOST
+from ..core.chroma_store import ChromaStore
 from ..core.model_manager import model as role_model
 from ..core.numpy_store import NumPyStore
-from ..core.chroma_store import ChromaStore
-from ..core.vector_store import VectorStore
 
 INDEX_DIR = DATA_DIR / "rag"
 CHUNK_CHARS = 800
@@ -170,18 +168,18 @@ def build_index(doc_id: str, doc_text: str, embed_fn=None, force=False) -> bool:
     if not chunks:
         return False
     vectors = embed_texts([c["text"] for c in chunks], embed_fn)
-    
+
     store.add_documents(doc_id, vectors, chunks)
     return True
 
 
 def load_index(doc_id: str):
-    # O load_index agora é apenas um wrapper para compatibilidade, 
+    # O load_index agora é apenas um wrapper para compatibilidade,
     # já que o store gerencia a busca internamente.
     if store.exists(doc_id):
         # Retornamos um dummy ou carregamos para manter a assinatura se necessário
         # Mas a função search() agora usa store.search() diretamente.
-        return True 
+        return True
     return None
 
 
@@ -214,18 +212,18 @@ def search(
     try:
         if not store.exists(doc_id):
             build_index(doc_id, doc_text, embed_fn)
-        
+
         if not store.exists(doc_id):
             return None
-            
+
         qvec = embed_texts([query], embed_fn)[0]
         res = store.search(doc_id, qvec, k=k * 3)
-        
+
         if res is None:
             return None
-            
+
         scores, chunks = res
-        
+
         # Coletar candidatos para reranking
         candidates = []
         for i in range(len(chunks)):

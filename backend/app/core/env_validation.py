@@ -65,7 +65,8 @@ def check_disk_space(path: str = ".", min_mb: int = 100) -> bool:
 
 
 def check_data_dirs() -> bool:
-    from . import DATA_DIR, MEMORY_DB_PATH
+    from ..config import DATA_DIR, MEMORY_DB_PATH
+
     try:
         DATA_DIR.mkdir(parents=True, exist_ok=True)
         MEMORY_DB_PATH.parent.mkdir(parents=True, exist_ok=True)

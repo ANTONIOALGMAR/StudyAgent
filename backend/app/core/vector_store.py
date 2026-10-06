@@ -1,10 +1,12 @@
 from abc import ABC, abstractmethod
+from typing import Any, Dict, List, Optional, Tuple
+
 import numpy as np
-from typing import List, Dict, Any, Optional, Tuple
+
 
 class VectorStore(ABC):
     """Interface abstrata para armazenamento de vetores."""
-    
+
     @abstractmethod
     def add_documents(self, doc_id: str, vectors: np.ndarray, chunks: List[Dict[str, Any]]) -> None:
         """Adiciona vetores e chunks a um documento."""

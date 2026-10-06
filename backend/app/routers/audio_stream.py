@@ -1,5 +1,6 @@
-from ..audio.voice_streamer import VoiceStreamer
 from ..agent.llm import chat
+from ..audio.voice_streamer import VoiceStreamer
+
 
 async def audio_stream_generator(messages, images=None):
     streamer = VoiceStreamer()

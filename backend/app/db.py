@@ -101,7 +101,7 @@ class ConnectionPool:
         except Empty:
             raise TimeoutError(
                 f"Pool de conexões esgotado ({self.size}) após {timeout}s: {self.db_path}"
-            )
+            ) from None
 
     def _return_to_pool(self, conn: sqlite3.Connection) -> None:
         if self._closed:

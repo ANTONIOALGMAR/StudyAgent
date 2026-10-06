@@ -5,8 +5,8 @@ fica no loop do agente — assim o erro de permissão é formatado num lugar só
 """
 
 from ..tools.calculator import calculate
+from ..tools.code_editor import edit_file, list_directory, read_file, search_in_files, write_file
 from ..tools.web_search import distill_page, fetch_page, search
-from ..tools.code_editor import read_file, write_file, edit_file, list_directory, search_in_files
 from .tool_registry import tool
 
 _SEARCH_PAGE_CHARS = 4500
