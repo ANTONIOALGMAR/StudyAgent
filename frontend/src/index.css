@@ -284,7 +284,9 @@ body {
   position: fixed;
   right: 20px;
   bottom: 90px;
-  width: 340px;
+  width: min(340px, calc(100vw - 32px));
+  max-height: calc(100vh - 130px);
+  overflow: hidden auto;
   background: #161a23;
   border: 1px solid #2f6f4f;
   border-radius: 12px;
@@ -296,19 +298,31 @@ body {
 .live-head {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   margin-bottom: 8px;
   font-size: 0.82rem;
 }
 
 .live-head select {
   flex: 1;
+  min-width: 0;
+  max-width: 100%;
+  text-overflow: ellipsis;
   background: #1d2230;
   color: #c9cfdb;
   border: 1px solid #262b38;
   border-radius: 6px;
   padding: 4px 6px;
   font-size: 0.78rem;
+}
+
+.live-head .live-dot,
+.live-head .btn-screen {
+  flex-shrink: 0;
+}
+
+.live-head .btn-screen {
+  padding: 0 10px;
 }
 
 .live-dot {

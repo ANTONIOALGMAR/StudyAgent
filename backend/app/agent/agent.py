@@ -425,14 +425,15 @@ class StudyAgent:
         # ── Validação do monitor ────────────────────────────────────
         if plan.capture_screen:
             monitors = ScreenManager.list_monitors()
-            if effective_monitor < 0 or effective_monitor >= len(monitors):
+            if effective_monitor < -1 or effective_monitor >= len(monitors):
                 yield {
                     "type": "done",
                     "result": {
                         "session_id": session_id,
                         "response": (
                             f"Monitor {effective_monitor} não existe. "
-                            f"Existem {len(monitors)} monitores (0 a {len(monitors) - 1})."
+                            f"Existem {len(monitors)} monitores (0 a {len(monitors) - 1}, "
+                            "ou -1 para o desktop virtual completo)."
                         ),
                         "tools_used": [],
                     },

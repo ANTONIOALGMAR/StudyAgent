@@ -830,11 +830,11 @@ def _capture_mss(
 
             monitors = sct.monitors
 
-            if monitor < 0 or monitor >= len(monitors):
+            if monitor < -1 or monitor >= len(monitors):
 
                 raise ScreenCaptureError(
                     f"Monitor {monitor} inválido. "
-                    f"Disponíveis: 0..{len(monitors) - 1}"
+                    f"Disponíveis: 0..{len(monitors) - 1} ou -1 (todas)"
                 )
 
             if region:
@@ -852,7 +852,9 @@ def _capture_mss(
 
             else:
 
-                area = monitors[monitor]
+                # -1 = desktop virtual completo; no MSS o índice 0 agrupa
+                # todos os monitores conectados.
+                area = monitors[0 if monitor < 0 else monitor]
 
             shot = sct.grab(area)
 
@@ -982,12 +984,17 @@ def _crop_virtual(
             f"ID de monitor inválido: {monitor!r}"
         ) from exc
 
-    if monitor < 0 or monitor >= len(monitors):
+    if monitor < -1 or monitor >= len(monitors):
 
         raise ScreenCaptureError(
             f"Monitor {monitor} inválido. "
-            f"Disponíveis: 0..{len(monitors) - 1}"
+            f"Disponíveis: 0..{len(monitors) - 1} ou -1 (todas)"
         )
+
+    # -1 = desktop virtual completo: devolve a captura inteira sem recorte.
+    if monitor == -1 and not region:
+
+        return full
 
     virtual = _virtual_geometry(monitors)
 
@@ -1141,11 +1148,11 @@ def _capture(
                 "mas nenhum monitor foi descoberto."
             )
 
-        if monitor < 0 or monitor >= len(monitors):
+        if monitor < -1 or monitor >= len(monitors):
 
             raise ScreenCaptureError(
                 f"Monitor {monitor} inválido. "
-                f"Disponíveis: 0..{len(monitors) - 1}"
+                f"Disponíveis: 0..{len(monitors) - 1} ou -1 (todas)"
             )
 
         full = _capture_cosmic()

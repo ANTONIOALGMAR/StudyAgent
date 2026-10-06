@@ -344,6 +344,7 @@ export const PERMISSION_LABELS: Record<string, string> = {
 
 export interface MonitorInfo {
   index: number
+  name?: string
   width: number
   height: number
   left: number

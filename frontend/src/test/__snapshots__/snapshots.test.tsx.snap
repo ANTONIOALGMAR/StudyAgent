@@ -289,9 +289,20 @@ exports[`LivePanel snapshots > renders default state 1`] = `
       >
         <option
           title="Captura do desktop virtual que combina todas as telas conectadas"
-          value="0"
+          value="-1"
         >
           Todas as telas (desktop virtual)
+        </option>
+        <option
+          title="Tela 0: 1920×1080"
+          value="0"
+        >
+          Tela 
+          0
+           · 
+          1920
+          ×
+          1080
         </option>
       </select>
       <span
@@ -359,9 +370,20 @@ exports[`LivePanel snapshots > renders with watch mode enabled 1`] = `
       >
         <option
           title="Captura do desktop virtual que combina todas as telas conectadas"
-          value="0"
+          value="-1"
         >
           Todas as telas (desktop virtual)
+        </option>
+        <option
+          title="Tela 0: 1920×1080"
+          value="0"
+        >
+          Tela 
+          0
+           · 
+          1920
+          ×
+          1080
         </option>
       </select>
       <span

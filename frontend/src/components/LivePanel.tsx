@@ -30,13 +30,13 @@ export default function LivePanel({
           onChange={(e) => setMonitorSel(Number(e.target.value))}
           aria-label="Selecionar monitor"
         >
-{/* Always present explicit "Todas as telas" option mapped to monitor 0 (virtual desktop) */}
-          <option value={0} title="Captura do desktop virtual que combina todas as telas conectadas">Todas as telas (desktop virtual)</option>
+{/* -1 = desktop virtual completo (todas as telas combinadas). */}
+          <option value={-1} title="Captura do desktop virtual que combina todas as telas conectadas">Todas as telas (desktop virtual)</option>
 
-          {/* Render physical monitors (skip index 0 which represents the virtual desktop) */}
-          {monitors.filter((m) => m.index !== 0).map((m) => (
-            <option key={m.index} value={m.index} title={`Tela ${m.index}: ${m.width}×${m.height}`}>
-              Tela {m.index} · {m.width}×{m.height}
+          {/* Monitores físicos na ordem do xrandr (0..n). */}
+          {monitors.map((m) => (
+            <option key={m.index} value={m.index} title={`Tela ${m.index}${m.name ? ` (${m.name})` : ''}: ${m.width}×${m.height}`}>
+              Tela {m.index} · {m.name ? `${m.name} · ` : ''}{m.width}×{m.height}
             </option>
           ))}
         </select>
