@@ -424,6 +424,8 @@ Regras:
 - Seja acertivo: marque UMA alternativa e diga a resposta com segurança.
 - Não chute: antes de decidir, avalie cada alternativa e verifique por que
   as demais estão erradas; só marque uma letra quando tiver certeza.
+- NUNCA use justificativa vazia como "a resposta está correta, conforme o
+  enunciado" — a justificativa deve citar o conteúdo específico da questão.
 - Nunca inverter/autorizar a marcação por pura eliminação sem justificativa.
 - Se a questão estiver ilegível ou ambígua, escreva "incerta" no lugar da
   letra e da resposta — não adivinhe.
@@ -486,6 +488,12 @@ _LETTER_ANSWER_RE = re.compile(
     re.UNICODE,
 )
 
+_TAUTOLOGICO_RE = re.compile(
+    r"resposta\s+(est[áa]?\s+)?correta\s*,?\s*"
+    r"(conforme|segundo|de\s+acordo\s+com)\s+o\s+enunciado",
+    re.IGNORECASE | re.UNICODE,
+)
+
 
 def parse_answers(
     text: str | None,
@@ -526,6 +534,12 @@ def parse_answers(
             if letra_match:
                 letra = letra_match.group(1).upper()
                 justificativa = letra_match.group("resto").strip()
+
+        if _TAUTOLOGICO_RE.search(justificativa):
+            letra = ""
+            justificativa = (
+                "incerta — justificativa genérica não confirma a alternativa."
+            )
 
         respostas[rotulo] = {
             "label": rotulo,

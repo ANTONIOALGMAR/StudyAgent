@@ -303,6 +303,17 @@ class TestDeteccaoQuestoes:
         respostas = q_mod.parse_answers("7) D) nada disso", achadas)
         assert respostas == []
 
+    def test_justificativa_generica_nao_vira_resposta(self):
+        """'A resposta está correta, conforme o enunciado' não é resposta —
+        derruba a letra e marca como incerta, em vez de chutar."""
+        achadas = q_mod.detect_questions(OCR_QUESTOES)
+        respostas = q_mod.parse_answers(
+            "1) A) 12 — A resposta está correta, conforme o enunciado.\n",
+            achadas,
+        )
+        assert respostas[0]["answer"] == ""
+        assert "incerta" in respostas[0]["answer_text"]
+
     def test_sem_questoes_nao_monta_prompt(self):
         assert q_mod.format_questions([]) == ""
         assert q_mod.answer_instruction([]) == ""
