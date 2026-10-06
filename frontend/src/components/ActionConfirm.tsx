@@ -6,21 +6,30 @@ import {
   type ActionProposal,
 } from '../api'
 
+const POLL_MS = 5000
+
 export default function ActionConfirm() {
   const [proposals, setProposals] = useState<ActionProposal[]>([])
-  const [loading, setLoading] = useState(true)
 
+  // Poll das ações pendentes: o agente propõe ações durante a conversa e, sem
+  // isso, novas propostas só apareceriam depois de um reload da página.
   useEffect(() => {
-    void refresh()
+    let alive = true
+    const tick = async () => {
+      try {
+        const pending = await getPendingActions()
+        if (alive) setProposals(pending)
+      } catch {
+        // Backend fora do ar / rate limit — tenta de novo no próximo ciclo.
+      }
+    }
+    void tick()
+    const timer = setInterval(() => void tick(), POLL_MS)
+    return () => {
+      alive = false
+      clearInterval(timer)
+    }
   }, [])
-
-  async function refresh() {
-    try {
-      const pending = await getPendingActions()
-      setProposals(pending)
-    } catch {}
-    setLoading(false)
-  }
 
   async function handleApprove(id: string) {
     try {
@@ -36,7 +45,7 @@ export default function ActionConfirm() {
     } catch {}
   }
 
-  if (loading || proposals.length === 0) return null
+  if (proposals.length === 0) return null
 
   return (
     <div className="action-confirm-bar">

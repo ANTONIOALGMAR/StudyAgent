@@ -21,7 +21,11 @@ export default function PermissionsPanel() {
   const [error, setError] = useState('')
 
   useEffect(() => {
-    getPermissions().then(setPerms)
+    getPermissions()
+      .then(setPerms)
+      .catch((e: unknown) =>
+        setError(e instanceof Error ? e.message : 'Falha ao carregar permissões'),
+      )
   }, [])
 
   async function toggle(name: string) {
