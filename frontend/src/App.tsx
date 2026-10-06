@@ -2,13 +2,11 @@
 import { useEffect, useRef, useState } from 'react'
 import { getProfile, recognizeFace, saveProfile, setPermission, speak } from './api'
 import Chat from './components/Chat'
-import PermissionsPanel from './components/PermissionsPanel'
 import Notifications from './components/Notifications'
 
 type FaceAuthState = 'checking' | 'ready' | 'blocked' | 'authenticated'
 
 export default function App() {
-  const [permOpen, setPermOpen] = useState(true)
   const [authState, setAuthState] = useState<FaceAuthState>('checking')
   const [authError, setAuthError] = useState('')
   const [userName, setUserName] = useState('')
@@ -109,24 +107,6 @@ export default function App() {
 
   return (
     <div className="app">
-      <aside className={`sidebar ${permOpen ? 'perms-open' : 'perms-collapsed'}`}>
-        <button
-          className="ps-toggle"
-          onClick={() => setPermOpen(!permOpen)}
-          title={permOpen ? 'Ocultar painel' : 'Abrir painel'}
-        >
-          {permOpen ? '⟨' : '🎓'}
-        </button>
-        {permOpen && (
-          <>
-            <div className="logo">
-              🎓 StudyAgent
-              <span className="subtitle">tutor local · privado</span>
-            </div>
-            <PermissionsPanel />
-          </>
-        )}
-      </aside>
       <main className="main">
         <Chat />
       </main>

@@ -5,6 +5,7 @@ import ChatMessages from './ChatMessages'
 import ChatInput from './ChatInput'
 import LivePanel from './LivePanel'
 import Sidebar from './Sidebar'
+import PermissionsPanel from './PermissionsPanel'
 import EvidencePanel from './EvidencePanel'
 import CameraPanel from './CameraPanel'
 import PanelManager from './PanelManager'
@@ -271,7 +272,17 @@ onUserMessage: (text) => {
 
   return (
     <div className="app-shell">
-      <Sidebar items={sidebarItems} />
+      <Sidebar
+        items={sidebarItems}
+        header={
+          <div className="logo">
+            🎓 StudyAgent
+            <span className="subtitle">tutor local · privado</span>
+          </div>
+        }
+      >
+        <PermissionsPanel />
+      </Sidebar>
       <div className="chat">
         <div className="chat-header">
           <Suspense fallback={<div className="face-fallback" />}>

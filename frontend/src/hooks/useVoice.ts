@@ -22,6 +22,20 @@ function rmsOf(buf: Float32Array): number {
   return Math.sqrt(sum / buf.length)
 }
 
+// Normaliza texto para comparação de eco (ignora caixa, pontuação e espaços).
+function normalizeForCompare(text: string): string {
+  return text.toLowerCase().replace(/[^a-zà-úç0-9\s]/g, '').replace(/\s+/g, ' ').trim()
+}
+
+// True quando a transcrição parece ser a própria fala do agente voltando
+// pelo microfone (igual, ou um prefixo curto do começo da fala anterior).
+function isEchoOfLastSpeech(norm: string, spoken: string): boolean {
+  if (!spoken) return false
+  if (norm === spoken) return true
+  if (norm.length >= 12 && spoken.startsWith(norm)) return true
+  return false
+}
+
 export interface UseVoiceOptions {
   onUserMessage: (text: string) => void | Promise<void>
   onAssistantMessage?: (text: string) => void
@@ -49,6 +63,11 @@ export function useVoice({ onUserMessage }: UseVoiceOptions) {
   const busyRef = useRef(false)
   const pendingRef = useRef<string | null>(null)
   const speakingRef = useRef(false)
+  // Guardas contra eco: compartilham os nomes do último turno e da última
+  // fala para não transformar a própria voz do agente em novo comando.
+  const lastTurnRef = useRef('')
+  const lastSpokenRef = useRef('')
+  const cooldownUntilRef = useRef(0)
 
   // Safety net de autoplay: se um AudioContext foi criado fora de um gesto de
   // usuário, retomá-lo na primeira interação para o som/análise não saírem mudo.
@@ -79,6 +98,8 @@ export function useVoice({ onUserMessage }: UseVoiceOptions) {
   const playSpeechAwait = useCallback(
     async (text: string): Promise<void> => {
       if (!voiceOn || !text.trim()) return
+      // Registra a fala para o guarda de eco ignorar a própria voz no mic.
+      lastSpokenRef.current = normalizeForCompare(stripForSpeech(text))
       try {
         // Se o texto for muito longo, podemos tentar usar o endpoint de stream
         // Mas para manter a compatibilidade imediata, usamos o speak normal.
@@ -125,6 +146,8 @@ export function useVoice({ onUserMessage }: UseVoiceOptions) {
           setSpeaking(false)
           speakingRef.current = false
           teardownSpeechGraph()
+          // Pequeno respiro após a fala: evita capturar cauda/reflexo do som.
+          cooldownUntilRef.current = Date.now() + 1200
         }
       } catch (e) {
         console.error('Erro ao reproduzir voz:', e)
@@ -188,6 +211,11 @@ export function useVoice({ onUserMessage }: UseVoiceOptions) {
   }, [])
 
   const runTurn = useCallback((text: string) => {
+    const norm = normalizeForCompare(text)
+    if (!norm) return
+    if (norm === lastTurnRef.current) return
+    if (isEchoOfLastSpeech(norm, lastSpokenRef.current)) return
+    lastTurnRef.current = norm
     busyRef.current = true
     setHfState('thinking')
     const resultado = onUserMessage(text)
